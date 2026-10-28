@@ -55,4 +55,4 @@ node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.0.tgz
 
 ## 署名与许可
 
-新增代码采用仓库的 Apache-2.0 许可证。复制或改编第三方代码时，在 [第三方声明](THIRD_PARTY_NOTICES.zh-CN.md) 中记录来源和许可并保留要求的声明。研究引用不代表上游项目为本插件背书。
+贡献代码采用 [Apache-2.0](LICENSE) 许可证。

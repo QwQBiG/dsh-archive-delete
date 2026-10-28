@@ -54,10 +54,7 @@ GitHub 安装包含生成的 `lib` 产物，无需运行依赖的 `prepare` 构�
 
 ## 文档
 
-- [研究与参考基线](docs/research.zh-CN.md)
 - [架构](docs/architecture.zh-CN.md)
 - [操作状态与恢复](docs/operations.zh-CN.md)
 - [验收证据](docs/acceptance.zh-CN.md)
-- [参与贡献](CONTRIBUTING.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [第三方声明](THIRD_PARTY_NOTICES.zh-CN.md)
-
-参考：[固定研究提交的 DSH Archive Manager](https://github.com/MichengAI/dsh-archive-manager/tree/6b8babc7b7f8da44466c7bd611ad29e66408623c)。
+- [参与贡献](CONTRIBUTING.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md)

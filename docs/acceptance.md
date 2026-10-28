@@ -4,7 +4,7 @@
 
 ## Evidence policy
 
-Mutation fixtures use temporary directories and known synthetic conversations. No plugin data operations were performed on the user's primary profile, project files, or existing `dsh-purge` installation. A passed unit test, an author-declared version range, and an actual host/UI integration run are recorded as different evidence.
+Mutation fixtures use temporary directories and known synthetic conversations. No plugin data operations were performed on the user's primary profile, project files, or existing plugins. A passed unit test, an author-declared version range, and an actual host/UI integration run are recorded as different evidence.
 
 The scenario table defines the acceptance targets. The verification record below identifies what was exercised, with exact commands, host/runtime versions, counts, and material limits. Source review alone does not turn an unperformed check into a passed check.
 
@@ -52,7 +52,6 @@ node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.0.tgz
 ## Verification record
 
 - Date: 2026-10-28. Target: official macOS DSH `0.2.1-rc.3`, JSONL backend; local runner Node `24.21.0`, pnpm `11.28.5`.
-- Reference reviewed: Archive Manager `6b8babc7b7f8da44466c7bd611ad29e66408623c`.
 - Latest complete local `pnpm verify`: **71 unit/client/service tests and 10 native integration tests passed**, plus build/type, documentation, and package checks.
 - Native integration uses real Cordis, JSONL persistence, storage domains, workspace registration, projection cache, Connection gateway, and macOS flock. It verifies move/restore/purge, durable official titles after cache-domain reopen, readable independent forks after parent/subagent trash, owner admission, external/native leases, pending cancellation/replay, Agent waiting-state admission, default zstd byte preservation, live runtime-version admission, partial-purge retry, and interrupted-move rollback. Agent waiting status uses a controlled boundary fixture.
 - Request-journal tests cover persisted intent, per-target results, duplicate/conflicting requests, restart, completion redaction, crash-left temporaries, cancellation, early oversized-intent refusal, and reserved capacity for all 100 worst-escaped outcomes. Recovery regressions include result-write failure after committed move/restore/purge, missing-manifest cleanup, empty staging, partial purge, changed trash previews, invalid commit proof, post-crash writers, original pending-receipt updates, mismatched identities/paths, and oversized-queue refusal without source changes.
@@ -62,4 +61,4 @@ node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.0.tgz
 
 ## Verification limits
 
-Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited the installed shell's pre-existing `dsh-purge` modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. The initial target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.
+Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. The initial target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.

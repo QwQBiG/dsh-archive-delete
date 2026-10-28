@@ -60,4 +60,4 @@ Every access to an internal DSH shape belongs in the adapter. A future host chan
 - No custom plugin updater; installation/update remains with DSH's plugin manager.
 - Opening the management list or preview does not mutate native session storage.
 
-For the transition-by-transition rules, see [operations and recovery](operations.md). For the reference comparison, see [research](research.md).
+For the transition-by-transition rules, see [operations and recovery](operations.md).

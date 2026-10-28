@@ -55,4 +55,4 @@ Include plugin and DSH versions, platform, the visible action and result, and a 
 
 ## Attribution
 
-New code follows the repository's Apache-2.0 license. Record copied or adapted third-party code and its license in [third-party notices](THIRD_PARTY_NOTICES.md), retaining required notices. A research citation does not imply that an upstream project endorses this plugin.
+Contributions are licensed under [Apache-2.0](LICENSE).

@@ -54,10 +54,7 @@ Generated `lib` artifacts make GitHub installation runnable without a dependency
 
 ## Documentation
 
-- [Research and reference baseline](docs/research.md)
 - [Architecture](docs/architecture.md)
 - [Operation states and recovery](docs/operations.md)
 - [Acceptance evidence](docs/acceptance.md)
-- [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
-
-Reference: [DSH Archive Manager at the frozen study commit](https://github.com/MichengAI/dsh-archive-manager/tree/6b8babc7b7f8da44466c7bd611ad29e66408623c).
+- [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
