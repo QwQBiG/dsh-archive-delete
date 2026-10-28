@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { access, mkdir, mkdtemp, readFile, readdir, rename, rm, rmdir } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir } from 'node:fs/promises';
 import { createRequire, registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -37,7 +37,7 @@ const jsonl = await host('@deepseek-ai/dsh-session-persistence-jsonl');
 const { HostConnectionService } = await host('@deepseek-ai/dsh-client-connection');
 
 async function fixture(t: TestContext, compression = 'none') {
-  const home = await mkdtemp(join(tmpdir(), 'archive-native-'));
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'archive-native-')));
   const project = join(home, 'project'); await mkdir(project);
   const sessionsRoot = join(home, 'sessions'); await mkdir(sessionsRoot);
   const ctx = new Context();

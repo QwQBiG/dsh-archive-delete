@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -10,7 +10,7 @@ import type { ArchiveApi } from '../src/contracts.js';
 import { apply } from '../src/index.js';
 
 async function fixture() {
-  const home = await mkdtemp(join(tmpdir(), 'archive-adapter-'));
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'archive-adapter-')));
   const sessionsRoot = join(home, 'sessions');
   await mkdir(join(sessionsRoot, '--project--'), { recursive: true });
   const snapshots = new Map<string, { header: JsonObject; formatStatus: string; sizeBytes: number }>();

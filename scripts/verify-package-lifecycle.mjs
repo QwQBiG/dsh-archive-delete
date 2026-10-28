@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { access, lstat, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, mkdtemp, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -35,7 +35,7 @@ const { SessionProjectionCache } = await host('@deepseek-ai/dsh-session-projecti
 const { WorkspaceRegistry } = await host('@deepseek-ai/dsh-workspace');
 const { HostConnectionService } = await host('@deepseek-ai/dsh-client-connection');
 const jsonl = await host('@deepseek-ai/dsh-session-persistence-jsonl');
-const root = await mkdtemp(join(tmpdir(), 'dsh-package-lifecycle-'));
+const root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-package-lifecycle-')));
 const home = join(root, 'home'); const profile = join(home, 'profiles', 'web'); await mkdir(profile, { recursive: true });
 initProfile(profile, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']);
 const pnpmFile = process.env.DSH_PNPM_CLI ?? '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/primary-runtime/dependencies/pnpm/bin/pnpm.cjs';
