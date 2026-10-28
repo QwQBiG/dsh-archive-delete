@@ -2,11 +2,11 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
-## 0.2.0 — Unreleased
+## 0.2.0 — 2026-10-28
 
-- Add Windows-native path and lease handling for local-drive JSONL storage, reserving original and relocated lock identities together. Windows verification is in progress.
+- Support Windows Desktop with native path and lease handling for local-drive JSONL storage, reserving original and relocated lock identities together.
 - Harden bounded metadata reads and platform-specific file/directory durability handling; reject Windows network/device paths, unsafe aliases, and symlink/junction redirection.
-- Verify builds, native host integration, and package lifecycle on macOS and Windows CI. Results will be recorded after both platforms pass.
+- Pass macOS and Windows CI for builds, native host integration, committed artifacts, package installation, and uninstall retention. Windows Desktop GUI has not been visually tested.
 - Document CLI installation with a bundle-registration check and missing-entry repair, with the native plugin manager as the recommended install path.
 - Mark all five host-provided peer dependencies optional for package managers while retaining runtime capability checks.
 - Report incompatible host versions at startup with current/required versions and upgrade guidance, retaining a readable disabled management dialog.

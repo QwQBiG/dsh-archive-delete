@@ -20,7 +20,7 @@ Use Node **24 or newer** and the repository's pinned package manager. A system N
 
 Do not install the development build into your main DSH profile to test it. Use a temporary `DSH_HOME`, temporary session roots, and synthetic conversations. A directory of fixtures must not be a symlink into a real data store.
 
-Native integration targets macOS and Windows. Windows verification is in progress. macOS loads the installed official Desktop runtime by default; set `DSH_RUNTIME_ROOT` on Windows or to select another exact `0.2.1-rc.3` runtime root containing `package.json` and `node_modules`. In a POSIX shell:
+Native integration is verified on macOS and Windows CI for the exact supported host. macOS loads the installed official Desktop runtime by default; set `DSH_RUNTIME_ROOT` on Windows or to select another exact `0.2.1-rc.3` runtime root containing `package.json` and `node_modules`. In a POSIX shell:
 
 ```sh
 DSH_RUNTIME_ROOT=/absolute/path/to/isolated-runtime pnpm test:integration

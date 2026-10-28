@@ -6,11 +6,11 @@ Move archived conversations to trash, restore them, or permanently clear selecte
 
 ## Supported setup
 
-**Official DSH Desktop `0.2.1-rc.3` with official JSONL storage.** macOS is supported; Windows verification for `0.2.0` is in progress. Trash and sessions must be on the same volume. Windows storage must use canonical local absolute drive paths. UNC/network and device-namespace paths, directory junctions, and short-name aliases that resolve to a different path are unsupported; case-only aliases are accepted. Runtime checks disable operations when the required host capabilities are unavailable.
+**Official DSH Desktop `0.2.1-rc.3` with official JSONL storage.** macOS and Windows are supported. Native integration and package installation passed on both platforms; Windows Desktop GUI has not been visually tested. Trash and sessions must be on the same volume. Windows storage must use canonical local absolute drive paths. UNC/network and device-namespace paths, directory junctions, and short-name aliases that resolve to a different path are unsupported; case-only aliases are accepted. Runtime checks disable operations when the required host capabilities are unavailable.
 
 ## Three steps
 
-Install `v0.2.0` from GitHub after its release:
+Install `v0.2.0` from GitHub:
 
 ```text
 github:QwQBiG/dsh-archive-delete#v0.2.0

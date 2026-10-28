@@ -6,7 +6,7 @@
 
 `@qwqbig/dsh-archive-delete` · [Apache-2.0](LICENSE) · **DSH Desktop `0.2.1-rc.3` · 官方 JSONL 存储**
 
-macOS 已支持；`0.2.0` 的 Windows 验证进行中，原生 Windows CI 通过后再确认支持。
+支持 **macOS 和 Windows**，两平台的原生宿主集成与安装验证均已通过；尚未目视验证 Windows Desktop 图形界面。详见 [验收记录](docs/acceptance.zh-CN.md)。
 
 ## 功能
 

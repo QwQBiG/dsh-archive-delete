@@ -4,7 +4,7 @@
 
 ## Intent and boundaries
 
-The plugin provides one lifecycle: **archived → trash → archived again, or explicit permanent purge**. It targets official DSH Desktop `0.2.1-rc.3` with the JSONL persistence backend. macOS is supported; Windows verification for `0.2.0` is in progress.
+The plugin provides one lifecycle: **archived → trash → archived again, or explicit permanent purge**. It targets official DSH Desktop `0.2.1-rc.3` with the JSONL persistence backend. Both macOS and Windows are supported, with native host and package lifecycle checks on each platform.
 
 DSH remains the authority for live sessions, workspaces, activity, and session history. Original log bytes remain the authority for a conversation. The plugin owns only its operation records, trash manifests, and native UI contributions. It does not install a replacement workspace registry, session backend, projection cache, or sidebar.
 

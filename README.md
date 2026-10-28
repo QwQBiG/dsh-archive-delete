@@ -6,7 +6,7 @@ Move archived DSH conversations to a recoverable trash, directly inside the desk
 
 `@qwqbig/dsh-archive-delete` · [Apache-2.0](LICENSE) · **DSH Desktop `0.2.1-rc.3` · official JSONL storage**
 
-macOS is supported. Windows verification for `0.2.0` is in progress; support will be confirmed after native Windows CI passes.
+Supports **macOS and Windows**. Native host integration and package installation are verified on both platforms; Windows Desktop GUI has not been visually tested. See the [acceptance record](docs/acceptance.md).
 
 ## What you get
 

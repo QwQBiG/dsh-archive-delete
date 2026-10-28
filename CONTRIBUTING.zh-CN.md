@@ -20,7 +20,7 @@ pnpm pack
 
 不要把开发版安装到主 DSH profile 中测试。使用临时 `DSH_HOME`、临时会话根目录和合成会话，测试目录不能是指向真实存储的符号链接。
 
-原生集成以 macOS 和 Windows 为目标，Windows 验证进行中。macOS 默认加载已安装的官方 Desktop 运行时；在 Windows 上或需选择另一运行时时，设置 `DSH_RUNTIME_ROOT`，指向包含 `package.json` 和 `node_modules` 的精确 `0.2.1-rc.3` 运行时根目录。在 POSIX shell 中：
+原生集成已在 macOS 和 Windows CI 中通过精确目标宿主验证。macOS 默认加载已安装的官方 Desktop 运行时；在 Windows 上或需选择另一运行时时，设置 `DSH_RUNTIME_ROOT`，指向包含 `package.json` 和 `node_modules` 的精确 `0.2.1-rc.3` 运行时根目录。在 POSIX shell 中：
 
 ```sh
 DSH_RUNTIME_ROOT=/absolute/path/to/isolated-runtime pnpm test:integration
