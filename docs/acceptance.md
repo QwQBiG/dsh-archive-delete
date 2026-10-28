@@ -46,14 +46,14 @@ The scenario table defines the acceptance targets. The verification record below
 ```sh
 pnpm verify
 pnpm pack
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.2.0.tgz
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.1.tgz
 ```
 
 `verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
-## Verification record — 0.2.0
+## Verification record — 0.1.1
 
-Date: 2026-10-28. Target: official DSH `0.2.1-rc.3`, JSONL backend, Node `24.21.0`, and pnpm `11.28.5`. CI uses a fresh isolated official runtime and temporary synthetic profiles. Both platform jobs below passed on the same verified commit, `7e434b4`, in the same matrix run.
+Date: 2026-10-28. Target: official DSH `0.2.1-rc.3`, JSONL backend, Node `24.21.0`, and pnpm `11.28.5`. CI uses a fresh isolated official runtime and temporary synthetic profiles. Both platform jobs below passed on the same verified commit, `7e434b4`, in the same matrix run. The final release retains that runtime unchanged; only package-version and documentation metadata were updated afterward.
 
 | Platform | Completed CI evidence | Unit/client/service | Native integration |
 | --- | --- | --- | --- |
@@ -74,4 +74,4 @@ An isolated copy of the installed Electron app, using a separate synthetic home/
 
 ## Verification limits
 
-Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been visually exercised; its native integration and package checks above passed. The historical macOS GUI checks were not rerun for `0.2.0`. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.
+Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been visually exercised; its native integration and package checks above passed. The historical macOS GUI checks were not rerun for `0.1.1`. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.

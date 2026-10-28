@@ -40,7 +40,7 @@ pnpm test:integration
 打包后，使用 Node 24 或更新版本，在另一个全新临时 home 中验证包管理生命周期：
 
 ```sh
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.2.0.tgz
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.1.tgz
 ```
 
 此脚本离线使用选定的官方运行时和可用包管理器，通过普通模块解析加载打包后的宿主部分，记录安装／重装／卸载结果及合成回收站标记保留情况。管理器会注册 bundle，CLI 启用行为取决于宿主构建及调用模式。仅安装依赖的调用仍可能遗漏登记，应核对清单，不能把依赖存在当作已启用；测试和报告中应区分这两条安装路径，手动使用命令行时按 [CLI 注册说明](docs/installation.zh-CN.md) 操作。评估结果时应核对报告的安装模式与诊断；不会安装到当前 Desktop profile。

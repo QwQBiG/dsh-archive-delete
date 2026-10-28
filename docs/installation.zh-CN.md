@@ -10,10 +10,10 @@
 
 ## 三步使用
 
-从 GitHub 安装 `v0.2.0`：
+从 GitHub 安装 `v0.1.1`：
 
 ```text
-github:QwQBiG/dsh-archive-delete#v0.2.0
+github:QwQBiG/dsh-archive-delete#v0.1.1
 ```
 
 1. **添加并启用。** 在 Desktop 的 **插件 → 添加插件** 粘贴地址，按 DSH 提示重启。使用实际 Desktop profile；装到 `web` 不会改变 `desktop`。
@@ -40,7 +40,7 @@ github:QwQBiG/dsh-archive-delete#v0.2.0
 优先使用 **插件 → 添加插件**，DSH 插件管理器会安装包并注册 bundle。支持 Desktop profile 的 DSH 命令行工具可使用：
 
 ```sh
-dsh plugin --profile desktop add github:QwQBiG/dsh-archive-delete#v0.2.0
+dsh plugin --profile desktop add github:QwQBiG/dsh-archive-delete#v0.1.1
 ```
 
 包管理器成功退出本身不代表已启用。CLI 构建及调用模式可能不同：经过管理器的路径可自动登记 bundle，仅安装依赖的路径则可能遗漏。若独立 CLI 拒绝保留的 `desktop` profile，请使用 Desktop 插件管理器，不要换到其他 profile。检查实际 profile 清单；需要修改时先退出 Desktop：
@@ -101,7 +101,7 @@ pnpm pack
 
 ```sh
 DSH_ARCHIVE_DELETE_TEST_HOME="$(mktemp -d)"
-DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.2.0.tgz"
+DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.1.1.tgz"
 ```
 
 按上文核对隔离 profile 的 bundle 登记及启用情况。也可通过该隔离宿主的插件管理器安装本地包。Windows 开发者可使用 [参与贡献](../CONTRIBUTING.zh-CN.md) 中的自动隔离安装／重装／卸载检查。手动启动该宿主时请保留测试 home 路径；这不会安装到当前 Desktop profile。打包产物可避免开发依赖进入宿主运行时，主历史不能作为测试材料。

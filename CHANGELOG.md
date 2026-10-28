@@ -2,7 +2,7 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
-## 0.2.0 — 2026-10-28
+## 0.1.1 — 2026-10-28
 
 - Support Windows Desktop with native path and lease handling for local-drive JSONL storage, reserving original and relocated lock identities together.
 - Harden bounded metadata reads and platform-specific file/directory durability handling; reject Windows network/device paths, unsafe aliases, and symlink/junction redirection.

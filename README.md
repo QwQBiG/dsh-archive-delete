@@ -23,7 +23,7 @@ Trash never expires automatically. Removing the plugin keeps the trash.
 Install from GitHub with this address:
 
 ```text
-github:QwQBiG/dsh-archive-delete#v0.2.0
+github:QwQBiG/dsh-archive-delete#v0.1.1
 ```
 
 1. **Install:** in DSH Desktop, open **Plugins → Add plugin**, enter the address, and enable it. Follow DSH's restart prompt.

@@ -10,10 +10,10 @@ Move archived conversations to trash, restore them, or permanently clear selecte
 
 ## Three steps
 
-Install `v0.2.0` from GitHub:
+Install `v0.1.1` from GitHub:
 
 ```text
-github:QwQBiG/dsh-archive-delete#v0.2.0
+github:QwQBiG/dsh-archive-delete#v0.1.1
 ```
 
 1. **Add and enable.** Paste the address in Desktop's **Plugins → Add plugin** and follow DSH's restart prompt. Use the actual Desktop profile; installing into `web` does not change `desktop`.
@@ -40,7 +40,7 @@ Shared attachments, spill, project files, other plugin caches, and remote copies
 Prefer **Plugins → Add plugin**: DSH's plugin manager installs the package and registers its bundle. With a Desktop-enabled DSH CLI, use:
 
 ```sh
-dsh plugin --profile desktop add github:QwQBiG/dsh-archive-delete#v0.2.0
+dsh plugin --profile desktop add github:QwQBiG/dsh-archive-delete#v0.1.1
 ```
 
 A successful package-manager exit does not by itself prove activation. CLI builds and invocation modes can differ: a manager-enabled path can register the bundle automatically, while an installation-only path can leave it absent. If a standalone CLI rejects the reserved `desktop` profile, use Desktop's plugin manager rather than selecting a different profile. Check the active profile's manifest; quit Desktop before making a needed edit:
@@ -101,7 +101,7 @@ With DSH's CLI installed, create a fresh test home and install into its isolated
 
 ```sh
 DSH_ARCHIVE_DELETE_TEST_HOME="$(mktemp -d)"
-DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.2.0.tgz"
+DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.1.1.tgz"
 ```
 
 Verify the isolated profile's bundle registration and activation as described above. Alternatively, install the local package through that isolated host's plugin manager. On Windows, use the automated isolated install/reinstall/remove check in [Contributing](../CONTRIBUTING.md). Keep the test-home path if launching that host manually. This does not install into the current Desktop profile. A packed artifact keeps development dependencies out of the host runtime; your primary history is not a fixture.

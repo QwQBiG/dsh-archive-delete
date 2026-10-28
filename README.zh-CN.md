@@ -23,7 +23,7 @@
 使用以下 GitHub 地址安装：
 
 ```text
-github:QwQBiG/dsh-archive-delete#v0.2.0
+github:QwQBiG/dsh-archive-delete#v0.1.1
 ```
 
 1. **安装：** 在 DSH 桌面端打开 **插件 → 添加插件**，输入地址并启用，按 DSH 提示重启。
