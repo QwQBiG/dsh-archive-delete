@@ -30,6 +30,8 @@ The service serializes mutations. It persists request intent before starting and
 6. Settle the corresponding host registration and projection metadata through the adapter, and publish a complete trash entry.
 7. Release leases and report the exact result. A failed intermediate stage is recorded for rollback/recovery, not reported as moved.
 
+Lease identities follow the host on each platform: flock on macOS, and path-named kernel semaphores on Windows. Windows transitions reserve the original and relocated paths together, including the original destination during restoration. No lock is forcibly stolen.
+
 The operation record makes progress recoverable; it does not turn several filesystem and host writes into a single atomic transaction. A crash at each stage must be reconciled from recorded progress and observed paths, never from an assumed successful return value.
 
 ## Pending requests

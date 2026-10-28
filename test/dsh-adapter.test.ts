@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createDshAdapter, type HostContext } from '../src/dsh-adapter.js';
+import { acquirePluginLease, createDshAdapter, isLocalWindowsDriveType, windowsSessionLockName, type HostContext } from '../src/dsh-adapter.js';
 import type { JsonObject } from '../src/contracts.js';
 import { createRequestHandler, parseApiRequest, registerHostRoutes } from '../src/host-routes.js';
 import type { ArchiveApi } from '../src/contracts.js';
+import { apply } from '../src/index.js';
 
 async function fixture() {
   const home = await mkdtemp(join(tmpdir(), 'archive-adapter-'));
@@ -79,8 +80,38 @@ test('adapter gates unsupported versions and platforms without touching session 
     const wrongVersion = await createDshAdapter(f.ctx, { home: f.home, version: '0.3.0', platform: 'darwin' });
     assert.equal((await wrongVersion.capabilities()).supported, false);
     await assert.rejects(() => wrongVersion.listArchived(), { code: 'unsupported-host' });
-    const wrongPlatform = await createDshAdapter(f.ctx, { home: f.home, version: '0.2.1-rc.3', platform: 'win32' });
+    const wrongPlatform = await createDshAdapter(f.ctx, { home: f.home, version: '0.2.1-rc.3', platform: 'linux' });
     assert.equal((await wrongPlatform.capabilities()).supported, false);
+  } finally { await f.cleanup(); }
+});
+
+test('startup reports the required and current version before creating storage and keeps the disabled API readable', async () => {
+  const f = await fixture();
+  try {
+    const anchor = join(f.home, 'runtime-package.json');
+    await writeFile(anchor, JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.2.1-rc.2' }));
+    const warnings: string[] = [];
+    let handler: ((request: Request) => Promise<Response>) | undefined;
+    let unmounted = false;
+    const close = await apply({ ...f.ctx, profileContext: { installAnchor: anchor }, dshHomePath: () => f.home,
+      logger: { warn: message => warnings.push(message) },
+      connection: { fetch: { register: (route: { fetch: (request: Request) => Promise<Response> }) => { handler = route.fetch; return () => { unmounted = true; }; } } },
+    });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /0\.2\.1-rc\.3.*0\.2\.1-rc\.2.*Update DSH Desktop/);
+    await assert.rejects(access(join(f.home, 'archive-delete')), { code: 'ENOENT' });
+    assert.ok(handler);
+    const request = (body: unknown) => new Request('http://127.0.0.1/api/dsh-archive-delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await handler(request({ action: 'list' }));
+    const body = await response.json() as { ok: boolean; value: { support: { version: string; supported: boolean; reason: string } } };
+    assert.equal(body.ok, true);
+    assert.equal(body.value.support.supported, false);
+    assert.equal(body.value.support.version, '0.2.1-rc.2');
+    assert.match(body.value.support.reason, /Update DSH Desktop/);
+    const rejected = await handler(request({ action: 'preview', operation: 'trash', ids: ['session'] }));
+    assert.equal(rejected.status, 409);
+    assert.match(await rejected.text(), /unsupported-host/);
+    await close(); assert.equal(unmounted, true);
   } finally { await f.cleanup(); }
 });
 
@@ -264,4 +295,46 @@ test('restore preserves an unarchived subagent pin and concurrent unrelated pins
     assert.ok(!f.state().archivedSessionIds.includes('child'));
     assert.ok(!f.state().pinnedSessionIds.includes('parent'));
   } finally { await f.cleanup(); }
+});
+
+
+test('Windows path locks remain reserved across relocation without creating lock files', async () => {
+  const f = await fixture();
+  const held = new Set<string>();
+  const lockNamed = async (filename: string) => {
+    const name = windowsSessionLockName(filename);
+    if (held.has(name)) throw Object.assign(new Error('busy'), { code: 'EBUSY' });
+    held.add(name); let released = false;
+    return { release: async () => { if (!released) { released = true; held.delete(name); } } };
+  };
+  try {
+    const source = await f.add('parent');
+    const adapter = await createDshAdapter(f.ctx, { home: f.home, version: '0.2.1-rc.3', platform: 'win32', lockNamed,
+      lockExclusive: async () => { throw new Error('Windows must not use POSIX flock'); } });
+    assert.equal((await adapter.capabilities()).supported, true);
+    const group = await adapter.inspect('parent'); const first = await adapter.acquire(group);
+    assert.equal(first.kind, 'acquired'); if (first.kind !== 'acquired') return;
+    await assert.rejects(readFile(join(source, 'session.lock')), { code: 'ENOENT' });
+    const moved = join(f.home, 'relocated'); await rename(source, moved);
+    assert.equal((await adapter.acquireLocated(group, [moved])).kind, 'busy');
+    await first.lease.release();
+    const next = await adapter.acquireLocated(group, [moved]);
+    assert.equal(next.kind, 'acquired'); if (next.kind !== 'acquired') return;
+    assert.ok(held.has(windowsSessionLockName(join(source, 'session.lock'))));
+    assert.ok(held.has(windowsSessionLockName(join(moved, 'session.lock'))));
+    await next.lease.release(); assert.equal(held.size, 0);
+    const lease = await acquirePluginLease(join(f.home, 'plugin'), async () => { throw new Error('Windows must not open a lock file'); }, { platform: 'win32', lockNamed });
+    await assert.rejects(acquirePluginLease(join(f.home, 'plugin'), async () => {}, { platform: 'win32', lockNamed }), { code: 'store-busy' });
+    await lease.release();
+  } finally { await f.cleanup(); }
+});
+
+test('Windows lock identity normalizes drive and path casing consistently', () => {
+  assert.equal(windowsSessionLockName(String.raw`C:\Users\Ada\Sessions\thread\session.lock`), windowsSessionLockName(String.raw`c:\users\ada\sessions\THREAD\session.lock`));
+  assert.notEqual(windowsSessionLockName(String.raw`C:\Users\Ada\Sessions\thread\session.lock`), windowsSessionLockName(String.raw`C:\Users\Ada\Trash\thread\session.lock`));
+});
+
+test('Windows drive admission rejects remote, missing, and unknown media', () => {
+  for (const kind of [0, 1, 4, 5, 7]) assert.equal(isLocalWindowsDriveType(kind), false);
+  for (const kind of [2, 3, 6]) assert.equal(isLocalWindowsDriveType(kind), true);
 });

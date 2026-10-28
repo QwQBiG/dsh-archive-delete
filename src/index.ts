@@ -1,5 +1,5 @@
 import { ArchiveError, PACKAGE_NAME, type ArchiveApi, type DshAdapter, type Lease, type SupportStatus } from './contracts.js';
-import { acquirePluginLease, createDshAdapter, getHostPaths, getNativeLockExclusive, type HostContext } from './dsh-adapter.js';
+import { acquirePluginLease, createDshAdapter, getHostPaths, getNativeLockExclusive, getNativeWindowsLock, type HostContext } from './dsh-adapter.js';
 import { registerHostRoutes } from './host-routes.js';
 import { ArchiveService } from './service.js';
 import { TrashStore } from './storage.js';
@@ -19,12 +19,15 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
   try {
     const adapter: DshAdapter = await createDshAdapter(ctx);
     const support = await adapter.capabilities();
-    if (!support.supported) api = unavailableApi(support);
+    if (!support.supported) {
+      ctx.logger?.warn(`${PACKAGE_NAME}: ${support.reason ?? 'This host is unsupported.'} Archive operations are disabled.`);
+      api = unavailableApi(support);
+    }
     else {
       const paths = await getHostPaths(ctx);
       const store = new TrashStore({ root: paths.root, sessionsRoot: paths.sessionsRoot });
       await store.initialize();
-      lease = await acquirePluginLease(paths.root, getNativeLockExclusive(ctx));
+      lease = await acquirePluginLease(paths.root, getNativeLockExclusive(ctx), { lockNamed: getNativeWindowsLock(ctx) });
       archive = new ArchiveService(adapter, store);
       await archive.initialize();
       api = archive;

@@ -4,7 +4,7 @@
 
 ## Intent and boundaries
 
-The plugin provides one lifecycle: **archived → trash → archived again, or explicit permanent purge**. Its first target is official macOS DSH Desktop `0.2.1-rc.3` with the JSONL persistence backend.
+The plugin provides one lifecycle: **archived → trash → archived again, or explicit permanent purge**. It targets official DSH Desktop `0.2.1-rc.3` with the JSONL persistence backend. macOS is supported; Windows verification for `0.2.0` is in progress.
 
 DSH remains the authority for live sessions, workspaces, activity, and session history. Original log bytes remain the authority for a conversation. The plugin owns only its operation records, trash manifests, and native UI contributions. It does not install a replacement workspace registry, session backend, projection cache, or sidebar.
 
@@ -46,9 +46,19 @@ The plugin does not keep a second full-text or projection mirror. Recovery metad
 
 Recovery JSON has the same 8 MiB read/write ceiling. Initial request intent is limited to 6 MiB, reserving room for up to 100 bounded per-target outcomes before any transition starts. Oversized metadata is rejected before a write/move and asks for a smaller batch; an admitted intent must remain writable as results accumulate.
 
+## Platform-specific storage and leases
+
+- macOS uses the running host's native flock on each `session.lock`; held handles preserve ownership across a same-volume rename.
+- Windows uses the JSONL backend's named-kernel-semaphore convention through its existing host-owned native binding. Names are derived from resolved, case-normalized paths. A transition reserves both the original session path and its current staging/trash path, so relocating logs cannot bypass ownership; restoration also reserves the original destination before it exists. Plugin-store ownership uses the same platform-compatible lease boundary.
+- Windows admits only local absolute drive paths with an admitted local drive type. UNC/network paths, device namespaces, reserved names, ambiguous aliases, and symlink/junction redirection are refused. Configured roots and session directories must match their canonical locations apart from case; short-name aliases or junction ancestors cannot create alternate lock identities. Canonical roots and members are checked again; sibling-prefix and path-case aliases do not grant access.
+- Recovery JSON reads require a bounded regular file and verify file identity before parsing. POSIX owner/mode checks apply where meaningful; Windows does not interpret POSIX mode bits as an ACL guarantee and inherits the existing DSH home's access controls.
+- Metadata files are flushed before atomic replacement. POSIX also syncs containing directories; Windows uses recoverable operation records because Node cannot provide the same directory-sync operation. Process-interruption recovery is tested separately from power-loss durability, which is not claimed.
+
 ## Compatibility policy
 
-The initial version gate is exact, not a promise that all `0.2.x` releases are compatible. It checks the active profile's runtime installation anchor, rather than trusting the plugin's pinned peer package to identify its host. Mutation requires the supported host version, macOS, the JSONL backend, safe canonical roots, and usable activity/lease/registration capabilities. Failure to establish those conditions produces an explicit unsupported or blocked result.
+The initial version gate is exact, not a promise that all `0.2.x` releases are compatible. It checks the active profile's runtime installation anchor, rather than trusting the plugin's pinned peer package to identify its host. Mutation requires the supported host version and platform, the JSONL backend, safe canonical roots, and usable activity/lease/registration capabilities. Failure to establish those conditions produces an explicit unsupported or blocked result. A version mismatch emits a startup diagnostic with required/current versions and upgrade guidance while retaining a readable disabled management dialog. `engines.dsh` describes compatibility but is not an installation-time gate.
+
+Cordis, app boot, home paths, native system bindings, and React come from the host. Their peer declarations are optional for the package manager to avoid misleading missing-peer warnings; runtime admission still checks capabilities. The plugin adds no install hook. DSH's native manager registers its bundle. CLI users verify `dsh.profile.bundles` afterward and add the package name only if absent; manager-enabled launchers can reconcile automatically, while installation-only invocation modes need the explicit step.
 
 Every access to an internal DSH shape belongs in the adapter. A future host change should require one explicit adapter update and real compatibility evidence, not a widened version range alone.
 

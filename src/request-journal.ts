@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
 import { lstat, open, readdir, rename, unlink } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { ArchiveError, type BatchResult, type ItemResult, type Preview, type SessionGroup } from './contracts.js';
+import { assertPrivateDirectory, readBoundedJson, syncDirectory } from './filesystem.js';
 
 const UUID = /^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
 const STATUSES = new Set(['moved', 'pending', 'restored', 'purged', 'cancelled', 'skipped', 'failed']);
@@ -77,23 +77,13 @@ export class RequestJournal {
     const next = this.tail.then(work, work); this.tail = next.catch(() => {}); return next;
   }
   private async directorySafe(): Promise<void> {
-    const stat = await lstat(this.directory);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o022) !== 0
-      || (typeof process.getuid === 'function' && stat.uid !== process.getuid()))
-      throw new ArchiveError('unsafe-path', 'Request storage must be a private directory owned by this user.');
+    await assertPrivateDirectory(this.directory);
   }
   private async read(id: string, fingerprint?: string): Promise<RequestRecord | undefined> {
     const path = this.path(id);
-    let handle: Awaited<ReturnType<typeof open>>;
-    try { handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW); }
-    catch (error) { if (missing(error)) return undefined; throw error; }
     let value: unknown;
-    try {
-      const stat = await handle.stat();
-      if (!stat.isFile() || stat.size > 8 * 1024 * 1024) throw new ArchiveError('corrupt-state', 'A request receipt is invalid.');
-      try { value = JSON.parse(await handle.readFile('utf8')) as unknown; }
-      catch { throw new ArchiveError('corrupt-state', 'A request receipt could not be read.'); }
-    } finally { await handle.close(); }
+    try { value = await readBoundedJson(path); }
+    catch (error) { if (missing(error)) return undefined; throw error; }
     validate(value, id);
     if (fingerprint !== undefined && value.fingerprint !== fingerprint)
       throw new ArchiveError('request-conflict', 'This request identifier was already used.');
@@ -113,8 +103,7 @@ export class RequestJournal {
       await handle.writeFile(encoded); await handle.sync();
       await handle.close(); handle = undefined;
       await rename(temporary, path);
-      const directory = await open(this.directory, 'r');
-      try { await directory.sync(); } finally { await directory.close(); }
+      await syncDirectory(this.directory);
     } catch (error) {
       if (handle) await handle.close().catch(() => {});
       await unlink(temporary).catch(() => {});
@@ -127,14 +116,13 @@ export class RequestJournal {
       const match = /^(.+)\.json\.(.+)\.tmp$/.exec(name);
       if (!match || !UUID.test(match[1]!) || !UUID.test(match[2]!) || (id !== undefined && match[1] !== id)) continue;
       const path = join(this.directory, name); const stat = await lstat(path);
-      if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0
-        || (typeof process.getuid === 'function' && stat.uid !== process.getuid()))
+      if (!stat.isFile() || stat.isSymbolicLink() || (process.platform !== 'win32' && ((stat.mode & 0o077) !== 0
+        || (typeof process.getuid === 'function' && stat.uid !== process.getuid()))))
         throw new ArchiveError('unsafe-path', 'A temporary request receipt needs attention.');
       await unlink(path); changed = true;
     }
     if (changed) {
-      const directory = await open(this.directory, 'r');
-      try { await directory.sync(); } finally { await directory.close(); }
+      await syncDirectory(this.directory);
     }
   }
   async begin(id: string, fingerprint: string, context: RequestContext, action?: 'cancel'): Promise<RequestRecord> {

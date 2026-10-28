@@ -3,12 +3,13 @@ import { constants } from 'node:fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { lstat, mkdir, open, readFile, readdir, realpath } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep, win32 } from 'node:path';
 import {
   ArchiveError, SUPPORTED_DSH_VERSION,
   type Activity, type ArchivedSession, type DshAdapter, type JsonObject,
   type Lease, type LeaseResult, type SessionGroup, type SessionMember, type SupportStatus,
 } from './contracts.js';
+import { assertCanonicalStoragePath, assertLocalStoragePath, samePath } from './filesystem.js';
 
 /** The small, version-pinned structural boundary around DSH's runtime services. */
 interface Header extends JsonObject { id: string; version: number; createdAt: number }
@@ -62,6 +63,7 @@ export interface AdapterOptions {
   platform?: string;
   home?: string;
   lockExclusive?: (fd: number) => Promise<void>;
+  lockNamed?: (filename: string) => Promise<Lease>;
 }
 const importHost = (specifier: string): Promise<Record<string, unknown>> => import(specifier) as Promise<Record<string, unknown>>;
 const LOG_FILE = /^session(?:\.v\d+)?\.jsonl(?:\.zstd)?$/;
@@ -99,17 +101,80 @@ export function getNativeLockExclusive(ctx: HostContext): (fd: number) => Promis
     await (await implementation)(fd);
   };
 }
+type WindowsHandle = number | bigint;
+interface WindowsSemaphoreApi {
+  createSemaphore(attributes: null, initial: number, maximum: number, name: string): WindowsHandle;
+  wait(handle: WindowsHandle, milliseconds: number): number;
+  release(handle: WindowsHandle, count: number, previous: null): number;
+  close(handle: WindowsHandle): number;
+  lastError(): number;
+  driveType(root: string): number;
+}
+/** Matches the running JSONL backend's case-insensitive, per-login Windows kernel identity. */
+export function windowsSessionLockName(filename: string): string {
+  return `Local\\dsh-session-lock-${createHash('sha256').update(win32.resolve(filename).toLowerCase()).digest('hex')}`;
+}
+export function isLocalWindowsDriveType(kind: number): boolean { return kind === 2 || kind === 3 || kind === 6; }
+/** Windows ownership uses kernel objects, with no open file handle to obstruct a rename. */
+export function getNativeWindowsLock(ctx: HostContext): (filename: string) => Promise<Lease> {
+  let implementation: Promise<WindowsSemaphoreApi> | undefined;
+  return async (filename) => {
+    assertLocalStoragePath(filename);
+    implementation ??= (async () => {
+      const profile = service<{ installAnchor?: unknown }>(ctx, 'profileContext');
+      if (typeof profile?.installAnchor !== 'string' || !isAbsolute(profile.installAnchor)) throw new ArchiveError('unsupported-host', 'The live DSH installation could not be resolved.');
+      const backendFile = createRequire(profile.installAnchor).resolve('@deepseek-ai/dsh-session-persistence-jsonl');
+      const koffiFile = createRequire(backendFile).resolve('koffi');
+      const module = await importHost(pathToFileURL(koffiFile).href);
+      const koffi = module.default as { load(name: string): { func(convention: string, name: string, result: string, args: string[]): unknown } };
+      const kernel = koffi.load('kernel32.dll');
+      return {
+        createSemaphore: kernel.func('__stdcall', 'CreateSemaphoreW', 'intptr', ['void*', 'int', 'int', 'str16']),
+        wait: kernel.func('__stdcall', 'WaitForSingleObject', 'uint', ['intptr', 'uint']),
+        release: kernel.func('__stdcall', 'ReleaseSemaphore', 'int', ['intptr', 'int', 'void*']),
+        close: kernel.func('__stdcall', 'CloseHandle', 'int', ['intptr']),
+        lastError: kernel.func('__stdcall', 'GetLastError', 'uint', []),
+        driveType: kernel.func('__stdcall', 'GetDriveTypeW', 'uint', ['str16']),
+      } as WindowsSemaphoreApi;
+    })();
+    const api = await implementation;
+    if (!isLocalWindowsDriveType(api.driveType(win32.parse(filename).root))) throw new ArchiveError('unsafe-path', 'Windows archive operations require a verified local writable drive.');
+    const handle = api.createSemaphore(null, 1, 1, windowsSessionLockName(filename));
+    if (handle === 0 || handle === 0n) throw Object.assign(new Error('The Windows kernel lock could not be created.'), { code: 'EIO', win32Code: api.lastError() });
+    const acquired = api.wait(handle, 0);
+    if (acquired !== 0) {
+      const error = acquired === 258 ? { code: 'EBUSY' } : { code: 'EIO', win32Code: api.lastError() };
+      api.close(handle);
+      throw Object.assign(new Error('The Windows kernel lock is unavailable.'), error);
+    }
+    let released = false;
+    return { release: async () => {
+      if (released) return;
+      released = true;
+      const restored = api.release(handle, 1, null);
+      const closed = api.close(handle);
+      if (!restored || !closed) throw Object.assign(new Error('The Windows kernel lock could not be released.'), { code: 'EIO', win32Code: api.lastError() });
+    } };
+  };
+}
 async function nativeLockExclusive(fd: number): Promise<void> {
   const module = await importHost('@deepseek-ai/node-addon-system/flock');
   await (module.tryLockExclusive as (descriptor: number) => Promise<void>)(fd);
 }
 
 /** One Host owns recovery/restore/purge for a plugin store for its complete lifetime. */
-export async function acquirePluginLease(root: string, lockExclusive: (fd: number) => Promise<void> = nativeLockExclusive): Promise<Lease> {
+export async function acquirePluginLease(root: string, lockExclusive: (fd: number) => Promise<void> = nativeLockExclusive, options: { platform?: string; lockNamed?: (filename: string) => Promise<Lease> } = {}): Promise<Lease> {
+  assertLocalStoragePath(root);
   await mkdir(root, { recursive: true, mode: 0o700 });
   const entry = await lstat(root);
   if (!entry.isDirectory() || entry.isSymbolicLink()) throw new ArchiveError('unsafe-path', 'The plugin data root is not a plain directory.');
+  await assertCanonicalStoragePath(root);
   const filename = join(root, '.lock');
+  if ((options.platform ?? process.platform) === 'win32') {
+    if (!options.lockNamed) throw new ArchiveError('unsupported-host', 'The native Windows write-lock capability is unavailable.');
+    try { return await options.lockNamed(filename); }
+    catch (error) { if (code(error) === 'EBUSY') throw new ArchiveError('store-busy', 'Another DSH process owns this archive-delete store. Close that instance before enabling mutations here.'); throw error; }
+  }
   const handle = await open(filename, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
   try {
     await lockExclusive(handle.fd);
@@ -149,7 +214,9 @@ export async function getHostPaths(ctx: HostContext, homeOverride?: string): Pro
   const persistence = service<Persistence>(ctx, 'sessionPersistence');
   const sessionsRoot = persistence && typeof persistence.root === 'string' && isAbsolute(persistence.root)
     ? resolve(persistence.root) : join(home, 'sessions');
-  return { home, sessionsRoot, root: join(home, 'archive-delete') };
+  const root = join(home, 'archive-delete');
+  for (const path of [home, sessionsRoot, root]) assertLocalStoragePath(path);
+  return { home, sessionsRoot, root };
 }
 
 /** Create the sole layer allowed to inspect DSH internals. It never installs or replaces services. */
@@ -165,7 +232,7 @@ export async function createDshAdapter(ctx: HostContext, options: AdapterOptions
   }
   const paths = await getHostPaths(ctx, options.home);
   const lockExclusive = options.lockExclusive ?? getNativeLockExclusive(ctx);
-  return new NativeAdapter(ctx, paths, version, options.platform ?? process.platform, lockExclusive);
+  return new NativeAdapter(ctx, paths, version, options.platform ?? process.platform, lockExclusive, options.lockNamed ?? getNativeWindowsLock(ctx));
 }
 
 class NativeAdapter implements DshAdapter {
@@ -175,7 +242,8 @@ class NativeAdapter implements DshAdapter {
   private readonly cache: ProjectionCache | undefined;
   constructor(private readonly ctx: HostContext, private readonly paths: HostPaths,
     private readonly version: string, private readonly platform: string,
-    private readonly lockExclusive: (fd: number) => Promise<void>) {
+    private readonly lockExclusive: (fd: number) => Promise<void>,
+    private readonly lockNamed: (filename: string) => Promise<Lease>) {
     this.persistence = service(ctx, 'sessionPersistence');
     this.registry = service(ctx, 'workspaceRegistry');
     this.sessions = service(ctx, 'sessions');
@@ -183,8 +251,8 @@ class NativeAdapter implements DshAdapter {
   }
   async capabilities(): Promise<SupportStatus> {
     let reason: string | undefined;
-    if (this.platform !== 'darwin') reason = 'Only macOS Desktop is supported in this release.';
-    else if (this.version !== SUPPORTED_DSH_VERSION) reason = `This release is verified only with DSH ${SUPPORTED_DSH_VERSION}.`;
+    if (this.platform !== 'darwin' && this.platform !== 'win32') reason = 'Only macOS and Windows Desktop are supported in this release.';
+    else if (this.version !== SUPPORTED_DSH_VERSION) reason = `DSH Desktop ${SUPPORTED_DSH_VERSION} is required; the current runtime is ${this.version}. Update DSH Desktop to the required version, then restart this plugin.`;
     else if (this.persistence?.name !== 'session-persistence-jsonl' || !isAbsolute(this.persistence.root)) reason = 'The official JSONL session backend is required.';
     else if (!this.sessions || typeof this.sessions.get !== 'function' || !this.ctx.waterfall || !this.ctx.emit) reason = 'Session activity and lifecycle services are unavailable.';
     else if (!this.registry || !['requireState', 'requireTable', 'enqueueOperation', 'setState', 'indexHeader'].every((key) => typeof (this.registry as unknown as Record<string, unknown>)[key] === 'function')
@@ -293,6 +361,7 @@ class NativeAdapter implements DshAdapter {
   }
   private async validateDirectory(directory: string, sessionId: string): Promise<void> {
     const root = resolve(this.paths.sessionsRoot);
+    assertLocalStoragePath(directory);
     const rel = relative(root, resolve(directory));
     const segments = rel.split(sep);
     if (!rel || rel.startsWith(`..${sep}`) || rel === '..' || isAbsolute(rel) || segments.length !== 2 || basename(directory) !== encodeId(sessionId)) throw new ArchiveError('unsafe-path', 'Session storage ownership could not be verified.');
@@ -303,7 +372,9 @@ class NativeAdapter implements DshAdapter {
     }
     const canonicalRoot = await realpath(root);
     const canonicalDirectory = await realpath(directory);
-    if (canonicalDirectory !== join(canonicalRoot, rel)) throw new ArchiveError('unsafe-path', 'Session path changed during inspection.');
+    assertLocalStoragePath(canonicalRoot); assertLocalStoragePath(canonicalDirectory);
+    await assertCanonicalStoragePath(root, canonicalRoot); await assertCanonicalStoragePath(directory, canonicalDirectory);
+    if (!samePath(canonicalDirectory, join(canonicalRoot, rel))) throw new ArchiveError('unsafe-path', 'Session path changed during inspection.');
   }
   async acquire(group: SessionGroup): Promise<LeaseResult> {
     await this.requireSupported();
@@ -315,10 +386,13 @@ class NativeAdapter implements DshAdapter {
     await this.requireSupported();
     if (directories.length !== group.members.length || new Set(directories.filter((directory) => directory !== undefined)).size !== directories.filter((directory) => directory !== undefined).length) throw new ArchiveError('unsafe-path', 'The recovery locations do not match this session group.');
     const loaded = new Set(group.members.filter(({ id }) => this.sessions!.get(id) !== undefined).map(({ id }) => id));
+    if (this.platform === 'win32') return this.acquireWindowsLocated(group, directories, loaded);
     const handles: Awaited<ReturnType<typeof open>>[] = [];
     try {
       const targets = group.members.map((member, index) => ({ member, directory: directories[index] })).sort((a, b) => a.member.id.localeCompare(b.member.id));
       for (const { member, directory } of targets) {
+        assertLocalStoragePath(member.directory);
+        if (directory !== undefined) assertLocalStoragePath(directory);
         const activity = await this.ctx.waterfall!('workspace/session-activity', { sessionId: member.id }, async () => []);
         if (activity.length) { await Promise.allSettled(handles.map((handle) => handle.close())); return { kind: 'busy', message: 'A session or related task is active.' }; }
         // Loaded writers belong to this process. Probe every cold member before accepting a pending group.
@@ -345,6 +419,44 @@ class NativeAdapter implements DshAdapter {
     } catch (error) {
       await Promise.allSettled(handles.map((handle) => handle.close()));
       if (code(error) === 'EAGAIN' || code(error) === 'EWOULDBLOCK') return { kind: 'busy', message: 'Another process holds the session write lock.' };
+      throw error;
+    }
+  }
+  private async acquireWindowsLocated(group: SessionGroup, directories: (string | undefined)[], loaded: Set<string>): Promise<LeaseResult> {
+    const leases: Lease[] = [];
+    const release = async () => {
+      const results = await Promise.allSettled(leases.map((lease) => lease.release()));
+      const failure = results.find((result) => result.status === 'rejected');
+      if (failure?.status === 'rejected') throw failure.reason;
+    };
+    try {
+      const targets = group.members.map((member, index) => ({ member, directory: directories[index] })).sort((a, b) => a.member.id.localeCompare(b.member.id));
+      const heldNames = new Set<string>();
+      for (const { member, directory } of targets) {
+        assertLocalStoragePath(member.directory);
+        if (directory !== undefined) assertLocalStoragePath(directory);
+        const activity = await this.ctx.waterfall!('workspace/session-activity', { sessionId: member.id }, async () => []);
+        if (activity.length) { await release(); return { kind: 'busy', message: 'A session or related task is active.' }; }
+        if (loaded.has(member.id)) continue;
+        if (directory !== undefined) {
+          const entry = await lstat(directory);
+          if (!isAbsolute(directory) || !entry.isDirectory() || entry.isSymbolicLink()) throw new ArchiveError('unsafe-path', 'A recovery location is not a plain directory.');
+        }
+        // Windows locks name paths rather than inodes: reserve the original destination
+        // throughout restore/rollback as well as the currently located artifact.
+        for (const path of [member.directory, directory]) {
+          if (path === undefined) continue;
+          const filename = join(path, 'session.lock'); const name = windowsSessionLockName(filename);
+          if (heldNames.has(name)) continue;
+          leases.push(await this.lockNamed(filename)); heldNames.add(name);
+        }
+      }
+      if (loaded.size) { await release(); return { kind: 'loaded', message: 'An idle session is still held by this DSH process.' }; }
+      let released = false;
+      return { kind: 'acquired', lease: { release: async () => { if (!released) { released = true; await release(); } } } };
+    } catch (error) {
+      await release().catch(() => {});
+      if (code(error) === 'EBUSY') return { kind: 'busy', message: 'Another process holds the session write lock.' };
       throw error;
     }
   }

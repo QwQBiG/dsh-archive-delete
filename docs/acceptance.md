@@ -25,6 +25,8 @@ The scenario table defines the acceptance targets. The verification record below
 | Idempotency | Double click, duplicate request, response lost | One transition and a stable result |
 | Confirmation | Cancel a move/purge confirmation | No mutation occurs |
 | Paths | Traversal, session/project symlink, source-root mismatch | Refuse, leaving parents, neighbors, and project files intact |
+| Windows storage | Local paths, case aliases, UNC/device paths, junctions, and native lease contention | Admit safe local identity; refuse redirected/remote paths and occupied original/relocated locations |
+| Desktop CLI registration | Install the packed dependency, inspect bundles, register once, and load | Do not mistake package installation for activation; preserve existing bundles and avoid duplicate registration |
 | Same-volume rule | Trash on a different volume | Refuse without copy-and-delete fallback |
 | Content admission | Unexpected files or invalid manifests | Refuse mutation/purge, preserving data |
 | Restore collision | Original destination now exists | Refuse overwrite; retain recoverable trash |
@@ -44,12 +46,14 @@ The scenario table defines the acceptance targets. The verification record below
 ```sh
 pnpm verify
 pnpm pack
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.0.tgz
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.2.0.tgz
 ```
 
 `verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
 ## Verification record
+
+The following completed record is for `0.1.0`. Native Windows and updated installation-path verification for `0.2.0` are in progress; Windows support is not yet claimed from this record.
 
 - Date: 2026-10-28. Target: official macOS DSH `0.2.1-rc.3`, JSONL backend; local runner Node `24.21.0`, pnpm `11.28.5`.
 - Latest complete local `pnpm verify`: **71 unit/client/service tests and 10 native integration tests passed**, plus build/type, documentation, and package checks.
@@ -61,4 +65,4 @@ node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.0.tgz
 
 ## Verification limits
 
-Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. The initial target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.
+Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been exercised; Windows native CI is still pending. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.

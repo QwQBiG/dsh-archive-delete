@@ -7,7 +7,11 @@ permissions:
   contents: read
 jobs:
   verify:
-    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -23,4 +27,4 @@ jobs:
         run: git diff --exit-code -- lib
       - run: pnpm pack --pack-destination artifacts
       - name: Verify native package lifecycle / 验证原生安装与卸载
-        run: node scripts/verify-package-lifecycle.mjs artifacts/qwqbig-dsh-archive-delete-0.1.0.tgz
+        run: node scripts/verify-package-lifecycle.mjs artifacts

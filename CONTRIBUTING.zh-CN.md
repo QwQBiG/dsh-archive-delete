@@ -16,27 +16,34 @@ pnpm verify
 pnpm pack
 ```
 
-使用仓库固定的包管理器。运行源码变动时重新生成并提交 `lib` 产物。GitHub 安装必须无需源码构建或依赖 `prepare` 钩子即可运行。
+使用 **Node 24 或更新版本**和仓库固定的包管理器。即使 Desktop 自带 Node 24，系统 Node 22 仍不满足构建要求。macOS Desktop 安装可能在 `/Applications/DeepSeek Harness.app/Contents/Resources/runtime/primary-runtime/dependencies/node/bin/node` 提供真实可执行文件，可将其目录加入 `PATH`，也可在任一平台单独安装 Node 24+。缺少所需 Desktop 环境时，不要单独运行 `runtime/bin/node`：它可能是依赖 `DSH_DESKTOP_NODE_EXECUTABLE` 的 Electron 包装脚本。安装预编译插件的用户无需配置这套构建环境。运行源码变动时重新生成并提交 `lib` 产物。GitHub 安装必须无需源码构建或依赖 `prepare` 钩子即可运行。
 
 不要把开发版安装到主 DSH profile 中测试。使用临时 `DSH_HOME`、临时会话根目录和合成会话，测试目录不能是指向真实存储的符号链接。
 
-原生集成在 macOS 运行，默认加载已安装的官方 Desktop 运行时。可用 `DSH_RUNTIME_ROOT` 指向独立的精确 `0.2.1-rc.3` 运行时根目录，其中需有 `package.json` 和 `node_modules`：
+原生集成以 macOS 和 Windows 为目标，Windows 验证进行中。macOS 默认加载已安装的官方 Desktop 运行时；在 Windows 上或需选择另一运行时时，设置 `DSH_RUNTIME_ROOT`，指向包含 `package.json` 和 `node_modules` 的精确 `0.2.1-rc.3` 运行时根目录。在 POSIX shell 中：
 
 ```sh
 DSH_RUNTIME_ROOT=/absolute/path/to/isolated-runtime pnpm test:integration
 ```
 
+在 PowerShell 中：
+
+```powershell
+$env:DSH_RUNTIME_ROOT = 'C:\path\to\isolated-runtime'
+pnpm test:integration
+```
+
 `node scripts/prepare-native-runtime.mjs` 优先复用 `DSH_RUNTIME_ROOT` 指定的运行时，否则复用本机已安装的 Desktop 运行时，并核对精确版本；本地不会下载。仅在 `CI=true` 且没有可用的既有运行时时，脚本才关闭依赖安装脚本，将精确版本的官方 npm 运行时安装到可丢弃的临时目录。它不选择或修改用户 profile。在 GitHub Actions 中将 `DSH_RUNTIME_ROOT` 写入 `GITHUB_ENV`；本地则输出复用的路径，供上方命令使用。
 
-`test/integration/host.test.ts` 使用实际 Cordis 上下文、JSONL 持久化、存储域、工作区登记、投影缓存及原生 flock。会话均为合成数据；Agent 待交互边界使用受控状态夹具。单元夹具和原生集成分别作为证据。
+`test/integration/host.test.ts` 使用实际 Cordis 上下文、JSONL 持久化、存储域、工作区登记、投影缓存及兼容宿主的原生写锁。会话均为合成数据；Agent 待交互边界使用受控状态夹具。单元夹具、原生集成及 Desktop 图形界面分别作为证据。
 
 打包后，使用 Node 24 或更新版本，在另一个全新临时 home 中验证包管理生命周期：
 
 ```sh
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.0.tgz
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.2.0.tgz
 ```
 
-此脚本离线使用选定的官方运行时和可用包管理器，通过普通模块解析加载打包后的宿主部分，记录安装／重装／卸载结果及合成回收站标记保留情况。评估结果时应核对它报告的安装模式与诊断；不会安装到当前 Desktop profile。
+此脚本离线使用选定的官方运行时和可用包管理器，通过普通模块解析加载打包后的宿主部分，记录安装／重装／卸载结果及合成回收站标记保留情况。管理器会注册 bundle，CLI 启用行为取决于宿主构建及调用模式。仅安装依赖的调用仍可能遗漏登记，应核对清单，不能把依赖存在当作已启用；测试和报告中应区分这两条安装路径，手动使用命令行时按 [CLI 注册说明](docs/installation.zh-CN.md) 操作。评估结果时应核对报告的安装模式与诊断；不会安装到当前 Desktop profile。
 
 ## 需要回归证据的改动
 

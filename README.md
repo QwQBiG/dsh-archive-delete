@@ -4,7 +4,9 @@
 
 Move archived DSH conversations to a recoverable trash, directly inside the desktop app. Restore them when needed; permanently clear selected trash only after confirmation.
 
-`@qwqbig/dsh-archive-delete` · [Apache-2.0](LICENSE) · **macOS Desktop · DSH `0.2.1-rc.3` · official JSONL storage**
+`@qwqbig/dsh-archive-delete` · [Apache-2.0](LICENSE) · **DSH Desktop `0.2.1-rc.3` · official JSONL storage**
+
+macOS is supported. Windows verification for `0.2.0` is in progress; support will be confirmed after native Windows CI passes.
 
 ## What you get
 
@@ -21,7 +23,7 @@ Trash never expires automatically. Removing the plugin keeps the trash.
 Install from GitHub with this address:
 
 ```text
-github:QwQBiG/dsh-archive-delete#v0.1.0
+github:QwQBiG/dsh-archive-delete#v0.2.0
 ```
 
 1. **Install:** in DSH Desktop, open **Plugins → Add plugin**, enter the address, and enable it. Follow DSH's restart prompt.
@@ -30,7 +32,7 @@ github:QwQBiG/dsh-archive-delete#v0.1.0
 
 **Pending restart** means the original logs are still in place; no space has been freed yet. Use **Cancel pending move** in Archived to withdraw the request. Each page/batch holds up to 100 targets; select-all applies to that page. Changing pages or tabs clears selection.
 
-See [installation and usage](docs/installation.md) for the CLI, local packages, and removal.
+The plugin manager installs the package and registers its bundle. After CLI installation, verify bundle registration and add it if missing, following [installation and usage](docs/installation.md), before restarting DSH. Both host and browser artifacts are included; users do not need to build the plugin.
 
 ## What changes on disk
 
@@ -38,11 +40,11 @@ The plugin moves the selected parent and its explicitly owned subagent log direc
 
 Shared attachments, spill, project files, and other plugins' caches stay untouched. **Permanent deletion cannot be undone:** it removes selected trash logs and their recovery metadata, rather than promising erasure of every local or remote copy.
 
-Version and capability checks disable data operations outside the supported target. See the [acceptance record](docs/acceptance.md) for actual verification and its limits.
+Version and capability checks disable data operations outside the supported target. A version mismatch is reported at startup with the required and current versions, plus an upgrade instruction; the same explanation is visible in the management dialog. See the [acceptance record](docs/acceptance.md) for actual verification and its limits.
 
 ## Development
 
-Use the repository's declared Node and pnpm versions. Tests use temporary profiles and synthetic conversations.
+Use Node **24 or newer** and the repository's pinned pnpm version. The host provides the five peer dependencies; they are optional in package-manager metadata and are still checked when the plugin starts. Tests use temporary profiles and synthetic conversations.
 
 ```sh
 pnpm install --frozen-lockfile
