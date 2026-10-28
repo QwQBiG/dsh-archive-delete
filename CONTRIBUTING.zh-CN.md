@@ -26,9 +26,17 @@ pnpm pack
 DSH_RUNTIME_ROOT=/absolute/path/to/isolated-runtime pnpm test:integration
 ```
 
-CI 使用 `node scripts/prepare-native-runtime.mjs` 准备隔离运行时。脚本关闭依赖安装脚本，将精确版本的官方 npm 运行时安装到可丢弃的临时目录，不选择或修改用户 profile。在 GitHub Actions 中将 `DSH_RUNTIME_ROOT` 写入 `GITHUB_ENV`；本地则输出路径，供上方命令使用。
+`node scripts/prepare-native-runtime.mjs` 优先复用 `DSH_RUNTIME_ROOT` 指定的运行时，否则复用本机已安装的 Desktop 运行时，并核对精确版本；本地不会下载。仅在 `CI=true` 且没有可用的既有运行时时，脚本才关闭依赖安装脚本，将精确版本的官方 npm 运行时安装到可丢弃的临时目录。它不选择或修改用户 profile。在 GitHub Actions 中将 `DSH_RUNTIME_ROOT` 写入 `GITHUB_ENV`；本地则输出复用的路径，供上方命令使用。
 
 `test/integration/host.test.ts` 使用实际 Cordis 上下文、JSONL 持久化、存储域、工作区登记、投影缓存及原生 flock。会话均为合成数据；Agent 待交互边界使用受控状态夹具。单元夹具和原生集成分别作为证据。
+
+打包后，使用 Node 24 或更新版本，在另一个全新临时 home 中验证包管理生命周期：
+
+```sh
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.0.tgz
+```
+
+此脚本离线使用选定的官方运行时和可用包管理器，通过普通模块解析加载打包后的宿主部分，记录安装／重装／卸载结果及合成回收站标记保留情况。评估结果时应核对它报告的安装模式与诊断；不会安装到当前 Desktop profile。
 
 ## 需要回归证据的改动
 
@@ -39,11 +47,7 @@ CI 使用 `node scripts/prepare-native-runtime.mjs` 准备隔离运行时。脚�
 
 测试应核对可观察的结果：原始日志字节、目录、宿主登记、回收站元数据及界面结果。仅模拟 `rename` 成功或 Promise 返回，不足以证明删除成功。
 
-## 中英双语文档
-
-每份面向用户或开发者的 Markdown 文档都有英文主文件及对应 `.zh-CN.md` 文件，顶部互链，在同一次提交中更新。功能、命令、兼容声明、限制、发布说明、截图说明及替代文本保持等价。
-
-提交前运行验证，并检查双语文件及链接。准确说明实际运行和未运行的检查。提交或问题报告中不得包含真实会话、凭据、私人路径或 `~/.dsh` 内的文件。
+提交前运行验证并检查文档链接，在同一改动中同步对应语言文件。准确说明实际运行和未运行的检查。提交或问题报告中不得包含真实会话、凭据、私人路径或 `~/.dsh` 内的文件。
 
 ## 报告问题
 

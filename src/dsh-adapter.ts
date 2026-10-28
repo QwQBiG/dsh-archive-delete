@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { lstat, mkdir, open, readFile, readdir, realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
@@ -82,6 +84,21 @@ function encodeId(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]/g, (character) => `~${character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`);
 }
 function cloneHeader(header: Header): JsonObject { return JSON.parse(JSON.stringify(header)) as JsonObject; }
+/** Resolve primitives from the live installation: stock profiles do not auto-install peers. */
+export function getNativeLockExclusive(ctx: HostContext): (fd: number) => Promise<void> {
+  let implementation: Promise<(fd: number) => Promise<void>> | undefined;
+  return async (fd) => {
+    implementation ??= (async () => {
+      const profile = service<{ installAnchor?: unknown }>(ctx, 'profileContext');
+      if (typeof profile?.installAnchor !== 'string' || !isAbsolute(profile.installAnchor)) throw new ArchiveError('unsupported-host', 'The live DSH installation could not be resolved.');
+      const filename = createRequire(profile.installAnchor).resolve('@deepseek-ai/node-addon-system/flock');
+      const module = await importHost(pathToFileURL(filename).href);
+      if (typeof module.tryLockExclusive !== 'function') throw new ArchiveError('unsupported-host', 'The native DSH write-lock capability is unavailable.');
+      return module.tryLockExclusive as (descriptor: number) => Promise<void>;
+    })();
+    await (await implementation)(fd);
+  };
+}
 async function nativeLockExclusive(fd: number): Promise<void> {
   const module = await importHost('@deepseek-ai/node-addon-system/flock');
   await (module.tryLockExclusive as (descriptor: number) => Promise<void>)(fd);
@@ -147,7 +164,7 @@ export async function createDshAdapter(ctx: HostContext, options: AdapterOptions
     }
   }
   const paths = await getHostPaths(ctx, options.home);
-  const lockExclusive = options.lockExclusive ?? nativeLockExclusive;
+  const lockExclusive = options.lockExclusive ?? getNativeLockExclusive(ctx);
   return new NativeAdapter(ctx, paths, version, options.platform ?? process.platform, lockExclusive);
 }
 
@@ -393,7 +410,9 @@ class NativeAdapter implements DshAdapter {
       const archived = new Set(state.archivedSessionIds);
       // The selected root always returns to archived; descendants retain their prior archive state.
       for (const { member } of restored) if (member.id === group.sessionId || member.archived) archived.add(member.id);
-      await this.registry!.setState({ ...state, archivedSessionIds: [...archived], pinnedSessionIds: state.pinnedSessionIds.filter((id) => !archived.has(id)) });
+      const pinned = new Set(state.pinnedSessionIds.filter((id) => !archived.has(id)));
+      for (const { member } of restored) if (member.pinned && !archived.has(member.id)) pinned.add(member.id);
+      await this.registry!.setState({ ...state, archivedSessionIds: [...archived], pinnedSessionIds: [...pinned] });
     });
     for (const { member, snapshot } of restored) {
       const header = snapshot.header;

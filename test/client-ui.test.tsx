@@ -4,7 +4,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createArchiveApi, startClient } from '../src/client.js';
 import { ArchiveClientController, ClientTransportError, type ClientState } from '../src/client-state.js';
-import { ArchiveDialogView, PreviewContent, ResultContent, en, zh, translator, type NativePrimitives } from '../src/client-ui.js';
+import { ArchiveDialogView, PreviewContent, ResultContent, en, zh, translator, localizeReason, type NativePrimitives } from '../src/client-ui.js';
 import { ArchiveError, PACKAGE_NAME, type ArchiveApi, type BatchResult, type Overview, type Preview } from '../src/contracts.js';
 
 const overview: Overview = {
@@ -38,17 +38,43 @@ test('confirmation explains descendants, delayed movement, and retained data in 
   }
 });
 
+test('known host refusal reasons are localized while unfamiliar diagnostics retain their fallback', () => {
+  assert.equal(localizeReason('active', 'English host detail', translator('zh')), zh.reasonActive);
+  assert.equal(localizeReason('source-changed', 'English host detail', translator('zh')), zh.reasonChanged);
+  assert.equal(localizeReason('unknown-future-code', 'Future host detail', translator('zh')), 'Future host detail');
+  const state: ClientState = { open: true, tab: 'archived', page: 0, overview: { ...overview, support: { supported: false, version: 'unknown', platform: 'darwin', reason: 'Archive storage could not be initialized. Check the host diagnostics, then reload the plugin.' } }, selected: [], loading: false, busy: false, preview: null, result: null, error: null, uncertainRequest: false };
+  const html = renderToStaticMarkup(<ArchiveDialogView state={state} controller={new ArchiveClientController(api)} primitives={primitives} t={translator('zh')} />);
+  assert.ok(html.includes(zh.reasonInitialization));
+  assert.ok(!html.includes('Archive storage could not be initialized'));
+});
+
 test('result rows escape host text and expose only failed-item retry controls', () => {
   const html = renderToStaticMarkup(<ResultContent result={result} t={translator('en')} retry={() => {}} disabled={false} Button={primitives.Button} />);
   assert.ok(html.includes('&lt;script&gt;not html&lt;/script&gt;'));
   assert.ok(!html.includes('<script>'));
   assert.ok(html.includes('Review and retry'));
   assert.ok(html.includes('0 succeeded'));
+  assert.match(html, /<details[^>]*open=""/);
+});
+
+test('successful result details stay compact and page controls expose only current-page records', async () => {
+  const completed = { ...result, items: [{ ...result.items[0]!, status: 'moved' as const }], counts: { succeeded: 1, pending: 0, skipped: 0, failed: 0 } };
+  const resultHtml = renderToStaticMarkup(<ResultContent result={completed} t={translator('en')} retry={() => {}} disabled={false} Button={primitives.Button} />);
+  assert.ok(!resultHtml.includes('open=""'));
+  const many: Overview = { ...overview, archived: Array.from({ length: 101 }, (_, i) => ({ id: `s-${i}`, title: `Title ${i}`, workspace: 'QA', sizeBytes: 10, descendantCount: 0 })) };
+  const controller = new ArchiveClientController({ ...api, list: async () => many });
+  await controller.open(); controller.setPage(1); controller.selectAll(true);
+  const html = renderToStaticMarkup(<ArchiveDialogView state={controller.getSnapshot()} controller={controller} primitives={primitives} t={translator('en')} />);
+  assert.ok(html.includes('Page 2 of 2'));
+  assert.ok(html.includes('Title 100'));
+  assert.ok(!html.includes('Title 99'));
+  assert.ok(html.includes('data-selected="true"'));
+  assert.ok(html.includes('Select all (1)'));
 });
 
 test('unsupported hosts retain a readable interface while mutation controls are disabled', () => {
   const state: ClientState = {
-    open: true, tab: 'archived', overview: { ...overview, support: { supported: false, version: 'unsupported', platform: 'other', reason: 'Unsupported host.' } },
+    open: true, tab: 'archived', page: 0, overview: { ...overview, support: { supported: false, version: 'unsupported', platform: 'other', reason: 'Unsupported host.' } },
     selected: ['session-1'], loading: false, busy: false, preview: null, result: null, error: null, uncertainRequest: false,
   };
   const html = renderToStaticMarkup(<ArchiveDialogView state={state} controller={new ArchiveClientController(api)} primitives={primitives} t={translator('en')} />);

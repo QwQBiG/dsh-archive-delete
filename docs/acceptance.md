@@ -4,9 +4,9 @@
 
 ## Evidence policy
 
-Test fixtures use temporary directories and synthetic conversations. The user's primary `~/.dsh` history, project files, and `dsh-purge` are not test inputs. A passed unit test, an author-declared version range, and an actual host/UI integration run are recorded as different evidence.
+Mutation fixtures use temporary directories and known synthetic conversations. No plugin data operations were performed on the user's primary profile, project files, or existing `dsh-purge` installation. A passed unit test, an author-declared version range, and an actual host/UI integration run are recorded as different evidence.
 
-At the initial research commit, implementation verification is **pending**. Before release, record exact commands, host/runtime versions, test counts, and material limits below. Do not replace pending checks with a claim inferred from source review.
+The scenario table defines the acceptance targets. The verification record below identifies what was exercised, with exact commands, host/runtime versions, counts, and material limits. Source review alone does not turn an unperformed check into a passed check.
 
 ## Required scenarios
 
@@ -37,23 +37,29 @@ At the initial research commit, implementation verification is **pending**. Befo
 | Native UI | Menu, plugin details button, tabs, selection, confirmation, results | Visible in isolated DSH; no external management window |
 | Accessibility/i18n | Keyboard interaction, zh/en, dark/light | Readable labels, explicit scope, usable controls |
 | Package | GitHub install/update/remove in isolated profile | Included artifacts load; no dependency prepare build; trash retained on remove |
-| Documentation | English and Chinese files and links | Paired, equivalent commands/limits/version/release facts |
+| Documentation | Links, commands, and version references | Existing relative targets and consistent documented commands/versions |
 
 ## Commands
 
 ```sh
 pnpm verify
 pnpm pack
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.0.tgz
 ```
 
-`verify` is expected to cover build/type checks, unit tests, integration tests, bilingual documentation checks, and package validation. The actual result and any excluded environment must be recorded; a command listed here is not evidence that it passed.
+`verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
 ## Verification record
 
-- Supported target: official macOS DSH Desktop `0.2.1-rc.3`, official JSONL store.
-- Reference baseline reviewed: Archive Manager `6b8babc7b7f8da44466c7bd611ad29e66408623c`.
-- Implementation checks: pending during initial documentation/research.
-- Native GUI run: pending during initial documentation/research.
-- Package install/update/remove: pending during initial documentation/research.
+- Date: 2026-10-28. Target: official macOS DSH `0.2.1-rc.3`, JSONL backend; local runner Node `24.21.0`, pnpm `11.28.5`.
+- Reference reviewed: Archive Manager `6b8babc7b7f8da44466c7bd611ad29e66408623c`.
+- Latest complete local `pnpm verify`: **71 unit/client/service tests and 10 native integration tests passed**, plus build/type, documentation, and package checks.
+- Native integration uses real Cordis, JSONL persistence, storage domains, workspace registration, projection cache, Connection gateway, and macOS flock. It verifies move/restore/purge, durable official titles after cache-domain reopen, readable independent forks after parent/subagent trash, owner admission, external/native leases, pending cancellation/replay, Agent waiting-state admission, default zstd byte preservation, live runtime-version admission, partial-purge retry, and interrupted-move rollback. Agent waiting status uses a controlled boundary fixture.
+- Request-journal tests cover persisted intent, per-target results, duplicate/conflicting requests, restart, completion redaction, crash-left temporaries, cancellation, early oversized-intent refusal, and reserved capacity for all 100 worst-escaped outcomes. Recovery regressions include result-write failure after committed move/restore/purge, missing-manifest cleanup, empty staging, partial purge, changed trash previews, invalid commit proof, post-crash writers, original pending-receipt updates, mismatched identities/paths, and oversized-queue refusal without source changes.
+- Documentation checks passed: relative link targets exist, and commands/version references are consistent. Isolated negative checks rejected broken links and inconsistent commands or versions.
+- `pnpm pack` produced a runnable package. The separate native package lifecycle check passed **install, reinstall, and uninstall** with exit code 0, `normal-offline-cache` mode, and zero downloaded packages. It used a new isolated `web` profile, normal packed-host module resolution, no peer overrides/resolution hooks, and a real authenticated native API reporting `supported: true`. A synthetic trash marker remained byte-identical after reinstall/removal, and the dependency/bundle registration was removed.
+- Desktop GUI: an isolated copy of the installed Electron app, using a separate synthetic home/profile, rendered the plugin details button and native management dialog. Selecting one parent previewed two group members; confirmed move reported one success and one trash entry, then confirmed restore reported one success with the archive list restored and trash empty. Select-all and clearing selection on page/tab changes were checked. The polished native **Move to trash** menu opened its preview, and a host-held fork showed **Pending restart**. The card layout, compact badges, and result details were visually inspected; screenshots matched accessibility state. The completed/title-free move and restore receipts and the restored synthetic parent log were independently checked.
 
-The release must replace these pending entries with concrete evidence or explicitly document remaining limitations. Compatibility with future DSH releases and other operating systems is not implied.
+## Verification limits
+
+Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited the installed shell's pre-existing `dsh-purge` modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. The initial target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.

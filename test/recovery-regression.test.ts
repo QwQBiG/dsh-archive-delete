@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { appendFile, mkdir, readFile, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, readdir, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fixture, present } from './fixtures.js';
 import { ArchiveService } from '../src/service.js';
@@ -147,4 +147,27 @@ test('changed pending content invalidates the original durable receipt and keeps
   assert.equal(saved!.result.items[0]!.code, 'source-changed'); assert.equal(saved!.result.items[0]!.title, '');
   assert.equal((await f.store.operations()).length, 0); assert.equal(await readFile(path, 'utf8'), changed);
   assert.equal((await restarted.list()).archived[0]!.pending, undefined);
+});
+
+test('recovery refuses a journal that points one session identity at a different valid session path', async t => {
+  const f = await fixture(); t.after(f.close); const one = await f.add('one'); const neighbor = await f.add('neighbor');
+  const onePath = join(one.members[0]!.directory, 'session.v4.jsonl');
+  const neighborPath = join(neighbor.members[0]!.directory, 'session.v4.jsonl');
+  const oneBytes = await readFile(onePath); const neighborBytes = await readFile(neighborPath);
+  const corrupted = await f.adapter.inspect('one'); corrupted.members[0]!.directory = neighbor.members[0]!.directory;
+  await seedOperation(f, 'moving', corrupted);
+  await assert.rejects(new ArchiveService(f.adapter, f.store).initialize(), /expected layout/);
+  assert.deepEqual(await readFile(onePath), oneBytes); assert.deepEqual(await readFile(neighborPath), neighborBytes);
+  assert.equal(f.adapter.archived.has('one'), true); assert.equal(f.adapter.archived.has('neighbor'), true);
+  assert.equal(f.adapter.locks, 0);
+});
+
+test('oversized pending metadata creates no journal and leaves source bytes and registry intact', async t => {
+  const f = await fixture(); t.after(f.close); const original = await f.add('one');
+  const path = join(original.members[0]!.directory, 'session.v4.jsonl'); const before = await readFile(path);
+  const oversized = await f.adapter.inspect('one'); oversized.members[0]!.header.syntheticOversizedMetadata = 'S'.repeat(9 * 1024 * 1024);
+  await assert.rejects(f.store.queue(oversized, 'Synthetic oversized pending request'), { code: 'metadata-too-large' });
+  assert.deepEqual(await readdir(join(f.store.root, 'operations')), []);
+  assert.deepEqual(await f.store.operations(), []); assert.deepEqual(await f.store.list(), []);
+  assert.deepEqual(await readFile(path), before); assert.equal(f.adapter.archived.has('one'), true);
 });

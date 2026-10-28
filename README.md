@@ -2,56 +2,47 @@
 
 [简体中文](README.zh-CN.md) · English
 
-A small, local-first recycle bin for archived DeepSeek Harness conversations. It integrates with DSH's own desktop interface: move archived conversations to trash, restore them, or permanently purge selected trash entries after confirmation.
+Move archived DSH conversations to a recoverable trash, directly inside the desktop app. Restore them when needed; permanently clear selected trash only after confirmation.
 
-Package: `@qwqbig/dsh-archive-delete` · License: [Apache-2.0](LICENSE)
+`@qwqbig/dsh-archive-delete` · [Apache-2.0](LICENSE) · **macOS Desktop · DSH `0.2.1-rc.3` · official JSONL storage**
 
-## What it does
+## What you get
 
-- Adds **Move to trash** to the native menu of an archived conversation.
-- Opens a compact **Archived / Trash** dialog from the plugin's details page.
-- Supports individual and batch operations, an impact preview, and per-item results.
-- Shows **Waiting to move after restart** when this DSH process still owns an idle conversation's write lock. The next plugin startup rechecks the request; you can cancel it meanwhile.
-- Restores conversations to their previous workspace in the **archived** state. If that workspace no longer exists, restoration uses Ungrouped without recreating a project folder.
-- Follows the DSH interface language, light/dark theme, and native interaction patterns.
+- **Native controls:** an archived-conversation menu action and an **Archived / Trash** management dialog.
+- **Clear scope:** preview selected conversations and their dedicated subagents, then see each result and retry a failed target.
+- **A way back:** restore to the original workspace in archived state. A missing workspace becomes Ungrouped; existing paths are never overwritten.
+- **Safe waiting:** idle conversations still held by DSH can wait for the next startup. Cancel the request, or let the plugin recheck it before moving.
+- **A familiar interface:** the host language, theme, and native controls.
 
-Trash never expires automatically. Uninstalling the plugin does not empty it.
+Trash never expires automatically. Removing the plugin keeps the trash.
 
-## Data boundary
+## Install and use in three steps
 
-An operation groups the selected parent conversation with its explicitly owned subagent conversations. Independent forks stay where they are. Running work, pending interactions, ambiguous relationships, unsafe paths, and another process's write lock block the operation.
-
-The plugin handles session-log directories and the host bookkeeping needed for those sessions. It does **not** remove shared attachments, spill files, project files, or other plugins' caches. Permanent purge removes the selected local trash contents and their plugin recovery metadata. It is not a claim that every local or remote copy of a conversation has been erased.
-
-Moving to trash is reversible. **Permanent purge cannot be undone.** The confirmation dialog explains the actual target and scope before either operation.
-
-## Compatibility
-
-The first supported target is **official DSH macOS Desktop `0.2.1-rc.3`**, with the official JSONL session-persistence backend. Version and capability checks disable mutations outside the supported combination rather than guessing internal shapes.
-
-See the [acceptance record](docs/acceptance.md) for the verification performed on this repository. A declared target is not evidence that later DSH versions or other platforms have been tested.
-
-## Install and use
-
-After a release is available, open **Plugins → Add plugin** in DSH Desktop and enter:
+Install from GitHub with this address:
 
 ```text
 github:QwQBiG/dsh-archive-delete#v0.1.0
 ```
 
-Install, enable, and restart DSH if its plugin manager requests it. Install into the profile your desktop app actually uses; installing a `web` profile does not change `desktop`.
+1. **Install:** in DSH Desktop, open **Plugins → Add plugin**, enter the address, and enable it. Follow DSH's restart prompt.
+2. **Choose:** archive a conversation with DSH, then choose **Move to trash** in its native menu. For a batch, open the plugin details and **Manage archives and trash**.
+3. **Review:** check the targets and subagents, then confirm. Use **Trash** to restore selected groups or review **Delete permanently**.
 
-1. Use DSH's existing archive action to archive a conversation.
-2. Choose **Move to trash** in its native menu, or open the `@qwqbig/dsh-archive-delete` plugin details and choose **Manage archives and trash**.
-3. Review the selected targets and subagents, then confirm.
-4. Distinguish **Moved to trash**, **Pending restart**, **Skipped**, and **Failed** results. A pending entry is still in the original store; no disk space has been released yet.
-5. In **Trash**, select **Restore selected** or confirm **Delete permanently**. In **Archived**, use **Cancel pending move** to withdraw a queued move.
+**Pending restart** means the original logs are still in place; no space has been freed yet. Use **Cancel pending move** in Archived to withdraw the request. Each page/batch holds up to 100 targets; select-all applies to that page. Changing pages or tabs clears selection.
 
-See [installation and usage](docs/installation.md) for local-package installation and removal.
+See [installation and usage](docs/installation.md) for the CLI, local packages, and removal.
+
+## What changes on disk
+
+The plugin moves the selected parent and its explicitly owned subagent log directories, and updates their native DSH registration. Independent forks stay in place. Active work, uncertain relationships, unsafe paths, and another process's write lock block the operation.
+
+Shared attachments, spill, project files, and other plugins' caches stay untouched. **Permanent deletion cannot be undone:** it removes selected trash logs and their recovery metadata, rather than promising erasure of every local or remote copy.
+
+Version and capability checks disable data operations outside the supported target. See the [acceptance record](docs/acceptance.md) for actual verification and its limits.
 
 ## Development
 
-Use the Node and pnpm versions declared by the repository. Development and integration tests use temporary profiles and synthetic conversations, never your real DSH history.
+Use the repository's declared Node and pnpm versions. Tests use temporary profiles and synthetic conversations.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -59,18 +50,14 @@ pnpm verify
 pnpm pack
 ```
 
-The GitHub install contains generated `lib` artifacts; users do not need to run a dependency `prepare` script. DSH and React remain host-provided dependencies.
+Generated `lib` artifacts make GitHub installation runnable without a dependency `prepare` build. DSH and React are provided by the host.
 
 ## Documentation
 
-Every user and developer document has an English and Simplified Chinese counterpart. Both versions are updated in the same change.
-
 - [Research and reference baseline](docs/research.md)
-- [Architecture and compatibility boundary](docs/architecture.md)
-- [Operation states and crash recovery](docs/operations.md)
-- [Acceptance scenarios and verification evidence](docs/acceptance.md)
-- [Contributing](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [Architecture](docs/architecture.md)
+- [Operation states and recovery](docs/operations.md)
+- [Acceptance evidence](docs/acceptance.md)
+- [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-This project studies [DSH Archive Manager](https://github.com/MichengAI/dsh-archive-manager/tree/6b8babc7b7f8da44466c7bd611ad29e66408623c) as a reference. See [research](docs/research.md) for the exact baseline and the design decisions retained or changed.
+Reference: [DSH Archive Manager at the frozen study commit](https://github.com/MichengAI/dsh-archive-manager/tree/6b8babc7b7f8da44466c7bd611ad29e66408623c).

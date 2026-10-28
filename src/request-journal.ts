@@ -40,7 +40,7 @@ function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 function validItem(value: unknown): value is ItemResult {
-  return object(value) && typeof value.id === 'string' && typeof value.title === 'string'
+  return object(value) && typeof value.id === 'string' && value.id.length > 0 && value.id.length <= 512 && typeof value.title === 'string'
     && typeof value.status === 'string' && STATUSES.has(value.status)
     && (value.code === undefined || typeof value.code === 'string')
     && (value.message === undefined || typeof value.message === 'string');
@@ -49,7 +49,7 @@ function validate(value: unknown, id: string): asserts value is RequestRecord {
   if (!object(value) || value.schema !== 1 || value.requestId !== id || typeof value.fingerprint !== 'string'
     || typeof value.complete !== 'boolean' || !object(value.result) || value.result.operationId !== id
     || !['trash', 'restore', 'purge', 'cancel'].includes(String(value.result.action))
-    || !Array.isArray(value.result.items) || !value.result.items.every(validItem)
+    || !Array.isArray(value.result.items) || value.result.items.length > 100 || !value.result.items.every(validItem)
     || new Set(value.result.items.map(item => item.id)).size !== value.result.items.length)
     throw new ArchiveError('corrupt-state', 'A request receipt is invalid.');
   if (value.complete) {
@@ -59,8 +59,8 @@ function validate(value: unknown, id: string): asserts value is RequestRecord {
   } else if (!object(value.preview) || typeof value.preview.id !== 'string'
     || !['trash', 'restore', 'purge'].includes(String(value.preview.action))
     || (value.preview.action !== value.result.action && !(value.result.action === 'cancel' && value.preview.action === 'trash'))
-    || !Array.isArray(value.preview.items)
-    || !value.preview.items.every(item => object(item) && typeof item.id === 'string' && typeof item.title === 'string')
+    || !Array.isArray(value.preview.items) || !value.preview.items.length || value.preview.items.length > 100
+    || !value.preview.items.every(item => object(item) && typeof item.id === 'string' && item.id.length > 0 && item.id.length <= 512 && typeof item.title === 'string')
     || new Set(value.preview.items.map(item => item.id)).size !== value.preview.items.length
     || !object(value.groups) || !object(value.fingerprints)) {
     throw new ArchiveError('corrupt-state', 'An incomplete request receipt is invalid.');
@@ -100,14 +100,17 @@ export class RequestJournal {
     value.result.counts = counts(value.result.items);
     return value;
   }
-  private async write(record: RequestRecord): Promise<void> {
+  private async write(record: RequestRecord, budget = 8 * 1024 * 1024): Promise<void> {
     await this.directorySafe();
+    const encoded = `${JSON.stringify(record)}\n`;
+    if (Buffer.byteLength(encoded) > budget)
+      throw new ArchiveError('metadata-too-large', 'Recovery metadata is too large. Select a smaller batch.');
     const path = this.path(record.requestId);
     const temporary = `${path}.${randomUUID()}.tmp`;
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     try {
       handle = await open(temporary, 'wx', 0o600);
-      await handle.writeFile(`${JSON.stringify(record)}\n`); await handle.sync();
+      await handle.writeFile(encoded); await handle.sync();
       await handle.close(); handle = undefined;
       await rename(temporary, path);
       const directory = await open(this.directory, 'r');
@@ -140,7 +143,8 @@ export class RequestJournal {
       const existing = await this.read(id, fingerprint); if (existing) return existing;
       const record: RequestRecord = { schema: 1, requestId: requestId(id), fingerprint, complete: false,
         ...structuredClone(context), result: { operationId: id, action: action ?? context.preview.action, items: [], counts: counts([]) } };
-      validate(record, id); await this.write(record); return structuredClone(record);
+      // Reserve two MiB for all 100 bounded outcomes before any file transition.
+      validate(record, id); await this.write(record, 6 * 1024 * 1024); return structuredClone(record);
     });
   }
   async load(id: string, fingerprint?: string): Promise<RequestRecord | undefined> {
@@ -154,7 +158,9 @@ export class RequestJournal {
       if (!validItem(item)) throw new ArchiveError('invalid-request', 'The request result is invalid.');
       const targets = record.complete ? record.result.items.map(value => value.id) : record.preview!.items.map(value => value.id);
       if (!targets.includes(item.id)) throw new ArchiveError('request-conflict', 'The result does not belong to this request.');
-      const merged = structuredClone(item); if (record.complete) merged.title = '';
+      const merged: ItemResult = { id: item.id, title: record.complete ? '' : item.title.slice(0, 256), status: item.status,
+        ...(item.code === undefined ? {} : { code: item.code.slice(0, 80) }),
+        ...(item.message === undefined ? {} : { message: item.message.slice(0, 1024) }) };
       const resultById = new Map(record.result.items.map(value => [value.id, value])); resultById.set(item.id, merged);
       record.result.items = targets.flatMap(target => { const value = resultById.get(target); return value ? [value] : []; });
       record.result.counts = counts(record.result.items);

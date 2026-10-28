@@ -1,10 +1,12 @@
 import { ArchiveError, type Action, type ArchiveApi, type BatchResult, type Overview, type Preview } from './contracts.js';
 
 export type ArchiveTab = 'archived' | 'trash';
+export const PAGE_SIZE = 100;
 export interface ClientError { code: string; message: string; uncertain: boolean }
 export interface ClientState {
   open: boolean;
   tab: ArchiveTab;
+  page: number;
   overview: Overview | null;
   selected: readonly string[];
   loading: boolean;
@@ -24,14 +26,16 @@ type Mutation =
   | { kind: 'cancel'; ids: string[]; requestId: string };
 
 /** IDs currently eligible for selection; pending entries have a dedicated cancel action. */
-export function selectableIds(state: Pick<ClientState, 'tab' | 'overview'>): string[] {
+export function pageItems<T>(items: readonly T[], page: number): readonly T[] { return items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE); }
+export function pageCount(state: Pick<ClientState, 'tab' | 'overview'>): number { return Math.max(1, Math.ceil((state.overview?.[state.tab].length ?? 0) / PAGE_SIZE)); }
+export function selectableIds(state: Pick<ClientState, 'tab' | 'overview' | 'page'>): string[] {
   if (!state.overview) return [];
   return state.tab === 'archived'
-    ? state.overview.archived.filter((item) => !item.pending).map((item) => item.id)
-    : state.overview.trash.map((item) => item.id);
+    ? pageItems(state.overview.archived, state.page).filter((item) => !item.pending).map((item) => item.id)
+    : pageItems(state.overview.trash, state.page).map((item) => item.id);
 }
 
-export function visibleSelection(state: Pick<ClientState, 'selected' | 'tab' | 'overview'>): string[] {
+export function visibleSelection(state: Pick<ClientState, 'selected' | 'tab' | 'overview' | 'page'>): string[] {
   const visible = new Set(selectableIds(state));
   return state.selected.filter((id) => visible.has(id));
 }
@@ -43,7 +47,7 @@ export function canExecutePreview(preview: Preview | null, now = Date.now()): bo
 /** Owns only browser view state. Mutation requests continue if the dialog is closed. */
 export class ArchiveClientController {
   private state: ClientState = {
-    open: false, tab: 'archived', overview: null, selected: [], loading: false,
+    open: false, tab: 'archived', page: 0, overview: null, selected: [], loading: false,
     busy: false, preview: null, result: null, error: null, uncertainRequest: false,
   };
   private readonly listeners = new Set<() => void>();
@@ -74,11 +78,12 @@ export class ArchiveClientController {
 
   async open(sessionId?: string): Promise<void> {
     const generation = ++this.openGeneration;
-    this.update({ open: true, tab: 'archived', selected: [], preview: null, error: this.uncertainMutation ? this.state.error : null });
+    this.update({ open: true, tab: 'archived', page: 0, selected: [], preview: null, error: this.uncertainMutation ? this.state.error : null });
     await this.refresh();
     if (!sessionId || generation !== this.openGeneration || !this.state.open || this.state.busy || this.uncertainMutation || this.state.error || !this.state.overview?.support.supported) return;
-    if (!selectableIds(this.state).includes(sessionId)) return;
-    this.update({ selected: [sessionId] });
+    const index = this.state.overview.archived.findIndex((item) => item.id === sessionId && !item.pending);
+    if (index < 0) return;
+    this.update({ page: Math.floor(index / PAGE_SIZE), selected: [sessionId] });
     await this.preview('trash', [sessionId]);
   }
 
@@ -91,7 +96,15 @@ export class ArchiveClientController {
   setTab = (tab: ArchiveTab): void => {
     if (this.state.busy || this.state.loading || this.state.tab === tab) return;
     this.previewGeneration++;
-    this.update({ tab, selected: [], preview: null, error: null });
+    this.update({ tab, page: 0, selected: [], preview: null, error: null });
+  };
+
+  setPage = (page: number): void => {
+    if (this.state.busy || this.state.loading || this.uncertainMutation || !Number.isInteger(page)) return;
+    const next = Math.max(0, Math.min(page, pageCount(this.state) - 1));
+    if (next === this.state.page) return;
+    this.previewGeneration++;
+    this.update({ page: next, selected: [], preview: null, error: null });
   };
 
   toggle = (id: string): void => {
@@ -118,7 +131,7 @@ export class ArchiveClientController {
         this.knownTitles.set(item.sessionId, item.title);
       }
       const overview = { ...received, recentResults: received.recentResults.map(this.withKnownTitles) };
-      this.update({ overview, loading: false, error: this.uncertainMutation ? this.state.error : null });
+      this.update({ overview, page: Math.min(this.state.page, pageCount({ overview, tab: this.state.tab }) - 1), loading: false, error: this.uncertainMutation ? this.state.error : null });
       this.update({ selected: visibleSelection(this.state) });
       const recovered = this.uncertainMutation
         ? overview.recentResults.find((item) => item.operationId === this.uncertainMutation?.requestId)

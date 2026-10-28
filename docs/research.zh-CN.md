@@ -118,12 +118,12 @@
 | `test-latest-compatibility.mjs` | 创建全新精确宿主环境；保留独立集成证据。 |
 | `host-test-dependencies.mjs` | 固定测试中的宿主传递依赖，避免核心混版。 |
 | `release-control.mjs` | 核对 npm 精确版本／git head 与 GitHub 发布；尚无 npm 分发时不需要。 |
-| `extract-release-notes.mjs` | 同时要求中英更新条目；保留双语发布说明。 |
+| `extract-release-notes.mjs` | 提取发布所需更新条目；保留发布说明预检。 |
 | `release-preflight.ps1` | 根据发布策略冻结安装并验证；采用适合本平台的可重复预检。 |
 
 ## 保留与改变
 
-保留：宿主 React、TypeScript 严格模式、共享校验契约、集中兼容层、串行批量、逐项失败、GitHub 生成产物、双语文档和合成集成夹具。
+保留：宿主 React、TypeScript 严格模式、共享校验契约、集中兼容层、串行批量、逐项失败、GitHub 生成产物和合成集成夹具。
 
 改变：仅处理已归档会话；先入可恢复回收站；不强制分离实时会话；待处理状态明确；列表／预览只读；整组移动有日志；不建立第二份投影镜像；不替换侧栏、不自建更新器、不修复缓存、不自动清理、不删除共享资源。
 

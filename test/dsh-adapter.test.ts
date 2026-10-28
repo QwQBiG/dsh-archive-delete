@@ -242,3 +242,26 @@ test('a loaded root cannot queue a cold child held by a different process', asyn
     await assert.rejects(() => adapter.inspect('parent'), { code: 'ambiguous-lineage' });
   } finally { await f.cleanup(); }
 });
+
+test('restore preserves an unarchived subagent pin and concurrent unrelated pins', async () => {
+  const f = await fixture();
+  try {
+    const parentDirectory = await f.add('parent');
+    const childDirectory = await f.add('child', { origin: 'subagent', parent: 'parent', archived: false });
+    await f.add('unrelated', { archived: false });
+    f.state().pinnedSessionIds.push('child');
+    const group = await f.adapter.inspect('parent');
+    assert.equal(group.members.find(member => member.id === 'child')!.pinned, true);
+    const movedParent = join(f.home, 'moved-parent'); const movedChild = join(f.home, 'moved-child');
+    await rename(parentDirectory, movedParent); await rename(childDirectory, movedChild);
+    await f.adapter.removeRegistry(group);
+    assert.deepEqual(f.state().pinnedSessionIds, []);
+    f.state().pinnedSessionIds.push('unrelated');
+    await rename(movedParent, parentDirectory); await rename(movedChild, childDirectory);
+    await f.adapter.restoreRegistry(group);
+    assert.deepEqual(new Set(f.state().pinnedSessionIds), new Set(['child', 'unrelated']));
+    assert.ok(f.state().archivedSessionIds.includes('parent'));
+    assert.ok(!f.state().archivedSessionIds.includes('child'));
+    assert.ok(!f.state().pinnedSessionIds.includes('parent'));
+  } finally { await f.cleanup(); }
+});

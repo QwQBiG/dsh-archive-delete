@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { RequestJournal, type RequestContext } from '../src/request-journal.js';
@@ -83,4 +83,39 @@ test('cancel intent uses trash selection context with a stable cancel result', a
   const answer = await journal.complete(id); assert.equal(answer.action, 'cancel');
   assert.deepEqual(answer.counts, { succeeded: 1, pending: 0, skipped: 1, failed: 0 });
   assert.deepEqual((await new RequestJournal(root).load(id, 'cancel:one,two'))?.result, answer);
+});
+
+test('oversized request intent is refused before creating any canonical or temporary receipt', async t => {
+  const { root, journal } = await fixture(t); const ctx = context();
+  ctx.preview.items[0]!.title = 'S'.repeat(7 * 1024 * 1024);
+  await assert.rejects(journal.begin(randomUUID(), 'oversized-intent', ctx), { code: 'metadata-too-large' });
+  assert.deepEqual(await readdir(join(root, 'receipts')), []);
+  assert.deepEqual(await journal.incomplete(), []);
+});
+
+test('an admitted near-limit intent can durably record all 100 worst-escaped bounded outcomes', async t => {
+  const { root, journal } = await fixture(t); const id = randomUUID(); const fingerprint = 'reserved-result-headroom';
+  const ctx = context(); ctx.preview.items = Array.from({ length: 100 }, (_, index) => {
+    const target = `${String(index).padStart(3, '0')}${'\0'.repeat(509)}`;
+    return { id: target, title: '', sessionId: target, memberIds: [target], sizeBytes: 1, disposition: 'ready' };
+  });
+  ctx.fingerprints = { padding: '' };
+  const initial = { schema: 1, requestId: id, fingerprint, complete: false, ...ctx,
+    result: { operationId: id, action: 'trash', items: [], counts: { succeeded: 0, pending: 0, skipped: 0, failed: 0 } } };
+  const targetBytes = 6 * 1024 * 1024 - 64;
+  ctx.fingerprints.padding = 'P'.repeat(targetBytes - Buffer.byteLength(`${JSON.stringify(initial)}\n`));
+  await journal.begin(id, fingerprint, ctx);
+  const path = join(root, 'receipts', `${id}.json`);
+  assert.equal(Buffer.byteLength(await readFile(path)), targetBytes);
+  for (const target of ctx.preview.items) await journal.record(id, {
+    id: target.id, title: '\0'.repeat(300), status: 'failed', code: '\0'.repeat(100), message: '\0'.repeat(1300),
+  });
+  const recorded = await new RequestJournal(root).load(id, fingerprint);
+  assert.equal(recorded!.result.items.length, 100);
+  assert.ok(recorded!.result.items.every(item => item.title.length === 256 && item.code!.length === 80 && item.message!.length === 1024));
+  assert.ok(Buffer.byteLength(await readFile(path)) <= 8 * 1024 * 1024);
+  const finished = await journal.complete(id);
+  assert.deepEqual(finished.counts, { succeeded: 0, pending: 0, skipped: 0, failed: 100 });
+  assert.ok(finished.items.every(item => item.title === ''));
+  assert.equal((await new RequestJournal(root).load(id))!.complete, true);
 });

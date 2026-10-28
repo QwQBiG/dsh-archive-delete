@@ -27,6 +27,11 @@ function id(value: string): string {
   if (!UUID.test(value)) throw new ArchiveError('invalid-id', 'Invalid operation or trash identifier.');
   return value;
 }
+function sessionDirectoryName(value: string): string {
+  if (value === '.') return '~002E';
+  if (value === '..') return '~002E~002E';
+  return value.replace(/[^A-Za-z0-9._-]/g, character => `~${character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`);
+}
 async function plainDirectory(path: string): Promise<void> {
   const st = await lstat(path);
   if (st.isSymbolicLink() || !st.isDirectory()) throw new ArchiveError('unsafe-path', 'A data directory is not a plain directory.');
@@ -42,10 +47,13 @@ async function syncDirectory(path: string): Promise<void> {
   try { await handle.sync(); } finally { await handle.close(); }
 }
 async function atomicJson(path: string, value: unknown): Promise<void> {
+  const encoded = `${JSON.stringify(value)}\n`;
+  if (Buffer.byteLength(encoded) > 8 * 1024 * 1024)
+    throw new ArchiveError('metadata-too-large', 'Recovery metadata is too large. Select a smaller batch.');
   const tmp = `${path}.${randomUUID()}.tmp`;
   const h = await open(tmp, 'wx', 0o600);
   try {
-    try { await h.writeFile(`${JSON.stringify(value)}\n`); await h.sync(); } finally { await h.close(); }
+    try { await h.writeFile(encoded); await h.sync(); } finally { await h.close(); }
     await rename(tmp, path); await syncDirectory(dirname(path));
   } catch (e) { await unlink(tmp).catch(() => {}); throw e; }
 }
@@ -108,7 +116,7 @@ export class TrashStore {
     const root = await realpath(this.sessionsRoot);
     for (const member of group.members) {
       const directory = resolve(member.directory);
-      if (!within(this.sessionsRoot, directory) || dirname(dirname(directory)) !== this.sessionsRoot)
+      if (!within(this.sessionsRoot, directory) || dirname(dirname(directory)) !== this.sessionsRoot || basename(directory) !== sessionDirectoryName(member.id))
         throw new ArchiveError('unsafe-path', 'Session directory is outside the expected layout.');
       await plainDirectory(dirname(directory));
       if (dirname(await realpath(dirname(directory))) !== root)
@@ -155,13 +163,15 @@ export class TrashStore {
     for (const name of (await readdir(this.area('operations'))).sort()) {
       if (!name.endsWith('.json')) continue;
       const value = await this.readJson(join(this.area('operations'), name)) as Operation;
+      if (!value || typeof value !== 'object') throw new ArchiveError('corrupt-state', 'Unknown operation journal.');
+      validateGroup(value.group);
       if (value.schema !== 1 || !UUID.test(value.id) || !UUID.test(value.entryId)
         || basename(this.operationPath(value.id)) !== name
         || !['pending', 'moving', 'detached', 'trashed', 'restoring', 'restored-metadata', 'restored', 'purging', 'purged'].includes(value.phase)
         || !Array.isArray(value.moved) || value.moved.some(n => !Number.isInteger(n) || n < 0 || n >= value.group.members.length)
         || (value.requestId !== undefined && (!UUID.test(value.requestId) || typeof value.targetId !== 'string')))
         throw new ArchiveError('corrupt-state', 'Unknown operation journal.');
-      validateGroup(value.group); await this.validateSource(value.group, true); result.push(value);
+      await this.validateSource(value.group, true); result.push(value);
     }
     return result;
   }

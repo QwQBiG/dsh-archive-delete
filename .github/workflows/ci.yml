@@ -1,6 +1,7 @@
 name: Verify / 验证
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
@@ -18,4 +19,8 @@ jobs:
       - name: Install isolated official native runtime / 安装隔离的官方原生运行时
         run: node scripts/prepare-native-runtime.mjs
       - run: pnpm verify
+      - name: Verify committed bundles / 核对已提交的构建产物
+        run: git diff --exit-code -- lib
       - run: pnpm pack --pack-destination artifacts
+      - name: Verify native package lifecycle / 验证原生安装与卸载
+        run: node scripts/verify-package-lifecycle.mjs artifacts/qwqbig-dsh-archive-delete-0.1.0.tgz

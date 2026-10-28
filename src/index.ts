@@ -1,5 +1,5 @@
 import { ArchiveError, PACKAGE_NAME, type ArchiveApi, type DshAdapter, type Lease, type SupportStatus } from './contracts.js';
-import { acquirePluginLease, createDshAdapter, getHostPaths, type HostContext } from './dsh-adapter.js';
+import { acquirePluginLease, createDshAdapter, getHostPaths, getNativeLockExclusive, type HostContext } from './dsh-adapter.js';
 import { registerHostRoutes } from './host-routes.js';
 import { ArchiveService } from './service.js';
 import { TrashStore } from './storage.js';
@@ -24,7 +24,7 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
       const paths = await getHostPaths(ctx);
       const store = new TrashStore({ root: paths.root, sessionsRoot: paths.sessionsRoot });
       await store.initialize();
-      lease = await acquirePluginLease(paths.root);
+      lease = await acquirePluginLease(paths.root, getNativeLockExclusive(ctx));
       archive = new ArchiveService(adapter, store);
       await archive.initialize();
       api = archive;

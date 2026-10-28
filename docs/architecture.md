@@ -44,6 +44,8 @@ Moving files and updating DSH bookkeeping are multiple operations, not one cross
 
 The plugin does not keep a second full-text or projection mirror. Recovery metadata is retained while recovery is possible and removed with a purged trash entry. It does not store an extra copy of the conversation's first message for sidebar titles. Separate idempotency receipts retain request/target identifiers and operation outcomes, with conversation titles removed; these are not conversation backups.
 
+Recovery JSON has the same 8 MiB read/write ceiling. Initial request intent is limited to 6 MiB, reserving room for up to 100 bounded per-target outcomes before any transition starts. Oversized metadata is rejected before a write/move and asks for a smaller batch; an admitted intent must remain writable as results accumulate.
+
 ## Compatibility policy
 
 The initial version gate is exact, not a promise that all `0.2.x` releases are compatible. It checks the active profile's runtime installation anchor, rather than trusting the plugin's pinned peer package to identify its host. Mutation requires the supported host version, macOS, the JSONL backend, safe canonical roots, and usable activity/lease/registration capabilities. Failure to establish those conditions produces an explicit unsupported or blocked result.

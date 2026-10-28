@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 if (pkg.name !== '@qwqbig/dsh-archive-delete' || pkg.engines.dsh !== '0.2.1-rc.3') throw new Error('Package identity or compatibility gate drifted.');
+if (!pkg.files.includes('docs')) throw new Error('The installable package must retain the linked bilingual documentation.');
 for (const path of ['lib/index.js', 'lib/client.js', 'cordis.patch.yml', 'LICENSE', 'README.md', 'README.zh-CN.md']) await access(join(root, path));
 const host = await import(new URL('../lib/index.js', import.meta.url));
 if (typeof host.apply !== 'function' || !host.inject) throw new Error('Host plugin export contract is invalid.');

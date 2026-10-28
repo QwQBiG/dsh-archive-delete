@@ -1,33 +1,36 @@
 import React, { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import type { Action, BatchResult, ItemStatus, Preview } from './contracts.js';
-import { ArchiveClientController, canExecutePreview, selectableIds, visibleSelection, type ArchiveTab, type ClientError, type ClientState } from './client-state.js';
+import { ArchiveClientController, canExecutePreview, pageCount, pageItems, selectableIds, visibleSelection, type ArchiveTab, type ClientError, type ClientState } from './client-state.js';
 
 export const CLIENT_NAMESPACE = 'qwqbig.archiveDelete';
 export const en = {
-  title: 'Archive cleanup', manage: 'Manage archives and trash', menuTrash: 'Move to trash',
+  title: 'Archives & trash', manage: 'Manage archives and trash', menuTrash: 'Move to trash',
   archived: 'Archived', trash: 'Trash', close: 'Close', refresh: 'Refresh', cancel: 'Cancel', back: 'Back',
   loading: 'Loading…', working: 'Processing the selected records…',
-  intro: 'Move archived conversations to a recoverable trash. Nothing expires automatically.',
+  intro: 'Clean up archived conversations, with the option to restore them.',
   scope: 'Session logs and their dedicated subagent logs are included. Shared attachments, spill files, project files and other plugins’ caches are retained.',
-  noArchives: 'No archived conversations.', noTrash: 'The trash is empty.',
-  selectAll: 'Select all available records ({n})', selected: '{n} selected',
+  noArchives: 'No archived conversations', noTrash: 'Your trash is empty',
+  emptyArchivesHint: 'Conversations you archive in DSH will appear here.', emptyTrashHint: 'Moved conversations stay here until you restore or delete them.',
+  selectAll: 'Select all ({n})', selected: '{n} selected',
   moveSelected: 'Move selected to trash', restoreSelected: 'Restore selected', purgeSelected: 'Delete permanently',
   moveTitle: 'Move these conversations to trash?', restoreTitle: 'Restore these conversations?', purgeTitle: 'Permanently delete these conversations?',
-  moveDescription: 'Review every target before confirming. Idle conversations still held by DSH can wait for the next start.',
+  moveDescription: 'Review the selected conversations and their dedicated subagents.',
   restoreDescription: 'Restore the original logs in their archived state. A missing workspace becomes Ungrouped; existing paths will never be overwritten.',
-  purgeDescription: 'This removes the selected trash records and their session logs from this machine. It cannot be undone.',
+  purgeDescription: 'Delete the selected session logs and recovery records from this machine. This cannot be undone.',
   confirmTrash: 'Confirm move to trash', confirmRestore: 'Confirm restore', confirmPurge: 'Confirm permanent deletion',
   previewExpired: 'This preview expired. Go back and review your selection again.',
   previewEmpty: 'No eligible records remain. Go back and refresh the list.',
-  archivedHint: 'Only archived conversations are eligible. Running work and uncertain relationships are protected.',
-  trashHint: 'Restored conversations stay archived. The trash is retained until you choose to clear it.',
-  pending: 'Waiting to move after restart', pendingHint: 'The logs remain in their original location until DSH releases them. No disk space has been freed yet.',
+  archivedHint: 'Running work and uncertain relationships stay protected.',
+  trashHint: 'Restored conversations remain archived.',
+  retention: 'No automatic deletion', scopeTitle: 'What this includes',
+  pages: 'Conversation pages', previousPage: 'Previous', nextPage: 'Next', pageNumber: 'Page {page} of {pages}',
+  pending: 'Pending restart', pendingHint: 'Still held by DSH. No disk space has been freed yet.',
   cancelPending: 'Cancel pending move', pendingCancelled: 'Pending move cancelled',
-  childCount: '{n} dedicated subagent conversation(s)', memberCount: '{n} conversation(s)',
-  ready: 'Ready', blocked: 'Skipped', pendingPreview: 'Will wait for the next start',
-  previewCount: '{n} selected target(s)', previewMembers: '{n} total conversation(s), including dedicated subagents',
+  childCount: 'Subagents: {n}', memberCount: 'Conversations: {n}',
+  ready: 'Ready', blocked: 'Protected', pendingPreview: 'After restart',
+  previewCount: 'Selected: {n}', previewMembers: 'Conversations: {n}',
   previewSize: 'Session log size: {size}', expires: 'Confirmation is valid until {time}.',
-  result: 'Latest operation', resultSummary: '{succeeded} succeeded · {pending} pending · {skipped} skipped · {failed} failed',
+  result: 'Latest result', resultDetails: 'View details', resultSummary: '{succeeded} succeeded · {pending} pending · {skipped} skipped · {failed} failed',
   retry: 'Review and retry', retryRequest: 'Retry the same request', unknown: 'The request outcome is unknown. Refresh to check the host, or retry the same request without creating a second operation.',
   error: 'The operation could not be completed.', unsupported: 'Data operations are unavailable on this host.',
   supportDetails: 'Host: {version} · {platform}', errorDetails: 'Details', ungrouped: 'Ungrouped',
@@ -35,34 +38,56 @@ export const en = {
   'status.purged': 'Permanently deleted', 'status.cancelled': 'Cancelled', 'status.skipped': 'Skipped', 'status.failed': 'Failed',
   checking: 'Checking the selected records…', operationContinues: 'Closing this window does not cancel an operation already sent to DSH.',
   listFailure: 'Unable to read the current records. Refresh to try again.',
+  reasonActive: 'This conversation or a related task is active. Finish it before continuing.',
+  reasonBusy: 'Another process holds the session write lock. Close that instance and review again.',
+  reasonLoaded: 'DSH still holds this idle conversation. The move will wait for the next start.',
+  reasonChanged: 'The archive state or session content changed. Review a new preview.',
+  reasonRecovery: 'An interrupted operation needs recovery before another change is allowed.',
+  reasonInterrupted: 'This operation was interrupted. Review its current state before retrying.',
+  reasonPending: 'This conversation is already waiting for the next start.',
+  reasonArchived: 'Only archived conversations can be moved to trash.',
+  reasonMissing: 'The selected record no longer exists. Refresh the list.',
+  reasonLineage: 'A related conversation has uncertain ownership. This group is protected.',
+  reasonPath: 'A storage path or file is unsafe or has changed. No overwrite is allowed.',
+  reasonConflict: 'A restore destination already exists. It will not be overwritten.',
+  reasonOverlap: 'These selections share a related conversation. Select each group once.',
+  reasonPlatform: 'This release supports macOS Desktop only.',
+  reasonVersion: 'This release is verified only with DSH 0.2.1-rc.3.',
+  reasonBackend: 'The official JSONL storage backend is required.',
+  reasonCapabilities: 'Required DSH services are unavailable or incompatible.',
+  reasonInitialization: 'Archive storage could not be initialized. Check the host diagnostics and reload the plugin.',
+  reasonStoreBusy: 'Another DSH process owns this trash store. Close that instance before continuing.',
 } as const;
 export type TextKey = keyof typeof en;
 export type Translate = (key: TextKey, values?: Record<string, string | number>) => string;
 export const zh: Record<TextKey, string> = {
-  title: '归档清理', manage: '管理归档与回收站', menuTrash: '移入回收站',
+  title: '归档与回收站', manage: '管理归档与回收站', menuTrash: '移入回收站',
   archived: '已归档', trash: '回收站', close: '关闭', refresh: '刷新', cancel: '取消', back: '返回',
   loading: '正在读取…', working: '正在处理选中的记录…',
-  intro: '将已归档会话移入可恢复的回收站，不会自动过期清除。',
+  intro: '清理已归档会话，需要时可以恢复。',
   scope: '处理范围包含会话日志及其专属子代理日志。共享附件、spill 文件、项目文件和其他插件缓存会保留。',
-  noArchives: '没有已归档会话。', noTrash: '回收站为空。',
-  selectAll: '全选可操作记录（{n}）', selected: '已选择 {n} 项',
+  noArchives: '暂无已归档会话', noTrash: '回收站为空',
+  emptyArchivesHint: '在 DSH 中归档的会话会显示在这里。', emptyTrashHint: '移入的会话会保留，直到你选择恢复或清除。',
+  selectAll: '全选（{n}）', selected: '已选择 {n} 项',
   moveSelected: '将所选移入回收站', restoreSelected: '恢复所选', purgeSelected: '永久清除',
   moveTitle: '将这些会话移入回收站？', restoreTitle: '恢复这些会话？', purgeTitle: '永久清除这些会话？',
-  moveDescription: '请核对每个目标。闲置但仍被 DSH 占用的会话，可以等待下次启动后处理。',
+  moveDescription: '请核对所选会话及其专属子代理的处理范围。',
   restoreDescription: '恢复原始日志并保持已归档状态。原工作区不存在时归入“未分组”，不会覆盖已有路径。',
-  purgeDescription: '将从本机移除选中的回收站记录及其会话日志，此操作无法撤销。',
+  purgeDescription: '将从本机清除所选会话的日志与恢复记录，此操作无法撤销。',
   confirmTrash: '确认移入回收站', confirmRestore: '确认恢复', confirmPurge: '确认永久清除',
   previewExpired: '预览已过期，请返回并重新核对目标。',
   previewEmpty: '没有可操作记录，请返回并刷新列表。',
-  archivedHint: '仅支持已归档会话；正在运行的工作和关联不明的记录会受到保护。',
-  trashHint: '恢复后会话仍为已归档状态。回收站内容会保留，直到你主动清除。',
-  pending: '待重启后移入回收站', pendingHint: '日志仍在原位置，DSH 释放占用后才会移动，目前尚未释放磁盘空间。',
+  archivedHint: '运行中的工作与关联不明的会话会受到保护。',
+  trashHint: '恢复后会话仍保持已归档状态。',
+  retention: '不会自动清除', scopeTitle: '处理范围',
+  pages: '会话分页', previousPage: '上一页', nextPage: '下一页', pageNumber: '第 {page} / {pages} 页',
+  pending: '待重启处理', pendingHint: 'DSH 仍占用此会话，目前尚未释放磁盘空间。',
   cancelPending: '取消待处理', pendingCancelled: '已取消待处理',
-  childCount: '{n} 个专属子代理会话', memberCount: '{n} 个会话',
-  ready: '可执行', blocked: '跳过', pendingPreview: '将等待下次启动',
-  previewCount: '已选择 {n} 个目标', previewMembers: '合计 {n} 个会话（包含专属子代理）',
+  childCount: '子代理 {n}', memberCount: '会话 {n} 个',
+  ready: '可执行', blocked: '已保护', pendingPreview: '重启后处理',
+  previewCount: '已选择 {n} 项', previewMembers: '共 {n} 个会话',
   previewSize: '会话日志大小：{size}', expires: '本次确认在 {time} 前有效。',
-  result: '最近操作', resultSummary: '成功 {succeeded} · 待处理 {pending} · 跳过 {skipped} · 失败 {failed}',
+  result: '最近结果', resultDetails: '查看明细', resultSummary: '成功 {succeeded} · 待处理 {pending} · 跳过 {skipped} · 失败 {failed}',
   retry: '重新核对并重试', retryRequest: '重试同一次请求', unknown: '请求结果未知。可以刷新核对宿主状态，或重试同一次请求，不会创建第二次操作。',
   error: '操作未能完成。', unsupported: '当前宿主暂不支持数据操作。',
   supportDetails: '宿主：{version} · {platform}', errorDetails: '详情', ungrouped: '未分组',
@@ -70,11 +95,58 @@ export const zh: Record<TextKey, string> = {
   'status.purged': '已永久清除', 'status.cancelled': '已取消', 'status.skipped': '已跳过', 'status.failed': '失败',
   checking: '正在核对所选记录…', operationContinues: '关闭此窗口不会取消已经发送给 DSH 的操作。',
   listFailure: '无法读取当前记录，请刷新重试。',
+  reasonActive: '此会话或关联任务正在运行，请完成后重新核对。',
+  reasonBusy: '其他进程持有会话写锁，请关闭相应实例后重新核对。',
+  reasonLoaded: 'DSH 仍持有此闲置会话，将等待下次启动后移入回收站。',
+  reasonChanged: '归档状态或会话内容已经变化，请重新预览并确认。',
+  reasonRecovery: '存在需要恢复的中断操作，恢复完成前不能继续修改。',
+  reasonInterrupted: '上次操作已中断，请核对当前状态后重新确认。',
+  reasonPending: '此会话已在等待下次启动后处理。',
+  reasonArchived: '只有已归档会话可以移入回收站。',
+  reasonMissing: '所选记录已不存在，请刷新列表。',
+  reasonLineage: '关联会话的归属不明确，已保护此组记录。',
+  reasonPath: '存储路径或文件不安全，或已经变化，不会覆盖已有内容。',
+  reasonConflict: '恢复位置已有内容，不会覆盖。',
+  reasonOverlap: '所选目标包含同一个关联会话，请勿重复选择同组记录。',
+  reasonPlatform: '此版本仅支持 macOS 桌面端。',
+  reasonVersion: '此版本仅验证支持 DSH 0.2.1-rc.3。',
+  reasonBackend: '需要使用官方 JSONL 存储后端。',
+  reasonCapabilities: '所需的 DSH 服务不可用或不兼容。',
+  reasonInitialization: '回收站存储初始化失败，请检查宿主诊断后重新加载插件。',
+  reasonStoreBusy: '其他 DSH 进程正在使用此回收站，请关闭相应实例后继续。',
 };
 
 export function translator(language: 'en' | 'zh'): Translate {
   const dictionary = language === 'zh' ? zh : en;
   return (key, values = {}) => dictionary[key].replace(/\{([^}]+)\}/g, (match, name: string) => String(values[name] ?? match));
+}
+
+/** Stable refusal codes are localized; unfamiliar diagnostics retain a readable host fallback. */
+export function localizeReason(code: string | undefined, message: string, t: Translate): string {
+  const keys: Record<string, TextKey> = {
+    active: 'reasonActive', busy: 'reasonBusy', 'host-loaded': 'reasonLoaded',
+    'source-changed': 'reasonChanged', 'stale-preview': 'reasonChanged', 'preview-expired': 'previewExpired',
+    'recovery-required': 'reasonRecovery', 'operation-interrupted': 'reasonInterrupted', 'purge-interrupted': 'reasonInterrupted',
+    'already-pending': 'reasonPending', 'not-archived': 'reasonArchived',
+    'session-missing': 'reasonMissing', 'missing-session': 'reasonMissing', 'session-not-found': 'reasonMissing',
+    'dependent-session': 'reasonLineage', 'ambiguous-lineage': 'reasonLineage', 'ambiguous-workspace': 'reasonLineage',
+    'unsafe-path': 'reasonPath', 'unsafe-lock': 'reasonPath', 'unknown-file': 'reasonPath', 'unknown-artifact': 'reasonPath',
+    'path-conflict': 'reasonConflict', 'restore-conflict': 'reasonConflict', 'overlapping-targets': 'reasonOverlap',
+    'store-busy': 'reasonStoreBusy',
+  };
+  const key = code ? keys[code] : undefined;
+  return key ? t(key) : message;
+}
+
+function supportReason(message: string | undefined, t: Translate): string {
+  if (!message) return t('reasonCapabilities');
+  if (message.startsWith('Only macOS')) return t('reasonPlatform');
+  if (message.startsWith('This release is verified only')) return t('reasonVersion');
+  if (message.includes('official JSONL')) return t('reasonBackend');
+  if (message.includes('Another DSH process')) return t('reasonStoreBusy');
+  if (message.startsWith('Archive storage could not be initialized')) return t('reasonInitialization');
+  if (message.includes('unavailable') || message.includes('incompatible')) return t('reasonCapabilities');
+  return message;
 }
 
 export interface NativePrimitives {
@@ -110,39 +182,46 @@ function ErrorNotice({ error, t, onRefresh, onRetry, disabled, Button }: {
   const message = error.uncertain ? t('unknown') : error.code === 'preview-expired' ? t('previewExpired') : error.code === 'list-failed' ? t('listFailure') : t('error');
   return <section className="dad-alert dad-error" role="alert">
     <p>{message}</p>
-    {!error.uncertain && error.code !== 'preview-expired' && <details><summary>{t('errorDetails')}</summary><p>{error.message}</p><code>{error.code}</code></details>}
+    {!error.uncertain && error.code !== 'preview-expired' && <details><summary>{t('errorDetails')}</summary><p>{localizeReason(error.code, error.message, t)}</p><code>{error.code}</code></details>}
     {error.uncertain && <div className="dad-actions"><Button size="sm" variant="outline" onClick={onRefresh} disabled={disabled}>{t('refresh')}</Button><Button size="sm" variant="outline" onClick={onRetry} disabled={disabled}>{t('retryRequest')}</Button></div>}
   </section>;
+}
+
+function ArchiveIcon({ trash = false }: { trash?: boolean }) {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{trash ? <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5" /></> : <><path d="M4 5h16v4H4zM6 9v11h12V9M10 13h4" /></>}</svg>;
+}
+
+function EmptyState({ tab, t }: { tab: ArchiveTab; t: Translate }) {
+  return <div className="dad-empty"><span className="dad-empty-icon"><ArchiveIcon trash={tab === 'trash'} /></span><strong>{t(tab === 'archived' ? 'noArchives' : 'noTrash')}</strong><p>{t(tab === 'archived' ? 'emptyArchivesHint' : 'emptyTrashHint')}</p></div>;
 }
 
 export function PreviewContent({ preview, t }: { preview: Preview; t: Translate }) {
   const members = preview.items.reduce((sum, item) => sum + item.memberIds.length, 0);
   return <div className="dad-preview">
-    <div className="dad-summary"><strong>{t('previewCount', { n: preview.items.length })}</strong><span>{t('previewMembers', { n: members })}</span></div>
+    <div className="dad-summary"><strong>{t('previewCount', { n: preview.items.length })}</strong><span>{t('previewMembers', { n: members })}</span><span>{formatBytes(preview.items.reduce((sum, item) => sum + item.sizeBytes, 0))}</span></div>
     <ul className="dad-preview-list">
       {preview.items.map((item) => <li key={item.id}>
         <div className="dad-row-title"><strong>{item.title || item.sessionId}</strong><span className={`dad-pill dad-pill-${item.disposition}`}>{t(item.disposition === 'ready' ? 'ready' : item.disposition === 'pending' ? 'pendingPreview' : 'blocked')}</span></div>
         <div className="dad-meta"><span>{t('memberCount', { n: item.memberIds.length })}</span><span>{formatBytes(item.sizeBytes)}</span></div>
-        {item.message && <p className="dad-item-reason">{item.message}</p>}
+        {(item.disposition === 'pending' || item.message) && <p className="dad-item-reason">{item.disposition === 'pending' ? t('pendingHint') : localizeReason(item.code, item.message!, t)}</p>}
       </li>)}
     </ul>
-    <p className="dad-boundary">{t('scope')}</p>
-    {preview.action === 'trash' && preview.items.some((item) => item.disposition === 'pending') && <p className="dad-alert">{t('pendingHint')}</p>}
-    <p className="dad-muted">{t('expires', { time: formatTime(preview.expiresAt) })}</p>
+    <section className={`dad-boundary${preview.action === 'purge' ? ' dad-boundary-danger' : ''}`}><span className="dad-boundary-icon"><ArchiveIcon trash={preview.action === 'purge'} /></span><div><strong>{t('scopeTitle')}</strong><p>{t('scope')}</p></div></section>
+    <p className="dad-expiry">{t('expires', { time: formatTime(preview.expiresAt) })}</p>
   </div>;
 }
 
 export function ResultContent({ result, t, retry, disabled, Button }: {
   result: BatchResult; t: Translate; retry(id: string): void; disabled: boolean; Button: NativePrimitives['Button'];
 }) {
-  return <section className="dad-results" aria-label={t('result')}>
-    <h3>{t('result')}</h3>
-    <p role="status">{t('resultSummary', result.counts)}</p>
+  const hasProblems = result.counts.failed > 0 || result.counts.skipped > 0;
+  return <details className="dad-results" aria-label={t('result')} open={hasProblems || undefined}>
+    <summary><span className="dad-result-label">{t('result')}</span><span className={hasProblems ? 'dad-result-summary dad-result-attention' : 'dad-result-summary'} role="status">{t('resultSummary', result.counts)}</span><span className="dad-result-disclosure" aria-label={t('resultDetails')}>⌄</span></summary>
     <ul>{result.items.map((item) => <li key={item.id}>
-      <div><strong>{item.title || item.id}</strong><span className={`dad-result-status dad-result-${item.status}`}>{t(`status.${item.status}` as `status.${ItemStatus}`)}</span>{item.message && <p>{item.message}</p>}</div>
+      <div><strong>{item.title || item.id}</strong><span className={`dad-result-status dad-result-${item.status}`}>{t(`status.${item.status}` as `status.${ItemStatus}`)}</span>{item.message && <p>{localizeReason(item.code, item.message, t)}</p>}</div>
       {item.status === 'failed' && <Button size="sm" variant="outline" disabled={disabled} onClick={() => retry(item.id)}>{t('retry')}</Button>}
     </li>)}</ul>
-  </section>;
+  </details>;
 }
 
 export function ArchiveDialog({ controller, primitives, t }: {
@@ -162,6 +241,7 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
   const selected = visibleSelection(state);
   const selectedSet = new Set(selected);
   const eligibleIds = selectableIds(state);
+  const pages = pageCount(state);
   const supported = state.overview?.support.supported === true;
   const uncertain = state.uncertainRequest;
   const locked = state.busy || state.loading || uncertain;
@@ -195,7 +275,7 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
   return <Modal open={state.open} onClose={controller.close} title={preview ? t(actionTitle[preview.action]) : t('title')} description={preview ? t(actionDescription[preview.action]) : t('intro')} closeLabel={t('close')} className="dad-dialog" contentClassName="dad-content" footer={footer}>
     <div className="dad-shell">
       {state.error && <ErrorNotice error={uncertain ? { ...state.error, uncertain: true } : state.error} t={t} onRefresh={() => { void controller.refresh(); }} onRetry={() => { void controller.retryUncertain(); }} disabled={state.busy || state.loading} Button={Button} />}
-      {state.overview && !supported && <section className="dad-alert" role="status"><strong>{t('unsupported')}</strong><p>{state.overview.support.reason}</p><small>{t('supportDetails', { version: state.overview.support.version, platform: state.overview.support.platform })}</small></section>}
+      {state.overview && !supported && <section className="dad-alert" role="status"><strong>{t('unsupported')}</strong><p>{supportReason(state.overview.support.reason, t)}</p><small>{t('supportDetails', { version: state.overview.support.version, platform: state.overview.support.platform })}</small></section>}
       {state.busy && <p className="dad-progress" role="status">{t('working')}</p>}
       {preview ? <PreviewContent preview={preview} t={t} /> : <>
         <div className="dad-toolbar">
@@ -209,18 +289,18 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
           </div>
           <Button size="sm" variant="outline" disabled={state.loading || state.busy} onClick={() => { void controller.refresh(); }}>{t('refresh')}</Button>
         </div>
-        <p className="dad-muted">{t(state.tab === 'archived' ? 'archivedHint' : 'trashHint')}</p>
-        <Checkbox checked={eligibleIds.length > 0 && selected.length === eligibleIds.length} disabled={locked || !supported || eligibleIds.length === 0} onChange={controller.selectAll} label={t('selectAll', { n: eligibleIds.length })} />
+        <div className="dad-list-heading"><Checkbox checked={eligibleIds.length > 0 && selected.length === eligibleIds.length} disabled={locked || !supported || eligibleIds.length === 0} onChange={controller.selectAll} label={t('selectAll', { n: eligibleIds.length })} /><span className="dad-retention"><span aria-hidden="true">◷</span>{t('retention')}</span></div>
         <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${state.tab}`} aria-busy={state.loading} className="dad-list">
           {state.loading && <p role="status">{t('loading')}</p>}
-          {!state.loading && state.overview && state.overview[state.tab].length === 0 && <p className="dad-empty">{t(state.tab === 'archived' ? 'noArchives' : 'noTrash')}</p>}
-          {state.tab === 'archived' ? state.overview?.archived.map((item) => <div className="dad-row" key={item.id}>
-            <div className="dad-row-main"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported || item.pending === true} onChange={() => controller.toggle(item.id)} label={item.title || item.id} /><div className="dad-meta"><span>{item.workspace || t('ungrouped')}</span><span>{formatBytes(item.sizeBytes)}</span>{item.descendantCount > 0 && <span>{t('childCount', { n: item.descendantCount })}</span>}</div>{item.pending && <p className="dad-pending"><strong>{t('pending')}</strong><span>{t('pendingHint')}</span>{item.pendingReason && <span>{item.pendingReason}</span>}</p>}</div>
+          {!state.loading && state.overview && state.overview[state.tab].length === 0 && <EmptyState tab={state.tab} t={t} />}
+          {state.tab === 'archived' ? pageItems(state.overview?.archived ?? [], state.page).map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)} data-pending={item.pending === true}>
+            <div className="dad-row-main"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported || item.pending === true} onChange={() => controller.toggle(item.id)} label={item.title || item.id} /><div className="dad-meta"><span className="dad-workspace">{item.workspace || t('ungrouped')}</span><span>{formatBytes(item.sizeBytes)}</span>{item.descendantCount > 0 && <span className="dad-badge">{t('childCount', { n: item.descendantCount })}</span>}{item.pending && <span className="dad-badge dad-badge-pending">{t('pending')}</span>}</div>{item.pending && <p className="dad-pending">{t('pendingHint')}</p>}</div>
             {item.pending && <Button size="sm" variant="outline" disabled={locked || !supported} onClick={() => { void controller.cancelPending([item.id]); }}>{t('cancelPending')}</Button>}
-          </div>) : state.overview?.trash.map((item) => <div className="dad-row" key={item.id}>
-            <div className="dad-row-main"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported} onChange={() => controller.toggle(item.id)} label={item.title || item.sessionId} /><div className="dad-meta"><time dateTime={isoTime(item.trashedAt)}>{formatTime(item.trashedAt)}</time><span>{formatBytes(item.sizeBytes)}</span><span>{t('memberCount', { n: item.memberCount })}</span></div></div>
+          </div>) : pageItems(state.overview?.trash ?? [], state.page).map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)}>
+            <div className="dad-row-main"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported} onChange={() => controller.toggle(item.id)} label={item.title || item.sessionId} /><div className="dad-meta"><time dateTime={isoTime(item.trashedAt)}>{formatTime(item.trashedAt)}</time><span>{formatBytes(item.sizeBytes)}</span><span className="dad-badge">{t('memberCount', { n: item.memberCount })}</span></div></div>
           </div>)}
         </div>
+        <div className="dad-list-foot"><p className="dad-hint">{t(state.tab === 'archived' ? 'archivedHint' : 'trashHint')}</p>{pages > 1 && <nav className="dad-pagination" aria-label={t('pages')}><Button size="sm" variant="ghost" disabled={locked || state.page === 0} onClick={() => controller.setPage(state.page - 1)}>{t('previousPage')}</Button><span>{t('pageNumber', { page: state.page + 1, pages })}</span><Button size="sm" variant="ghost" disabled={locked || state.page + 1 >= pages} onClick={() => controller.setPage(state.page + 1)}>{t('nextPage')}</Button></nav>}</div>
         {result && <ResultContent result={result} t={t} retry={(id) => { void controller.retryItem(id); }} disabled={locked || !supported} Button={Button} />}
       </>}
       {(state.busy || uncertain) && <p className="dad-muted">{t('operationContinues')}</p>}
@@ -229,26 +309,34 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
 }
 
 export const CLIENT_CSS = `
-.dad-dialog{width:min(880px,calc(100vw - 32px));max-width:calc(100vw - 32px)}
-.dad-content{max-height:min(80vh,780px);overflow:auto}
-.dad-shell{display:flex;flex-direction:column;gap:14px;min-width:0;color:var(--dsw-alias-label-primary,CanvasText)}
-.dad-shell p,.dad-shell h3{margin:0}.dad-shell h3{font-size:13px;font-weight:600}
-.dad-toolbar,.dad-actions,.dad-row-title,.dad-meta,.dad-summary{display:flex;align-items:center;gap:10px}
-.dad-toolbar{justify-content:space-between}.dad-tabs{display:flex;gap:4px;padding:3px;border-radius:12px;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.08))}
-.dad-tabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--dsw-alias-label-secondary,GrayText);padding:7px 11px;font:inherit;border-radius:9px;cursor:pointer}
-.dad-tabs button[aria-selected=true]{color:var(--dsw-alias-label-primary,CanvasText);background:var(--dsw-alias-bg-base,Canvas);box-shadow:0 1px 3px #0001}
-.dad-tabs button:focus-visible,.dad-actions button:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px}
-.dad-tabs button:disabled{cursor:default;opacity:.55}.dad-count{font-size:11px;opacity:.7}.dad-muted,.dad-meta{font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary,GrayText)}
-.dad-meta{gap:5px 12px;flex-wrap:wrap;margin-top:4px}.dad-meta>span:first-child{overflow-wrap:anywhere}.dad-selection{margin-right:auto;font-size:12px;color:var(--dsw-alias-label-secondary,GrayText)}
-.dad-list{min-height:80px;max-height:360px;overflow:auto;border-top:1px solid var(--dsw-alias-border-l1,#8883);border-bottom:1px solid var(--dsw-alias-border-l1,#8883)}
-.dad-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 2px;border-bottom:1px solid var(--dsw-alias-border-l1,#8882)}.dad-row:last-child{border-bottom:0}.dad-row-main{flex:1;min-width:0}.dad-row-main>label{min-width:0;align-items:flex-start}.dad-row-main>label>span{overflow-wrap:anywhere}
-.dad-pending{display:flex;flex-direction:column;gap:3px;margin-top:7px!important;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary,GrayText)}.dad-pending strong{color:var(--dsw-alias-label-primary,CanvasText)}
-.dad-empty{padding:30px 12px;text-align:center;color:var(--dsw-alias-label-secondary,GrayText)}
-.dad-alert{padding:11px 13px;border:1px solid var(--dsw-alias-border-l1,#8884);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#8881);font-size:12px;line-height:1.65}.dad-alert p+p{margin-top:5px}.dad-alert details{margin-top:5px}.dad-alert code{font-size:11px;overflow-wrap:anywhere}
-.dad-error{border-color:var(--dsw-alias-status-error,#bd3d3d);color:var(--dsw-alias-label-primary,CanvasText)}.dad-actions{margin-top:8px;flex-wrap:wrap}.dad-actions button{font:inherit;color:inherit;background:transparent;border:1px solid var(--dsw-alias-border-l1,#8885);border-radius:7px;padding:4px 8px;cursor:pointer}
-.dad-progress{font-size:12px;padding:8px 0;color:var(--dsw-alias-label-secondary,GrayText)}
-.dad-preview-list,.dad-results ul{list-style:none;padding:0;margin:0}.dad-preview-list{max-height:320px;overflow:auto;border:1px solid var(--dsw-alias-border-l1,#8883);border-radius:12px;margin-top:12px}.dad-preview-list li{padding:12px;border-bottom:1px solid var(--dsw-alias-border-l1,#8883)}.dad-preview-list li:last-child{border-bottom:0}.dad-row-title{justify-content:space-between;align-items:flex-start}.dad-row-title strong{font-size:13px;overflow-wrap:anywhere}.dad-summary{align-items:flex-start;flex-direction:column;gap:4px;font-size:12px}.dad-summary>span{color:var(--dsw-alias-label-secondary,GrayText)}
-.dad-pill{font-size:11px;white-space:nowrap;border:1px solid var(--dsw-alias-border-l1,#8883);border-radius:99px;padding:1px 7px}.dad-pill-blocked,.dad-result-failed{color:var(--dsw-alias-status-error,#bd3d3d)}.dad-item-reason{font-size:12px;line-height:1.6;margin-top:7px!important;overflow-wrap:anywhere}.dad-boundary{font-size:12px;line-height:1.7;margin:14px 0!important;color:var(--dsw-alias-label-secondary,GrayText)}
-.dad-danger{color:var(--dsw-alias-status-error,#bd3d3d)!important}.dad-results{border-top:1px solid var(--dsw-alias-border-l1,#8883);padding-top:12px}.dad-results>p{font-size:12px;line-height:1.7;margin-top:5px}.dad-results li{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:12px;margin-top:8px}.dad-results li strong{font-weight:500;overflow-wrap:anywhere}.dad-result-status{margin-left:9px;color:var(--dsw-alias-label-secondary,GrayText)}.dad-results li p{font-size:12px;line-height:1.6;margin-top:3px;overflow-wrap:anywhere}
-@media(max-width:560px){.dad-toolbar{align-items:flex-start}.dad-row{flex-direction:column}.dad-row-title{flex-direction:column}.dad-dialog{width:calc(100vw - 20px);max-width:calc(100vw - 20px)}}
+.dad-dialog{width:min(780px,calc(100vw - 32px));max-width:calc(100vw - 32px)}
+.dad-content{max-height:min(65vh,540px);overflow:auto}
+.dad-shell{--dad-border:var(--dsw-alias-border-l1,#8883);--dad-muted:var(--dsw-alias-label-secondary,GrayText);--dad-primary:var(--dsw-alias-label-primary,CanvasText);display:flex;flex-direction:column;gap:12px;min-width:0;color:var(--dad-primary);font-size:13px;line-height:1.5}
+.dad-shell p,.dad-shell h3{margin:0}.dad-shell button{font:inherit}
+.dad-toolbar,.dad-actions,.dad-row-title,.dad-meta,.dad-summary,.dad-list-heading,.dad-list-foot,.dad-pagination{display:flex;align-items:center;gap:10px}
+.dad-toolbar{justify-content:space-between;gap:16px}
+.dad-tabs{display:flex;gap:3px;padding:3px;border:1px solid var(--dad-border);border-radius:11px;background:var(--dsw-alias-bg-layer-1,#8881)}
+.dad-tabs button{display:flex;align-items:center;gap:8px;border:0;background:transparent;color:var(--dad-muted);padding:7px 13px;font-size:13px;font-weight:500;border-radius:8px;cursor:pointer}
+.dad-tabs button[aria-selected=true]{color:var(--dad-primary);background:var(--dsw-alias-bg-base,Canvas);box-shadow:0 1px 3px #0001}
+.dad-tabs button:focus-visible,.dad-row:focus-within{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px}
+.dad-tabs button:disabled{cursor:default;opacity:.55}.dad-count{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:18px;padding:0 4px;border-radius:5px;background:color-mix(in srgb,var(--dad-primary) 6%,transparent);font-size:10px;font-weight:600;font-variant-numeric:tabular-nums}
+.dad-list-heading{justify-content:space-between;gap:12px;padding:1px 2px;color:var(--dad-muted);font-size:12px}.dad-retention{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:11px}.dad-retention>span{font-size:15px;line-height:1}
+.dad-list{display:flex;flex-direction:column;gap:7px;min-height:70px;max-height:290px;overflow:auto;padding:3px 3px 4px;scrollbar-gutter:stable}
+.dad-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:11px 12px;border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#88805);transition:border-color .15s,background .15s}
+.dad-row[data-selected=true]{border-color:color-mix(in srgb,var(--dad-primary) 32%,transparent);background:color-mix(in srgb,var(--dad-primary) 6%,transparent)}
+.dad-row[data-pending=true]{border-style:dashed}.dad-row-main{flex:1;min-width:0}.dad-row-main>label{min-width:0;align-items:flex-start;font-size:13px;font-weight:500}.dad-row-main>label>span{overflow-wrap:anywhere}
+.dad-meta{gap:5px 10px;flex-wrap:wrap;margin-top:5px;padding-left:25px;color:var(--dad-muted);font-size:11px;line-height:1.5}.dad-meta>span,.dad-meta>time{overflow-wrap:anywhere}.dad-workspace{max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dad-badge{padding:1px 6px;border-radius:5px;background:color-mix(in srgb,var(--dad-primary) 5%,transparent);font-size:10px}.dad-badge-pending{border:1px solid var(--dad-border);background:transparent}
+.dad-pending{margin:6px 0 0 25px!important;color:var(--dad-muted);font-size:11px;line-height:1.5}.dad-row>button{flex-shrink:0;margin-top:1px}
+.dad-list-foot{align-items:flex-start;justify-content:space-between;gap:12px}.dad-hint,.dad-expiry{color:var(--dad-muted);font-size:11px;line-height:1.5}.dad-hint{padding:1px 2px}.dad-pagination{flex-shrink:0;gap:5px;font-size:11px;color:var(--dad-muted)}.dad-pagination button{padding:1px 5px;min-height:22px}.dad-pagination>span{font-variant-numeric:tabular-nums;white-space:nowrap}
+.dad-selection{margin-right:auto;font-size:12px;color:var(--dsw-alias-label-secondary,GrayText)}
+.dad-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:180px;padding:25px 18px;text-align:center;border:1px dashed var(--dad-border);border-radius:12px;color:var(--dad-muted)}.dad-empty strong{color:var(--dad-primary);font-size:13px;font-weight:500}.dad-empty p{max-width:340px;font-size:12px}.dad-empty-icon{display:flex;align-items:center;justify-content:center;width:42px;height:42px;margin-bottom:5px;border:1px solid var(--dad-border);border-radius:13px;background:var(--dsw-alias-bg-layer-1,#8881)}
+.dad-alert{padding:10px 12px;border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#8881);font-size:12px;line-height:1.6}.dad-alert p+p{margin-top:5px}.dad-alert details{margin-top:5px}.dad-alert code{font-size:11px;overflow-wrap:anywhere}
+.dad-error{border-color:var(--dsw-alias-status-error,#bd3d3d)}.dad-actions{margin-top:8px;flex-wrap:wrap}.dad-progress{font-size:12px;padding:3px 0;color:var(--dad-muted)}.dad-muted{color:var(--dad-muted);font-size:12px;line-height:1.6}
+.dad-summary{gap:8px;flex-wrap:wrap;padding:0 1px;font-size:12px}.dad-summary>strong{font-weight:600}.dad-summary>span{color:var(--dad-muted)}.dad-summary>span:before{content:'·';margin-right:8px;opacity:.6}
+.dad-preview-list,.dad-results ul{list-style:none;padding:0;margin:0}.dad-preview-list{display:flex;flex-direction:column;gap:7px;max-height:250px;overflow:auto;margin-top:12px;padding:2px 2px 3px}.dad-preview-list li{padding:12px;border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#88805)}.dad-preview-list .dad-meta{padding-left:0}.dad-row-title{justify-content:space-between;align-items:flex-start}.dad-row-title strong{font-size:13px;font-weight:500;overflow-wrap:anywhere}
+.dad-pill{flex-shrink:0;font-size:10px;white-space:nowrap;border:1px solid var(--dad-border);border-radius:6px;padding:2px 7px;color:var(--dad-muted)}.dad-pill-ready{background:color-mix(in srgb,var(--dad-primary) 5%,transparent)}.dad-pill-blocked,.dad-result-attention{color:var(--dsw-alias-status-error,#bd3d3d)}.dad-item-reason{font-size:11px;line-height:1.5;margin-top:7px!important;color:var(--dad-muted);overflow-wrap:anywhere}
+.dad-boundary{display:flex;align-items:flex-start;gap:10px;margin:13px 2px 10px;padding:11px 12px;border:1px solid var(--dad-border);border-radius:10px;font-size:11px;line-height:1.6;color:var(--dad-muted)}.dad-boundary-icon{display:flex;flex-shrink:0;margin-top:1px}.dad-boundary strong{display:block;margin-bottom:3px;font-size:11px;font-weight:600;color:var(--dad-primary)}.dad-boundary-danger{border-color:color-mix(in srgb,var(--dsw-alias-status-error,#bd3d3d) 30%,transparent)}.dad-boundary-danger .dad-boundary-icon{color:var(--dsw-alias-status-error,#bd3d3d)}.dad-expiry{padding:0 3px}
+.dad-danger{color:var(--dsw-alias-status-error,#bd3d3d)!important}.dad-results{border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#88805);font-size:11px}.dad-results summary{display:flex;align-items:center;gap:10px;list-style:none;padding:10px 12px;cursor:pointer}.dad-results summary::-webkit-details-marker{display:none}.dad-results summary:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px;border-radius:9px}.dad-result-label{font-weight:500;white-space:nowrap}.dad-result-summary{flex:1;color:var(--dad-muted);font-variant-numeric:tabular-nums}.dad-result-disclosure{font-size:16px;line-height:1;color:var(--dad-muted);transition:transform .15s}.dad-results[open] .dad-result-disclosure{transform:rotate(180deg)}.dad-results[open] summary{border-bottom:1px solid var(--dad-border)}.dad-results ul{padding:0 12px;max-height:190px;overflow:auto}.dad-results li{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--dad-border)}.dad-results li:last-child{border-bottom:0}.dad-results li>div{min-width:0}.dad-results li strong{font-weight:500;overflow-wrap:anywhere}.dad-result-status{display:inline-block;margin-left:8px;font-size:10px;color:var(--dad-muted)}.dad-result-failed{color:var(--dsw-alias-status-error,#bd3d3d)}.dad-results li p{font-size:11px;line-height:1.5;margin-top:4px;overflow-wrap:anywhere}
+@media(prefers-reduced-motion:reduce){.dad-row,.dad-result-disclosure{transition:none}}
+@media(max-width:560px){.dad-dialog{width:calc(100vw - 20px);max-width:calc(100vw - 20px)}.dad-content{max-height:65vh}.dad-toolbar{gap:8px}.dad-tabs button{padding:6px 9px}.dad-row{padding:10px;gap:8px}.dad-row-title{flex-wrap:wrap;gap:6px}.dad-list-foot{flex-direction:column;gap:6px}.dad-retention{font-size:10px}.dad-results summary{flex-wrap:wrap;gap:4px 9px}.dad-result-summary{flex-basis:75%}.dad-result-disclosure{margin-left:auto}.dad-workspace{max-width:100%}}
 `;

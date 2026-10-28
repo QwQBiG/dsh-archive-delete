@@ -26,9 +26,17 @@ Native integration runs on macOS and loads the installed official Desktop runtim
 DSH_RUNTIME_ROOT=/absolute/path/to/isolated-runtime pnpm test:integration
 ```
 
-CI prepares that isolated runtime with `node scripts/prepare-native-runtime.mjs`. The script installs the exact official npm runtime into a disposable temporary directory with dependency scripts disabled; it never selects or edits a user profile. On GitHub Actions it writes `DSH_RUNTIME_ROOT` to `GITHUB_ENV`; locally it prints the selected path for the command above.
+`node scripts/prepare-native-runtime.mjs` first reuses `DSH_RUNTIME_ROOT`, or the local installed Desktop runtime, and verifies its exact version. It never downloads locally. Only with `CI=true`, if no existing runtime is available, it installs the exact official npm runtime into a disposable temporary directory with dependency scripts disabled. It never selects or edits a user profile. On GitHub Actions it writes `DSH_RUNTIME_ROOT` to `GITHUB_ENV`; locally it prints the reused path for the command above.
 
 `test/integration/host.test.ts` uses actual Cordis context, JSONL persistence, storage domains, workspace registration, projection cache, and native flock. Conversations are synthetic; the Agent waiting-state boundary uses a controlled status fixture. Unit fixtures and native integration are separate evidence.
+
+After packing, use Node 24 or newer to exercise the package manager lifecycle in another new temporary home:
+
+```sh
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.0.tgz
+```
+
+This uses the selected official runtime and available package manager in offline mode, loads the packed host through normal module resolution, and records install/reinstall/remove results plus synthetic trash-marker retention. Read its reported installation mode and diagnostics when evaluating the result. It does not install into the current Desktop profile.
 
 ## Changes that need regression evidence
 
@@ -39,11 +47,7 @@ CI prepares that isolated runtime with `node scripts/prepare-native-runtime.mjs`
 
 Tests must verify observable outcomes: original log bytes, directories, host registration, trash metadata, and user-visible results. A mocked successful `rename` or a resolved promise alone does not prove successful deletion.
 
-## Bilingual documentation
-
-Every Markdown user/developer document uses an English base file and a matching `.zh-CN.md` file. Both contain mutual language links and are updated in the same commit. Keep feature descriptions, commands, compatibility statements, limitations, release notes, screenshot captions, and alt text equivalent.
-
-Before submitting, run verification and check the paired documents and links. Describe checks actually run; identify checks not run. Never include real session content, credentials, private paths, or files from `~/.dsh` in commits or bug reports.
+Before submitting, run verification and check documentation links. Update the corresponding language file in the same change. Describe checks actually run; identify checks not run. Never include real session content, credentials, private paths, or files from `~/.dsh` in commits or bug reports.
 
 ## Reporting issues
 

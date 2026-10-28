@@ -118,12 +118,12 @@ The nine release/build scripts have these roles:
 | `test-latest-compatibility.mjs` | Builds a fresh exact host environment. Keep independent host integration evidence. |
 | `host-test-dependencies.mjs` | Pins transitive host packages for compatibility tests. Avoid accidental mixed core generations. |
 | `release-control.mjs` | Reconciles npm exact version/git head and GitHub release. Not needed before an npm distribution exists. |
-| `extract-release-notes.mjs` | Requires both English and Chinese changelog entries. Retain paired release documentation. |
+| `extract-release-notes.mjs` | Extracts changelog entries for publication. Retain release-note preflight checks. |
 | `release-preflight.ps1` | Runs frozen install and verification under the release policy. Use platform-appropriate repeatable preflight. |
 
 ## Decisions retained and changed
 
-Retain: host-provided React, TypeScript strictness, shared validated contracts, centralized compatibility handling, serial batch mutations, per-item failure reporting, generated GitHub artifacts, bilingual documentation, and synthetic integration fixtures.
+Retain: host-provided React, TypeScript strictness, shared validated contracts, centralized compatibility handling, serial batch mutations, per-item failure reporting, generated GitHub artifacts, and synthetic integration fixtures.
 
 Change: archive-only scope; a recoverable trash rather than immediate permanent deletion; no forced live-session detach; explicit pending requests; read-only list/preview; journaled whole-group filesystem transitions; no second projection mirror; no sidebar replacement, custom updater, cache repair, automatic cleanup, or shared-resource deletion.
 

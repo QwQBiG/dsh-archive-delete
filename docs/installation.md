@@ -2,35 +2,52 @@
 
 [简体中文](installation.zh-CN.md) · English
 
+Move archived conversations to trash, restore them, or permanently clear selected trash after confirmation. The plugin uses DSH's existing desktop interface.
+
 ## Supported setup
 
-- Official DSH macOS Desktop `0.2.1-rc.3`.
-- The official JSONL session store and a same-volume plugin trash location.
-- No changes to the DSH application bundle, existing `dsh-purge`, or project working directories.
+**Official macOS DSH Desktop `0.2.1-rc.3` with official JSONL storage.** Trash and sessions must be on the same volume. Runtime checks disable operations when the required host capabilities are unavailable.
 
-The plugin checks runtime capabilities. An unsupported result is not an invitation to bypass the version or path checks.
+## Three steps
 
-## GitHub installation
-
-After `v0.1.0` has been published, open **Plugins → Add plugin** in the desktop app and enter:
+Install `v0.1.0` from GitHub:
 
 ```text
 github:QwQBiG/dsh-archive-delete#v0.1.0
 ```
 
-Install and enable the bundle. Restart only when DSH reports that the host component needs it. Use the plugin manager belonging to the actual desktop profile, rather than an unrelated CLI `web` profile.
+1. **Add and enable.** Paste the address in Desktop's **Plugins → Add plugin** and follow DSH's restart prompt. Use the actual Desktop profile; installing into `web` does not change `desktop`.
+2. **Choose archived conversations.** Use DSH's original archive action first. Choose **Move to trash** in the conversation menu, or open the plugin details → **Manage archives and trash** for a batch.
+3. **Review and confirm.** Check targets and dedicated subagents, then confirm. Results distinguish **Moved to trash**, **Pending restart**, **Skipped**, and **Failed**; retry a specific failed target after resolving its reason.
 
-For users who have explicitly installed DSH's CLI command, the equivalent command is:
+Each page and batch contains up to 100 targets. **Select all** applies to the current page; changing pages or tabs clears selection, so hidden selections are never carried into another action.
+
+## Using the two tabs
+
+| Tab / state | What to do | What happens |
+| --- | --- | --- |
+| Archived | Move selected to trash | Logs move with their dedicated subagents; independent forks stay |
+| Pending restart | Cancel pending move, or leave queued | Original logs stay until a checked startup attempt can move them |
+| Trash | Restore selected | Return archived to the original workspace, or archived Ungrouped if it is gone; never overwrite |
+| Trash | Delete permanently | Review a new confirmation, then remove only selected trash logs and recovery metadata |
+
+A pending request does not free disk space. Changed, unarchived, newly active, or unsafe targets cannot move under an old confirmation. Trash never expires automatically.
+
+Shared attachments, spill, project files, other plugin caches, and remote copies are outside permanent cleanup. The confirmation shows the scope; permanent cleanup cannot be undone.
+
+## Optional CLI
+
+If DSH's CLI is already installed:
 
 ```sh
 dsh plugin --profile desktop add github:QwQBiG/dsh-archive-delete#v0.1.0
 ```
 
-Both host and browser artifacts are included in the package. A GitHub user installation does not require a dependency build/prepare script.
+Both host and browser artifacts are included. GitHub installation does not require a dependency build/prepare script.
 
 ## Local package for development
 
-Use an isolated DSH home/profile populated only with synthetic conversations. Build and pack the source, then pass the resulting absolute `.tgz` path to that isolated profile's plugin manager:
+Use a temporary home/profile with synthetic conversations, then install the generated absolute `.tgz` path into that isolated profile:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -38,30 +55,17 @@ pnpm verify
 pnpm pack
 ```
 
-Installing a packed artifact avoids accidentally resolving development copies of DSH or React as a second host runtime. Do not use your main profile as the integration-test fixture.
+With DSH's CLI installed, create a fresh test home and install into its isolated `web` profile:
 
-## Archive and move
+```sh
+DSH_ARCHIVE_DELETE_TEST_HOME="$(mktemp -d)"
+DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.1.0.tgz"
+```
 
-Use DSH's original archive action first. The plugin intentionally does not duplicate DSH's archiving workflow or silently stop active work.
+Keep the test-home path if launching that host manually. This does not install into the current Desktop profile. A packed artifact keeps development dependencies out of the host runtime; your primary history is not a fixture. For the automated isolated install/reinstall/remove check, see [Contributing](../CONTRIBUTING.md).
 
-In an archived session's native menu, choose **Move to trash**. For multiple sessions, open the `@qwqbig/dsh-archive-delete` plugin details, choose **Manage archives and trash**, select targets on **Archived**, review the impact, and confirm.
+## Update or remove
 
-Selection belongs to the current tab. Switching tabs clears it. Batch results separate succeeded, pending, skipped, and failed targets; retry only the failed item after resolving its reason.
+Use DSH's plugin manager and follow its restart prompt. Removal preserves trash and pending/recovery records; reinstall a supported version to inspect them. Back up those records together with the trash.
 
-## Pending restart
-
-An idle archived conversation may still be retained by the current host. The confirmed request can be saved as **Waiting to move after restart**. Its original logs remain where they were, and it remains in the archive list. Use **Cancel pending move** there if you change your mind.
-
-The next plugin startup attempts the request once after recovery checks. Newly active, changed, unarchived, or unsafe targets are not moved using an old confirmation. A pending record does not mean space has already been reclaimed.
-
-## Restore or purge
-
-The **Trash** tab lists physically moved groups. **Restore selected** returns a conversation to its original workspace in archived state, or archived Ungrouped if that workspace no longer exists. Existing-path conflicts are reported without overwriting data.
-
-**Delete permanently** requires a new preview and confirmation. It removes selected trash logs and recovery metadata, not shared attachments, spill, project files, other plugin caches, or remote copies. Trash has no automatic expiration.
-
-## Remove or update
-
-Remove/update through DSH's plugin manager and follow its restart instruction. Removing the plugin does not purge its trash or pending operation records. Reinstall the supported version to inspect retained records. Keep pending/recovery files together with the trash if making a backup; manually moving live internals is not a supported recovery workflow.
-
-If an operation fails, retain its status and use the same specific target for retry. Report a sanitized reproduction with host/plugin versions. See [operation recovery](operations.md) for the expected states.
+For failures, retain the reported status and retry the specific target. Report host/plugin versions and a sanitized synthetic reproduction. Expected states are documented in [operation recovery](operations.md).

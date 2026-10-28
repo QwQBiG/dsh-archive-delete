@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ArchiveClientController, ClientTransportError, canExecutePreview, visibleSelection } from '../src/client-state.js';
+import { ArchiveClientController, ClientTransportError, canExecutePreview, visibleSelection, PAGE_SIZE, pageCount } from '../src/client-state.js';
 import { ArchiveError, type ArchiveApi, type BatchResult, type Overview, type Preview } from '../src/contracts.js';
 
 function overview(): Overview {
@@ -49,6 +49,50 @@ test('selection is limited to the active tab and cannot include pending entries'
   controller.selectAll(true);
   assert.deepEqual(visibleSelection(controller.getSnapshot()), ['trash-a']);
   controller.setTab('archived');
+  assert.deepEqual(controller.getSnapshot().selected, []);
+});
+
+test('pages limit select-all and mutation targets to 100 and never retain hidden selections', async () => {
+  const current = overview();
+  current.archived = Array.from({ length: 205 }, (_, i) => ({ id: `archive-${i}`, title: `Conversation ${i}`, workspace: 'QA', sizeBytes: 10, descendantCount: 0 }));
+  const requests: string[][] = [];
+  const controller = new ArchiveClientController(api({ list: async () => current, preview: async (_action, ids) => { requests.push(ids); return preview(); } }));
+  await controller.open();
+  assert.equal(PAGE_SIZE, 100);
+  assert.equal(pageCount(controller.getSnapshot()), 3);
+  controller.selectAll(true);
+  assert.equal(controller.getSnapshot().selected.length, 100);
+  controller.toggle('archive-100');
+  assert.equal(controller.getSnapshot().selected.length, 100);
+  await controller.preview('trash');
+  assert.equal(requests[0]?.length, 100);
+  controller.dismissPreview();
+  controller.setPage(1);
+  assert.deepEqual(controller.getSnapshot().selected, []);
+  controller.selectAll(true);
+  assert.equal(controller.getSnapshot().selected[0], 'archive-100');
+  assert.equal(controller.getSnapshot().selected.at(-1), 'archive-199');
+  controller.setPage(2);
+  controller.selectAll(true);
+  assert.equal(controller.getSnapshot().selected.length, 5);
+  controller.setTab('trash');
+  assert.equal(controller.getSnapshot().page, 0);
+  assert.deepEqual(controller.getSnapshot().selected, []);
+});
+
+test('refresh clamps a removed page and native menu opens a target beyond the first page', async () => {
+  const current = overview();
+  current.archived = Array.from({ length: 150 }, (_, i) => ({ id: `archive-${i}`, title: `Conversation ${i}`, workspace: 'QA', sizeBytes: 10, descendantCount: 0 }));
+  const requests: string[][] = [];
+  const controller = new ArchiveClientController(api({ list: async () => current, preview: async (_action, ids) => { requests.push(ids); return preview(); } }));
+  await controller.open('archive-125');
+  assert.equal(controller.getSnapshot().page, 1);
+  assert.deepEqual(requests, [['archive-125']]);
+  controller.dismissPreview();
+  controller.selectAll(true);
+  current.archived = current.archived.slice(0, 50);
+  await controller.refresh();
+  assert.equal(controller.getSnapshot().page, 0);
   assert.deepEqual(controller.getSnapshot().selected, []);
 });
 
