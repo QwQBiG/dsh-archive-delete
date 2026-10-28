@@ -20,6 +20,16 @@ Use the repository's pinned package manager. Regenerate and include `lib` artifa
 
 Do not install the development build into your main DSH profile to test it. Use a temporary `DSH_HOME`, temporary session roots, and synthetic conversations. A directory of fixtures must not be a symlink into a real data store.
 
+Native integration runs on macOS and loads the installed official Desktop runtime by default. `DSH_RUNTIME_ROOT` can select a separate exact `0.2.1-rc.3` runtime root containing `package.json` and `node_modules`:
+
+```sh
+DSH_RUNTIME_ROOT=/absolute/path/to/isolated-runtime pnpm test:integration
+```
+
+CI prepares that isolated runtime with `node scripts/prepare-native-runtime.mjs`. The script installs the exact official npm runtime into a disposable temporary directory with dependency scripts disabled; it never selects or edits a user profile. On GitHub Actions it writes `DSH_RUNTIME_ROOT` to `GITHUB_ENV`; locally it prints the selected path for the command above.
+
+`test/integration/host.test.ts` uses actual Cordis context, JSONL persistence, storage domains, workspace registration, projection cache, and native flock. Conversations are synthetic; the Agent waiting-state boundary uses a controlled status fixture. Unit fixtures and native integration are separate evidence.
+
 ## Changes that need regression evidence
 
 - Changes to an adapter require tests for the exact supported host and for unsupported capability refusal.

@@ -1,0 +1,13 @@
+import { readFile, access } from 'node:fs/promises';
+import { resolve, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+if (pkg.name !== '@qwqbig/dsh-archive-delete' || pkg.engines.dsh !== '0.2.1-rc.3') throw new Error('Package identity or compatibility gate drifted.');
+for (const path of ['lib/index.js', 'lib/client.js', 'cordis.patch.yml', 'LICENSE', 'README.md', 'README.zh-CN.md']) await access(join(root, path));
+const host = await import(new URL('../lib/index.js', import.meta.url));
+if (typeof host.apply !== 'function' || !host.inject) throw new Error('Host plugin export contract is invalid.');
+const client = await readFile(join(root, 'lib/client.js'), 'utf8');
+if (!client.includes('window.__ModuleLoader__.load') || !client.includes(pkg.name) || !client.includes('startClient')) throw new Error('Client loader contract is invalid.');
+if (client.includes('react.production.min.js') || client.includes('ReactCurrentDispatcher')) throw new Error('A second React runtime was bundled.');
+console.log('Checked installable bundle contracts / 已检查可安装插件契约');

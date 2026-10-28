@@ -36,17 +36,17 @@ Results distinguish `moved`, `pending`, `restored`, `purged`, `cancelled`, `skip
 
 ## Persistence and host consistency
 
-Plugin state is under `<DSH_HOME>/archive-delete/`, with operations in `operations/` and physical trash in `trash/`. The actual home comes from the running host. The trash must remain outside the session root and on the same volume.
+Plugin state is under `<DSH_HOME>/archive-delete/`: transition journals in `operations/`, in-progress moves in `staging/`, physical trash in `trash/`, and request progress/receipts in `receipts/`. The actual home comes from the running host. The trash must remain outside the session root and on the same volume.
 
 A session group contains one selected parent and only its explicitly owned subagent descendants. A mere `parentSession` reference does not establish subagent ownership: independent forks also have parent relationships. Unknown or conflicting relationships block the group before any move.
 
-Moving files and updating DSH bookkeeping are multiple operations, not one cross-system transaction. The durable operation record captures enough progress and original registration data to reconcile a failed or interrupted transition. Group members are validated and locked before they move. Known host bookkeeping is updated through the adapter's serialized host write path, not by editing `workspace.json` directly.
+Moving files and updating DSH bookkeeping are multiple operations, not one cross-system transaction. A durable request intent precedes mutation and receives per-target results. Its linked operation record captures progress and original registration data to reconcile a failed or interrupted transition. Completion proof remains until the request outcome is durable, closing the gap between committing files and replying to the browser. Group members are validated and locked before they move. Known host bookkeeping is updated through the adapter's serialized host write path, not by editing `workspace.json` directly.
 
-The plugin does not keep a second full-text or projection mirror. Recovery metadata is retained while recovery is possible and removed with a purged trash entry. It does not store an extra copy of the conversation's first message for sidebar titles.
+The plugin does not keep a second full-text or projection mirror. Recovery metadata is retained while recovery is possible and removed with a purged trash entry. It does not store an extra copy of the conversation's first message for sidebar titles. Separate idempotency receipts retain request/target identifiers and operation outcomes, with conversation titles removed; these are not conversation backups.
 
 ## Compatibility policy
 
-The initial version gate is exact, not a promise that all `0.2.x` releases are compatible. Mutation requires the supported host version, macOS, the JSONL backend, safe canonical roots, and usable activity/lease/registration capabilities. Failure to establish those conditions produces an explicit unsupported or blocked result.
+The initial version gate is exact, not a promise that all `0.2.x` releases are compatible. It checks the active profile's runtime installation anchor, rather than trusting the plugin's pinned peer package to identify its host. Mutation requires the supported host version, macOS, the JSONL backend, safe canonical roots, and usable activity/lease/registration capabilities. Failure to establish those conditions produces an explicit unsupported or blocked result.
 
 Every access to an internal DSH shape belongs in the adapter. A future host change should require one explicit adapter update and real compatibility evidence, not a widened version range alone.
 

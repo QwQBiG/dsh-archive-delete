@@ -1,0 +1,3 @@
+- insert:
+    - id: archive-delete
+      name: '@qwqbig/dsh-archive-delete'

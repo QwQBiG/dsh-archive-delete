@@ -18,7 +18,7 @@ Batch feedback reports moved/restored/purged successes, pending requests, skippe
 
 Preview resolves selected IDs on the host, groups explicit subagents, and reports the actual scope. It is read-only. Execution uses an opaque preview identity and a request identity, rechecking archive state, contents, relationships, activity, paths, and lease ownership.
 
-The service serializes mutations. Duplicate request identities return the same recorded result instead of repeating a transition. A failed member must not disappear from the retryable result merely because another member or bookkeeping update succeeded.
+The service serializes mutations. It persists request intent before starting and records each target's outcome durably. Reusing a request identity reads its recorded outcome instead of starting another transition; a completed pending request can later receive the startup move's outcome. A failed member must not disappear from the retryable result merely because another member or bookkeeping update succeeded.
 
 ## Move to trash
 

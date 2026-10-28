@@ -20,6 +20,16 @@ pnpm pack
 
 不要把开发版安装到主 DSH profile 中测试。使用临时 `DSH_HOME`、临时会话根目录和合成会话，测试目录不能是指向真实存储的符号链接。
 
+原生集成在 macOS 运行，默认加载已安装的官方 Desktop 运行时。可用 `DSH_RUNTIME_ROOT` 指向独立的精确 `0.2.1-rc.3` 运行时根目录，其中需有 `package.json` 和 `node_modules`：
+
+```sh
+DSH_RUNTIME_ROOT=/absolute/path/to/isolated-runtime pnpm test:integration
+```
+
+CI 使用 `node scripts/prepare-native-runtime.mjs` 准备隔离运行时。脚本关闭依赖安装脚本，将精确版本的官方 npm 运行时安装到可丢弃的临时目录，不选择或修改用户 profile。在 GitHub Actions 中将 `DSH_RUNTIME_ROOT` 写入 `GITHUB_ENV`；本地则输出路径，供上方命令使用。
+
+`test/integration/host.test.ts` 使用实际 Cordis 上下文、JSONL 持久化、存储域、工作区登记、投影缓存及原生 flock。会话均为合成数据；Agent 待交互边界使用受控状态夹具。单元夹具和原生集成分别作为证据。
+
 ## 需要回归证据的改动
 
 - 适配层改动需要验证精确支持的宿主，以及缺失能力时的拒绝行为。

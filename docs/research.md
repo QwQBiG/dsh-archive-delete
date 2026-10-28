@@ -127,4 +127,4 @@ Retain: host-provided React, TypeScript strictness, shared validated contracts, 
 
 Change: archive-only scope; a recoverable trash rather than immediate permanent deletion; no forced live-session detach; explicit pending requests; read-only list/preview; journaled whole-group filesystem transitions; no second projection mirror; no sidebar replacement, custom updater, cache repair, automatic cleanup, or shared-resource deletion.
 
-We do not infer a market gap from these differences. Recoverable trash already exists in other community projects, and official DSH has indexed session-query/export infrastructure. The goal here is a narrow implementation whose consistency and native user flow can be demonstrated by its own tests.
+These differences do not establish market novelty. The goal here is a narrow implementation whose consistency and native user flow can be demonstrated by its own tests.

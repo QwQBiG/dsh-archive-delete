@@ -11,7 +11,7 @@ Package: `@qwqbig/dsh-archive-delete` · License: [Apache-2.0](LICENSE)
 - Adds **Move to trash** to the native menu of an archived conversation.
 - Opens a compact **Archived / Trash** dialog from the plugin's details page.
 - Supports individual and batch operations, an impact preview, and per-item results.
-- Keeps an idle conversation **Pending move to trash** when this DSH process still owns its write lock. The next plugin startup rechecks the request; you can cancel it meanwhile.
+- Shows **Waiting to move after restart** when this DSH process still owns an idle conversation's write lock. The next plugin startup rechecks the request; you can cancel it meanwhile.
 - Restores conversations to their previous workspace in the **archived** state. If that workspace no longer exists, restoration uses Ungrouped without recreating a project folder.
 - Follows the DSH interface language, light/dark theme, and native interaction patterns.
 
@@ -42,10 +42,10 @@ github:QwQBiG/dsh-archive-delete#v0.1.0
 Install, enable, and restart DSH if its plugin manager requests it. Install into the profile your desktop app actually uses; installing a `web` profile does not change `desktop`.
 
 1. Use DSH's existing archive action to archive a conversation.
-2. Choose **Move to trash** in its native menu, or open **Plugins → Archive Delete → Manage archives and trash**.
+2. Choose **Move to trash** in its native menu, or open the `@qwqbig/dsh-archive-delete` plugin details and choose **Manage archives and trash**.
 3. Review the selected targets and subagents, then confirm.
-4. Distinguish **Moved**, **Pending restart**, **Skipped**, and **Failed** results. A pending entry is still in the original store; no disk space has been released yet.
-5. In **Trash**, select **Restore** or confirm **Delete permanently**. In **Archived**, use **Cancel pending** to withdraw a queued move.
+4. Distinguish **Moved to trash**, **Pending restart**, **Skipped**, and **Failed** results. A pending entry is still in the original store; no disk space has been released yet.
+5. In **Trash**, select **Restore selected** or confirm **Delete permanently**. In **Archived**, use **Cancel pending move** to withdraw a queued move.
 
 See [installation and usage](docs/installation.md) for local-package installation and removal.
 

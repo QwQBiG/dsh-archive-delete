@@ -18,7 +18,7 @@ After `v0.1.0` has been published, open **Plugins → Add plugin** in the deskto
 github:QwQBiG/dsh-archive-delete#v0.1.0
 ```
 
-Install and enable the bundle. Restart only when DSH reports that the host half needs it. Use the plugin manager belonging to the actual desktop profile, rather than an unrelated CLI `web` profile.
+Install and enable the bundle. Restart only when DSH reports that the host component needs it. Use the plugin manager belonging to the actual desktop profile, rather than an unrelated CLI `web` profile.
 
 For users who have explicitly installed DSH's CLI command, the equivalent command is:
 
@@ -44,19 +44,19 @@ Installing a packed artifact avoids accidentally resolving development copies of
 
 Use DSH's original archive action first. The plugin intentionally does not duplicate DSH's archiving workflow or silently stop active work.
 
-In an archived session's native menu, choose **Move to trash**. For multiple sessions, open **Plugins → Archive Delete → Manage archives and trash**, select targets on **Archived**, review the impact, and confirm.
+In an archived session's native menu, choose **Move to trash**. For multiple sessions, open the `@qwqbig/dsh-archive-delete` plugin details, choose **Manage archives and trash**, select targets on **Archived**, review the impact, and confirm.
 
 Selection belongs to the current tab. Switching tabs clears it. Batch results separate succeeded, pending, skipped, and failed targets; retry only the failed item after resolving its reason.
 
 ## Pending restart
 
-An idle archived conversation may still be retained by the current host. The confirmed request can be saved as **Pending move to trash**. Its original logs remain where they were, and it remains in the archive list. Cancel it there if you change your mind.
+An idle archived conversation may still be retained by the current host. The confirmed request can be saved as **Waiting to move after restart**. Its original logs remain where they were, and it remains in the archive list. Use **Cancel pending move** there if you change your mind.
 
 The next plugin startup attempts the request once after recovery checks. Newly active, changed, unarchived, or unsafe targets are not moved using an old confirmation. A pending record does not mean space has already been reclaimed.
 
 ## Restore or purge
 
-The **Trash** tab lists physically moved groups. **Restore** returns a conversation to its original workspace in archived state, or archived Ungrouped if that workspace no longer exists. Existing-path conflicts are reported without overwriting data.
+The **Trash** tab lists physically moved groups. **Restore selected** returns a conversation to its original workspace in archived state, or archived Ungrouped if that workspace no longer exists. Existing-path conflicts are reported without overwriting data.
 
 **Delete permanently** requires a new preview and confirmation. It removes selected trash logs and recovery metadata, not shared attachments, spill, project files, other plugin caches, or remote copies. Trash has no automatic expiration.
 
