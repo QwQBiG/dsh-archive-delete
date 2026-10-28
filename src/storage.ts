@@ -1,7 +1,9 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { open, mkdir, lstat, realpath, readdir, readFile, rename, unlink, rmdir } from 'node:fs/promises';
-import { basename, dirname, join, resolve, relative, isAbsolute } from 'node:path';
+import { open, mkdir, lstat, realpath, readdir, rename, unlink, rmdir } from 'node:fs/promises';
+import { basename, dirname, join, resolve } from 'node:path';
 import { ArchiveError, type SessionGroup, type TrashEntry } from './contracts.js';
+import { assertCanonicalStoragePath, assertLocalStoragePath, assertPlainDirectory as plainDirectory, assertPrivateDirectory as privateDirectory,
+  isWithin as within, readBoundedJson, samePath, syncDirectory } from './filesystem.js';
 
 const UUID = /^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
 const LOG = /^session(?:\.v\d+)?\.jsonl(?:\.zstd)?$/;
@@ -20,9 +22,6 @@ async function exists(path: string): Promise<boolean> {
   try { await lstat(path); return true; } catch (e) { if (isMissing(e)) return false; throw e; }
 }
 function isMissing(e: unknown): boolean { return !!e && typeof e === 'object' && 'code' in e && e.code === 'ENOENT'; }
-function within(root: string, path: string): boolean {
-  const p = relative(root, path); return p !== '' && !p.startsWith('..') && !isAbsolute(p);
-}
 function id(value: string): string {
   if (!UUID.test(value)) throw new ArchiveError('invalid-id', 'Invalid operation or trash identifier.');
   return value;
@@ -31,20 +30,6 @@ function sessionDirectoryName(value: string): string {
   if (value === '.') return '~002E';
   if (value === '..') return '~002E~002E';
   return value.replace(/[^A-Za-z0-9._-]/g, character => `~${character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`);
-}
-async function plainDirectory(path: string): Promise<void> {
-  const st = await lstat(path);
-  if (st.isSymbolicLink() || !st.isDirectory()) throw new ArchiveError('unsafe-path', 'A data directory is not a plain directory.');
-}
-async function privateDirectory(path: string): Promise<void> {
-  await plainDirectory(path);
-  const st = await lstat(path);
-  if ((typeof process.getuid === 'function' && st.uid !== process.getuid()) || (st.mode & 0o022) !== 0)
-    throw new ArchiveError('unsafe-path', 'Plugin storage must be owned by this user and not writable by others.');
-}
-async function syncDirectory(path: string): Promise<void> {
-  const handle = await open(path, 'r');
-  try { await handle.sync(); } finally { await handle.close(); }
 }
 async function atomicJson(path: string, value: unknown): Promise<void> {
   const encoded = `${JSON.stringify(value)}\n`;
@@ -66,7 +51,7 @@ function validateGroup(value: unknown): asserts value is SessionGroup {
       || typeof m.revision !== 'string' || typeof m.title !== 'string' || !m.header || typeof m.header !== 'object'))
     throw new ArchiveError('corrupt-state', 'Invalid recovery metadata.');
   if (new Set(g.members.map(m => m.id)).size !== g.members.length
-    || new Set(g.members.map(m => resolve(m.directory))).size !== g.members.length)
+    || new Set(g.members.map(m => process.platform === 'win32' ? resolve(m.directory).toLowerCase() : resolve(m.directory))).size !== g.members.length)
     throw new ArchiveError('corrupt-state', 'Recovery targets are ambiguous.');
   if (!g.members.some(m => m.id === g.sessionId) || g.members.some(m => m.header.id !== m.id
     || typeof m.archived !== 'boolean' || !Array.isArray(m.activity) || !Number.isFinite(m.sizeBytes) || m.sizeBytes < 0))
@@ -89,13 +74,16 @@ export class TrashStore {
   private entry(entryId: string): string { return join(this.area('trash'), id(entryId)); }
 
   async initialize(): Promise<void> {
+    assertLocalStoragePath(this.root); assertLocalStoragePath(this.sessionsRoot);
     await plainDirectory(this.sessionsRoot);
-    if (within(this.sessionsRoot, this.root) || this.root === this.sessionsRoot)
+    if (within(this.sessionsRoot, this.root) || samePath(this.root, this.sessionsRoot))
       throw new ArchiveError('unsafe-path', 'Trash must be outside the session store.');
     if (!await exists(this.root)) await mkdir(this.root, { mode: 0o700, recursive: true });
     await privateDirectory(this.root);
     const canonicalRoot = await realpath(this.root); const canonicalSessions = await realpath(this.sessionsRoot);
-    if (within(canonicalSessions, canonicalRoot) || canonicalRoot === canonicalSessions)
+    assertLocalStoragePath(canonicalRoot); assertLocalStoragePath(canonicalSessions);
+    await assertCanonicalStoragePath(this.root, canonicalRoot); await assertCanonicalStoragePath(this.sessionsRoot, canonicalSessions);
+    if (within(canonicalSessions, canonicalRoot) || samePath(canonicalRoot, canonicalSessions))
       throw new ArchiveError('unsafe-path', 'Trash must be outside the session store.');
     for (const name of ['operations', 'staging', 'trash', 'receipts']) {
       const p = this.area(name); if (!await exists(p)) await mkdir(p, { mode: 0o700 }); await privateDirectory(p);
@@ -104,22 +92,21 @@ export class TrashStore {
       throw new ArchiveError('cross-volume', 'Trash and sessions must be on the same volume.');
   }
   private async readJson(path: string): Promise<unknown> {
-    const st = await lstat(path);
-    if (!st.isFile() || st.isSymbolicLink() || st.size > 8 * 1024 * 1024)
-      throw new ArchiveError('corrupt-state', 'Recovery metadata is invalid.');
-    try { return JSON.parse(await readFile(path, 'utf8')) as unknown; }
-    catch { throw new ArchiveError('corrupt-state', 'Recovery metadata could not be read.'); }
+    return readBoundedJson(path);
   }
   private async validateSource(group: SessionGroup, allowMissing = false): Promise<void> {
     validateGroup(group);
-    if (resolve(group.sessionsRoot) !== this.sessionsRoot) throw new ArchiveError('unsafe-path', 'Session store changed.');
+    assertLocalStoragePath(group.sessionsRoot);
+    if (!samePath(group.sessionsRoot, this.sessionsRoot)) throw new ArchiveError('unsafe-path', 'Session store changed.');
     const root = await realpath(this.sessionsRoot);
     for (const member of group.members) {
+      assertLocalStoragePath(member.directory);
       const directory = resolve(member.directory);
-      if (!within(this.sessionsRoot, directory) || dirname(dirname(directory)) !== this.sessionsRoot || basename(directory) !== sessionDirectoryName(member.id))
+      if (!within(this.sessionsRoot, directory) || !samePath(dirname(dirname(directory)), this.sessionsRoot) || basename(directory) !== sessionDirectoryName(member.id))
         throw new ArchiveError('unsafe-path', 'Session directory is outside the expected layout.');
       await plainDirectory(dirname(directory));
-      if (dirname(await realpath(dirname(directory))) !== root)
+      const canonicalParent = await realpath(dirname(directory)); assertLocalStoragePath(canonicalParent);
+      if (!samePath(dirname(canonicalParent), root))
         throw new ArchiveError('unsafe-path', 'Session parent directory is unsafe.');
       if (!await exists(directory)) { if (allowMissing) continue; throw new ArchiveError('missing-session', 'Session data no longer exists.'); }
       if ((await lstat(directory)).dev !== (await lstat(this.root)).dev)

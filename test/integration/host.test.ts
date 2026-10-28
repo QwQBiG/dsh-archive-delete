@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir } from 'node:fs/promises';
 import { createRequire, registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import test, { type TestContext } from 'node:test';
-import { acquirePluginLease, createDshAdapter, type HostContext } from '../../src/dsh-adapter.js';
+import { acquirePluginLease, createDshAdapter, getNativeLockExclusive, getNativeWindowsLock, type HostContext } from '../../src/dsh-adapter.js';
 import { ArchiveService } from '../../src/service.js';
 import { TrashStore } from '../../src/storage.js';
 import { registerHostRoutes } from '../../src/host-routes.js';
@@ -37,7 +37,7 @@ const jsonl = await host('@deepseek-ai/dsh-session-persistence-jsonl');
 const { HostConnectionService } = await host('@deepseek-ai/dsh-client-connection');
 
 async function fixture(t: TestContext, compression = 'none') {
-  const home = await mkdtemp(join(tmpdir(), 'archive-native-'));
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'archive-native-')));
   const project = join(home, 'project'); await mkdir(project);
   const sessionsRoot = join(home, 'sessions'); await mkdir(sessionsRoot);
   const ctx = new Context();
@@ -139,23 +139,37 @@ test('stock rc.3: native Connection keeps plugin route behind owner admission', 
   assert.equal(response.status, 200); assert.equal((await response.json()).value.archived[0].id, 'gateway');
 });
 
-test('stock rc.3: relocated session lease follows inode; native writers and another plugin process cannot steal it', async t => {
+test('stock rc.3: relocated session leases exclude native writers without obstructing rename', async t => {
   const f = await fixture(t); await f.create('leased');
   const group = await f.adapter.inspect('leased');
   const held = await f.adapter.acquire(group); assert.equal(held.kind, 'acquired'); if (held.kind !== 'acquired') return;
-  const relocated = join(f.home, 'relocated'); await rename(group.members[0]!.directory, relocated);
+  const source = group.members[0]!.directory; const relocated = join(f.home, 'relocated');
+  const flockPath = hostRequire.resolve('@deepseek-ai/node-addon-system/flock');
+  const posixProbe = `import {open} from 'node:fs/promises';import {tryLockExclusive} from ${JSON.stringify(pathToFileURL(flockPath).href)};const handle=await open(process.argv[1],'r+');try{await tryLockExclusive(handle.fd);process.exitCode=9}catch(e){if(e.code!=='EAGAIN'&&e.code!=='EWOULDBLOCK')throw e}finally{await handle.close()}`;
+  const windowsProbe = `import {Context} from ${JSON.stringify(pathToFileURL(hostRequire.resolve('@deepseek-ai/cordis')).href)};import {SessionStore} from ${JSON.stringify(pathToFileURL(hostRequire.resolve('@deepseek-ai/dsh-session')).href)};import {apply} from ${JSON.stringify(pathToFileURL(hostRequire.resolve('@deepseek-ai/dsh-session-persistence-jsonl')).href)};const ctx=new Context();new SessionStore(ctx);await apply(ctx,{root:process.argv[2],compression:'none'});try{const lease=await ctx.get('sessionPersistence').acquireLease('probe',undefined,process.argv[1]);await lease.release();process.exitCode=9}catch(e){if(e.name!=='SessionAlreadyOwnedError')throw e}`;
+  const run = (script: string, filename: string) => new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script, filename, join(f.home, 'sessions')], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = ''; child.stderr.on('data', chunk => { stderr += String(chunk); }); child.on('error', reject);
+    child.on('exit', status => status === 0 ? resolve() : reject(new Error(`foreign native lock probe: ${status}: ${stderr}`)));
+  });
   try {
-    const lockPath = join(relocated, 'session.lock');
-    const flockPath = hostRequire.resolve('@deepseek-ai/node-addon-system/flock');
-    const script = `import {open} from 'node:fs/promises';import {tryLockExclusive} from ${JSON.stringify(pathToFileURL(flockPath).href)};const handle=await open(process.argv[1],'r+');try{await tryLockExclusive(handle.fd);process.exitCode=9}catch(e){if(e.code!=='EAGAIN'&&e.code!=='EWOULDBLOCK')throw e}finally{await handle.close()}`;
-    const run = (filename: string) => new Promise<number>((resolve, reject) => { const child = spawn(process.execPath, ['--input-type=module', '-e', script, filename], { stdio: ['ignore', 'ignore', 'pipe'] }); let stderr=''; child.stderr.on('data', chunk=>{stderr+=String(chunk)}); child.on('error', reject); child.on('exit', exit => exit === 0 ? resolve(exit) : reject(new Error(`foreign lock test: ${exit}: ${stderr}`))); });
-    await run(lockPath);
+    if (process.platform === 'win32') { await run(windowsProbe, source.toUpperCase()); await assert.rejects(access(join(source, 'session.lock')), { code: 'ENOENT' }); }
+    await rename(source, relocated);
+    if (process.platform === 'win32') {
+      // A native contender may mkdir its absent destination before the semaphore refuses it.
+      await run(windowsProbe, source); assert.deepEqual(await readdir(source), []); await rmdir(source);
+    } else await run(posixProbe, join(relocated, 'session.lock'));
     const second = await f.adapter.acquireLocated(group, [relocated]); assert.equal(second.kind, 'busy');
-    const pluginLease = await acquirePluginLease(join(f.home, 'archive-delete'));
-    try { await run(join(f.home, 'archive-delete', '.lock')); await assert.rejects(acquirePluginLease(join(f.home, 'archive-delete')), { code: 'store-busy' }); }
-    finally { await pluginLease.release(); }
+    const pluginLease = await acquirePluginLease(join(f.home, 'archive-delete'), getNativeLockExclusive(f.ctx), { lockNamed: getNativeWindowsLock(f.ctx) });
+    try {
+      if (process.platform !== 'win32') await run(posixProbe, join(f.home, 'archive-delete', '.lock'));
+      await assert.rejects(acquirePluginLease(join(f.home, 'archive-delete'), getNativeLockExclusive(f.ctx), { lockNamed: getNativeWindowsLock(f.ctx) }), { code: 'store-busy' });
+    } finally { await pluginLease.release(); }
   } finally { await held.lease.release(); }
-  const available = await f.adapter.acquireLocated(group, [relocated]); assert.equal(available.kind, 'acquired'); if (available.kind === 'acquired') await available.lease.release();
+  const available = await f.adapter.acquireLocated(group, [relocated]); assert.equal(available.kind, 'acquired'); if (available.kind !== 'acquired') return;
+  try {
+    if (process.platform === 'win32') { await run(windowsProbe, source); await run(windowsProbe, relocated); }
+  } finally { await available.lease.release(); }
 });
 
 test('stock rc.3: own loaded JSONL writer queues, cancellation persists, next startup replays once', async t => {
@@ -248,4 +262,23 @@ test('stock rc.3: startup rolls back a detached but uncommitted move under nativ
   for (const member of group.members) { assert.ok(await f.persistence.stat(member.id)); assert.ok(f.workspace.record.sessionIds.includes(member.id)); }
   assert.equal((await f.store.operations()).length, 0);
   await restarted.initialize(); assert.equal((await restarted.list()).archived.length, 1);
+});
+
+test('Windows: another process owns the plugin semaphore until process death', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  const adapterFile = new URL('../../src/dsh-adapter.ts', import.meta.url).href;
+  const script = `import {acquirePluginLease,getNativeLockExclusive,getNativeWindowsLock} from ${JSON.stringify(adapterFile)};const ctx={profileContext:{installAnchor:process.argv[2]}};await acquirePluginLease(process.argv[1],getNativeLockExclusive(ctx),{lockNamed:getNativeWindowsLock(ctx)});process.stdout.write('owned\\n');setInterval(()=>{},10000)`;
+  const child = spawn(process.execPath, ['--import', pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href, '--input-type=module', '-e', script, join(f.home, 'archive-delete'), join(runtimeRoot, 'node_modules/@deepseek-ai/dsh/package.json')], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = ''; child.stderr.on('data', chunk => { stderr += String(chunk); });
+  const exited = new Promise<void>(resolve => child.once('exit', () => resolve()));
+  t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); await exited; });
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`foreign semaphore owner did not start: ${stderr}`)), 15000);
+    child.stdout.once('data', () => { clearTimeout(timer); resolve(); }); child.once('error', error => { clearTimeout(timer); reject(error); });
+    child.once('exit', () => { clearTimeout(timer); reject(new Error(`foreign semaphore owner exited: ${stderr}`)); });
+  });
+  await assert.rejects(acquirePluginLease(join(f.home, 'archive-delete'), getNativeLockExclusive(f.ctx), { lockNamed: getNativeWindowsLock(f.ctx) }), { code: 'store-busy' });
+  child.kill('SIGKILL'); await exited;
+  const afterCrash = await acquirePluginLease(join(f.home, 'archive-delete'), getNativeLockExclusive(f.ctx), { lockNamed: getNativeWindowsLock(f.ctx) });
+  await afterCrash.release();
 });

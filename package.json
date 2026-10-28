@@ -1,6 +1,6 @@
 {
   "name": "@qwqbig/dsh-archive-delete",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Recoverable archived-session cleanup for DeepSeek Harness · DSH 归档会话回收站",
   "type": "module",
   "license": "Apache-2.0",
@@ -23,5 +23,6 @@
   },
   "dsh": { "manifestVersion": 1, "bundle": { "patch": "./cordis.patch.yml" }, "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-workspace", "@deepseek-ai/dsh-client-ui-sidebar", "@deepseek-ai/dsh-client-ui-renderer", "@deepseek-ai/dsh-api-workspace-controller"] } },
   "peerDependencies": { "@deepseek-ai/cordis": "4.0.5", "@deepseek-ai/dsh-app-boot": "0.2.1-rc.3", "@deepseek-ai/dsh-home-paths": "0.2.1-rc.3", "@deepseek-ai/node-addon-system": "0.1.2", "react": "^18.3.1" },
+  "peerDependenciesMeta": { "@deepseek-ai/cordis": { "optional": true }, "@deepseek-ai/dsh-app-boot": { "optional": true }, "@deepseek-ai/dsh-home-paths": { "optional": true }, "@deepseek-ai/node-addon-system": { "optional": true }, "react": { "optional": true } },
   "devDependencies": { "@types/node": "^24.0.0", "@types/react": "^18.3.0", "@types/react-dom": "^18.3.0", "esbuild": "^0.25.0", "react": "18.3.1", "react-dom": "18.3.1", "tsx": "^4.20.0", "typescript": "~5.9.3" }
 }

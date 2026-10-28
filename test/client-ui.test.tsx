@@ -27,6 +27,21 @@ test('English and Chinese dictionaries have identical keys and template fields',
   }
 });
 
+test('an incompatible host shows current version, required version and upgrade instructions in either language', () => {
+  const state: ClientState = { open: true, tab: 'archived', page: 0, overview: { ...overview, support: {
+    supported: false, version: '0.2.1-rc.2', platform: 'win32',
+    reason: 'DSH Desktop 0.2.1-rc.3 is required; the current runtime is 0.2.1-rc.2. Update DSH Desktop to the required version, then restart this plugin.',
+  } }, selected: [], loading: false, busy: false, preview: null, result: null, error: null, uncertainRequest: false };
+  for (const language of ['en', 'zh'] as const) {
+    const html = renderToStaticMarkup(<ArchiveDialogView state={state} controller={new ArchiveClientController(api)} primitives={primitives} t={translator(language)} />);
+    assert.match(html, /0\.2\.1-rc\.2/);
+    assert.match(html, /0\.2\.1-rc\.3/);
+    assert.ok(html.includes(language === 'en' ? 'Update DSH Desktop' : '请将 DSH 桌面端更新至'));
+    assert.ok(!html.includes('current runtime is'));
+    assert.match(html, /disabled=""/);
+  }
+});
+
 test('confirmation explains descendants, delayed movement, and retained data in both languages', () => {
   for (const language of ['en', 'zh'] as const) {
     const html = renderToStaticMarkup(<PreviewContent preview={preview} t={translator(language)} />);

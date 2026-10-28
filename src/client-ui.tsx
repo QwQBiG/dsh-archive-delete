@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useRef, useSyncExternalStore } from 'react';
-import type { Action, BatchResult, ItemStatus, Preview } from './contracts.js';
+import { SUPPORTED_DSH_VERSION, type Action, type BatchResult, type ItemStatus, type Preview, type SupportStatus } from './contracts.js';
 import { ArchiveClientController, canExecutePreview, pageCount, pageItems, selectableIds, visibleSelection, type ArchiveTab, type ClientError, type ClientState } from './client-state.js';
 
 export const CLIENT_NAMESPACE = 'qwqbig.archiveDelete';
@@ -51,8 +51,8 @@ export const en = {
   reasonPath: 'A storage path or file is unsafe or has changed. No overwrite is allowed.',
   reasonConflict: 'A restore destination already exists. It will not be overwritten.',
   reasonOverlap: 'These selections share a related conversation. Select each group once.',
-  reasonPlatform: 'This release supports macOS Desktop only.',
-  reasonVersion: 'This release is verified only with DSH 0.2.1-rc.3.',
+  reasonPlatform: 'This release supports macOS and Windows Desktop.',
+  reasonVersion: 'DSH Desktop {required} is required. Current version: {current}. Update DSH Desktop to {required}, then restart this plugin.',
   reasonBackend: 'The official JSONL storage backend is required.',
   reasonCapabilities: 'Required DSH services are unavailable or incompatible.',
   reasonInitialization: 'Archive storage could not be initialized. Check the host diagnostics and reload the plugin.',
@@ -108,8 +108,8 @@ export const zh: Record<TextKey, string> = {
   reasonPath: '存储路径或文件不安全，或已经变化，不会覆盖已有内容。',
   reasonConflict: '恢复位置已有内容，不会覆盖。',
   reasonOverlap: '所选目标包含同一个关联会话，请勿重复选择同组记录。',
-  reasonPlatform: '此版本仅支持 macOS 桌面端。',
-  reasonVersion: '此版本仅验证支持 DSH 0.2.1-rc.3。',
+  reasonPlatform: '此版本支持 macOS 和 Windows 桌面端。',
+  reasonVersion: '需要 DSH 桌面端 {required}，当前版本为 {current}。请将 DSH 桌面端更新至 {required}，然后重新启动此插件。',
   reasonBackend: '需要使用官方 JSONL 存储后端。',
   reasonCapabilities: '所需的 DSH 服务不可用或不兼容。',
   reasonInitialization: '回收站存储初始化失败，请检查宿主诊断后重新加载插件。',
@@ -138,10 +138,11 @@ export function localizeReason(code: string | undefined, message: string, t: Tra
   return key ? t(key) : message;
 }
 
-function supportReason(message: string | undefined, t: Translate): string {
+function supportReason(status: SupportStatus, t: Translate): string {
+  const message = status.reason;
   if (!message) return t('reasonCapabilities');
   if (message.startsWith('Only macOS')) return t('reasonPlatform');
-  if (message.startsWith('This release is verified only')) return t('reasonVersion');
+  if (message.startsWith('DSH Desktop ') && message.includes(' is required;')) return t('reasonVersion', { required: SUPPORTED_DSH_VERSION, current: status.version });
   if (message.includes('official JSONL')) return t('reasonBackend');
   if (message.includes('Another DSH process')) return t('reasonStoreBusy');
   if (message.startsWith('Archive storage could not be initialized')) return t('reasonInitialization');
@@ -275,7 +276,7 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
   return <Modal open={state.open} onClose={controller.close} title={preview ? t(actionTitle[preview.action]) : t('title')} description={preview ? t(actionDescription[preview.action]) : t('intro')} closeLabel={t('close')} className="dad-dialog" contentClassName="dad-content" footer={footer}>
     <div className="dad-shell">
       {state.error && <ErrorNotice error={uncertain ? { ...state.error, uncertain: true } : state.error} t={t} onRefresh={() => { void controller.refresh(); }} onRetry={() => { void controller.retryUncertain(); }} disabled={state.busy || state.loading} Button={Button} />}
-      {state.overview && !supported && <section className="dad-alert" role="status"><strong>{t('unsupported')}</strong><p>{supportReason(state.overview.support.reason, t)}</p><small>{t('supportDetails', { version: state.overview.support.version, platform: state.overview.support.platform })}</small></section>}
+      {state.overview && !supported && <section className="dad-alert" role="status"><strong>{t('unsupported')}</strong><p>{supportReason(state.overview.support, t)}</p><small>{t('supportDetails', { version: state.overview.support.version, platform: state.overview.support.platform })}</small></section>}
       {state.busy && <p className="dad-progress" role="status">{t('working')}</p>}
       {preview ? <PreviewContent preview={preview} t={t} /> : <>
         <div className="dad-toolbar">

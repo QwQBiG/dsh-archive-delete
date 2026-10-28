@@ -4,7 +4,9 @@
 
 直接在 DSH 桌面端，把已归档会话移入可恢复的回收站。需要时恢复；只有确认后，才永久清除选中的回收站记录。
 
-`@qwqbig/dsh-archive-delete` · [Apache-2.0](LICENSE) · **macOS Desktop · DSH `0.2.1-rc.3` · 官方 JSONL 存储**
+`@qwqbig/dsh-archive-delete` · [Apache-2.0](LICENSE) · **DSH Desktop `0.2.1-rc.3` · 官方 JSONL 存储**
+
+支持 **macOS 和 Windows**，两平台的原生宿主集成与安装验证均已通过；尚未目视验证 Windows Desktop 图形界面。详见 [验收记录](docs/acceptance.zh-CN.md)。
 
 ## 功能
 
@@ -21,7 +23,7 @@
 使用以下 GitHub 地址安装：
 
 ```text
-github:QwQBiG/dsh-archive-delete#v0.1.0
+github:QwQBiG/dsh-archive-delete#v0.1.1
 ```
 
 1. **安装：** 在 DSH 桌面端打开 **插件 → 添加插件**，输入地址并启用，按 DSH 提示重启。
@@ -30,7 +32,7 @@ github:QwQBiG/dsh-archive-delete#v0.1.0
 
 **待重启处理** 表示日志仍在原位置，尚未释放空间，可以在“已归档”选择 **取消待处理**。每页／每批最多 100 个目标，全选只作用于当前页；换页或切换页签会清空选择。
 
-命令行、本地安装包及卸载方式见 [安装使用指南](docs/installation.zh-CN.md)。
+插件管理器会同时安装包并注册 bundle。命令行安装后，重启 DSH 前应按 [安装使用指南](docs/installation.zh-CN.md) 检查 bundle 登记，缺失时再添加。安装包已包含宿主与浏览器产物，用户无需自行构建。
 
 ## 磁盘上的处理范围
 
@@ -38,11 +40,11 @@ github:QwQBiG/dsh-archive-delete#v0.1.0
 
 共享附件、spill、项目文件和其他插件缓存保持原样。**永久清除无法撤销：**它移除选中的回收站日志及恢复元数据，不承诺擦除所有本地或远端副本。
 
-超出支持目标时，版本及能力门禁会禁用数据操作。实际验证与限制见 [验收记录](docs/acceptance.zh-CN.md)。
+超出支持目标时，版本及能力门禁会禁用数据操作。版本不匹配会在启动时报告所需版本、当前版本和升级指引，管理弹窗中也能看到相同说明。实际验证与限制见 [验收记录](docs/acceptance.zh-CN.md)。
 
 ## 开发
 
-使用仓库声明的 Node 和 pnpm 版本；测试仅使用临时 profile 与合成会话。
+使用 **Node 24 或更新版本**及仓库固定的 pnpm 版本。五项 peer 依赖由宿主提供，在包管理元数据中标为可选，启动时仍会检查宿主能力。测试仅使用临时 profile 与合成会话。
 
 ```sh
 pnpm install --frozen-lockfile
