@@ -70,148 +70,36 @@ pnpm verify
 pnpm pack --pack-destination artifacts
 node scripts/release-artifacts.mjs artifacts
 node --import tsx scripts/check-update-package.mjs artifacts
-node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.1.6.tgz
+node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.0.1.tgz
 ```
 
 `verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
-## Verification status — 0.1.6
+## Verification record
 
-Date: 2026-10-29. Runtime/client commit: `e7c5d2ff41c815fef7066f21bbf110ed30eedee4`. The local macOS full verification passed 202 of 205 checks, with 3 Windows-only skips; native integration passed 19 of 20, with 1 Windows-only skip. Type/build, committed bundles, documentation/package checks, packed-updater admission and isolated installation/URL upgrade/reinstallation/removal passed using the installed official DSH `0.2.1-rc.3`, Node `24.21.0` and pnpm `11.28.5`.
+Release: `0.0.1`. Target: official DSH Desktop `0.2.1-rc.3`, default JSONL storage, Node `24.21.0` and pnpm `11.28.5`. Data mutations use isolated profiles and synthetic conversations; the primary Desktop profile is not a test fixture.
 
-| Platform | CI evidence | Unit/client/service/scanner/updater | Native integration |
-| --- | --- | --- | --- |
-| Windows | [Run 40876833948, job 123466401016](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40876833948/job/123466401016) | 202 passed, 3 POSIX-only skipped; 205 total | 20 passed; 20 total |
-| macOS | [Run 40876833948, retry job 123466398142](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40876833948/job/123466398142) | 202 passed, 3 Windows-only skipped; 205 total | 19 passed, 1 Windows-only skipped; 20 total |
+The retained runtime/client implementation at `e7c5d2ff41c815fef7066f21bbf110ed30eedee4` passed [CI run 40876833948](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40876833948): 202 of 205 checks passed on each platform, with 3 platform-specific skips. Native integration passed 20 of 20 on Windows and 19 of 20 on macOS, with 1 Windows-only skip. Both platforms passed type/build, committed-bundle comparison, package/docs checks, packing/checksums/update metadata, updater admission and isolated installation/URL replacement/reinstallation/removal.
 
-Both platform jobs passed all build/type, committed-bundle, documentation/package, packing, checksum/update-metadata, updater-admission and isolated package-lifecycle steps. The first macOS CI attempt was cancelled while waiting for a runner without executing a test; its completed retry is the macOS evidence linked above.
+The initial-release packaging uses that implementation with a new package version and consolidated documentation. Its package identity, updater metadata and installation lifecycle are verified separately; a version-only change does not imply a new graphical run.
 
-- The new native regression genuinely calls `agents.create`, rather than resuming persisted data. It proves that the live parent omits `delegationDepth` while JSONL supplies `0`, then moves the parent and dedicated child and purges them in one process. An independent fork's bytes and archive registration remain intact. Actual depth, working-directory, creation-time and seeded-state differences still refuse release.
-- Unit checks additionally protect explicit invalid depth, unknown fields, different session-object identity and key-order independence. UI checks cover compact status, optional details, escaped explicit update review, actionable errors/restart state, and the absence of update controls during archive confirmation.
-- Isolated macOS Desktop used an APFS clone of the installed app, separate home/profile/userData, current prebuilt code, a QA-only bootstrap calling `agents.create`, and no model calls. The copied shell inherited local modifications; QA changes gave it a unique window title and skipped only its empty-profile first-use page, retaining native gateway authentication. No real credentials/history or primary-profile mutation was used, and no app was downloaded.
-- The native details and management dialog showed the compact version/status/check/details strip. The move confirmation omitted it and showed the live synthetic session with **Try idle release**. Confirmed move displayed **1 succeeded, 0 pending, 0 failed**, with Archived 0 / Trash 1. After explicit permission for this disposable fixture, graphical permanent deletion displayed **Your trash is empty**, Trash 0 and **1 succeeded, 0 failed**. The host PID stayed the same across both operations; no DSH restart was used. Durable receipts recorded moved/purged outcomes, and project-file/shared-attachment marker SHA-256 values remained unchanged.
-- This is one isolated macOS graphical flow and separate official-runtime integration evidence. Windows Desktop GUI, arbitrary shell modifications, future DSH versions and physical power loss are not covered by it.
+For the `0.0.1` package, local full verification passed 202 of 205 checks with 3 Windows-only skips, and 19 of 20 native checks with 1 Windows-only skip. Build, docs, package identity, SHA-256/update metadata and updater admission passed. An isolated explicit replacement from a higher-numbered synthetic package to this package verified the installed version/source, one bundle registration, retained profile fields, unchanged trash/log bytes, responding owner API, Doctor and uninstall/reinstall. This is a manual replacement check, not a relaxation of forward-only automatic updates.
 
-## Historical verification — 0.1.5
+### Runtime coverage
 
-Status: release verification completed. Automated verification passed on both platforms, and the isolated macOS Desktop confirmation, activation and restart checks below completed.
+- True JSONL/registry move, archived restore and permanent deletion preserve native bookkeeping and original log bytes where recovery applies. Parent/subagent groups move together; independent forks, shared attachments and project files remain intact.
+- Genuine factory-created idle agents cover the host's omitted-live/default-zero delegation depth. Native lifecycle release, fresh fingerprints and normal write leases allow immediate move and purge; actual metadata changes, maintenance, queued input, active work, external writers and uncertain ownership remain protected.
+- Persistent operation/request journals cover interrupted moves/restores/purges, intent/result failures, duplicate requests, partial purge, startup replay and pending cancellation/drift. Unknown files, traversal, symlinks, junctions, cross-volume layouts and conflicting restore paths refuse safely.
+- Read-only storage scans use configured owners and explicit workspace IDs, deduplicate verified identities, remain bounded/cancellable, and disclose unavailable or partial results. They do not infer AI provenance or grant deletion authority over project files, shared attachments, spill or cache.
+- Update checks cover compatible stable selection, daily/manual/error caches, fixed sources, bounded downloads, pinned metadata, SHA-256, strict tar/package admission, explicit confirmation, per-profile receipts, native-manager failure and installation/restart reconciliation. Malicious paths/links, hooks and unexpected runtime dependencies are refused.
+- UI checks cover selection/page/tab/sort changes, review/cancel/confirm, late responses, localized results, compact version information, and absence of update controls during archive confirmation. Doctor and package lifecycle checks distinguish installed files, bundle registration and an actually responding owner API.
 
-### Completed CI and local verification
+### Desktop evidence
 
-Date: 2026-10-29. Both jobs in run `40856818666` passed on runtime/client commit `d1398658f3e040f11533aef4f0a210b36c45d0b5`, using official DSH `0.2.1-rc.3`, Node `24.21.0`, pnpm `11.28.5`, isolated runtimes and synthetic profiles.
+An APFS clone of the installed macOS app used separate home/profile/userData and known synthetic data. QA-only bootstrap/title/first-use visibility hooks kept the native gateway authentication; no real credentials/history or model calls were used and no app was downloaded. The copied shell inherited local modifications, so it is not pristine-shell evidence.
 
-| Platform | Completed CI evidence | Unit/client/service/scanner/updater | Native integration |
-| --- | --- | --- | --- |
-| macOS (macos-14) | [Run 40856818666, job 123389738323](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40856818666/job/123389738323) | 193 passed, 3 Windows-only skipped; 196 total | 17 passed, 1 Windows-only skipped; 18 total |
-| Windows (windows-latest) | [Run 40856818666, job 123389737770](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40856818666/job/123389737770) | 193 passed, 3 POSIX-only skipped; 196 total | 18 passed, 0 skipped; 18 total |
+The native management flow displayed compact version/status/check/details controls. A fresh factory-owned idle session preview showed the release attempt and no update controls. Confirmed move returned one success, no pending/failure and one trash entry. User-confirmed graphical permanent deletion returned an empty trash and one success. The host PID stayed the same across move and purge; project/shared-attachment markers remained byte-identical. Separate completed graphical checks covered restore and update review/cancel/confirmation/activation/full quit-and-reopen with retained synthetic-data hashes. These checks describe the retained implementation, rather than a fresh graphical run for each package metadata change.
 
-- Both jobs passed type/build checks, the committed `lib` comparison, documentation checks (7 pairs, 62 relative links), package validation, packing, SHA-256 and update-metadata generation, strict updater admission, and the isolated package lifecycle: installation, loopback-URL upgrade, reinstall and uninstall.
-- GitHub-source tests cover stable/compatible selection, bounded metadata-only discovery, fixed URLs/CDN redirects, changed confirmations, SHA-256, malicious tar/manifest content, dependency/hook refusal, size limits, cancellation, timeouts, rate limiting and offline errors. Source tests use synthetic HTTP responses. `check-update-package.mjs` also exercises discovery, pin revalidation, checksum and package admission against the actual generated assets through local response fixtures.
-- Update service/client checks cover daily/manual/error cache timing, per-profile journal isolation, confirmation and request identity, maintenance-gate draining, loaded-versus-installed versions, uncertain outcomes and disposal during replacement. A failed check does not become an up-to-date result, and opening/checking does not install a package.
-- Real native SDK manager integration replaced a persistent verified package only in its isolated profile and reported `restart-required` without HMR. A rejected bundle restored that profile's manifest and lockfile. These tests do not prove complete rollback after arbitrary new-code activation or successful graphical self-replacement.
-- Local macOS full verification passed 192 checks with 3 Windows-only skips out of 195 before the final UI error-message regression was added. A subsequent targeted UI run passed all 26 checks, including that regression; the final CI totals above include all 196. Local packing, metadata/updater admission and the isolated package lifecycle also passed, reusing the installed DSH runtime without downloading another app.
-- A separate read-only check against the public fixed GitHub release endpoint returned `current`. It downloaded no app or package and is not public-network installation timing evidence.
+### Limits
 
-### macOS Desktop graphical evidence and limits
-
-The installed app was reused through an APFS clone, with separate home/profile/userData and synthetic conversations/project files. The test shell inherited local changes and added isolation/diagnostic hooks and synthetic GitHub responses; this is not a pristine-shell or public-network upgrade claim. The host used its native UI, profile manager and HMR. No real profile/history was used and no second app was downloaded.
-
-The native **Plugin updates** card showed **Running 0.1.5**, a synthetic available `0.1.6`, its Release link, and **Review update**. Review displayed English/Chinese synthetic notes as plain text, the installation scope, and **Cancel / Confirm upgrade** controls. Cancellation left `0.1.5` installed, without an installation journal or `.tgz` download. After **Confirm upgrade**, the native manager saved the verified package in the private cache and registered that file as the profile dependency. The durable receipt reported `installed`.
-
-Reopening the details panel showed **v0.1.6**, **Running 0.1.6**, **The new version is installed and active**, and one running component. The management dialog opened with the one synthetic archived session. A full menu quit, process exit and reopen retained that active version and successful receipt. Synthetic session-log and project-file SHA-256 values matched their pre-upgrade baselines. The primary Desktop profile was not changed.
-
-The graphical fixture was built from `e408281f55dd4ee43099e9381b1ada3d1d9c3e8a`; the later unavailable-service message, Windows fixture invocation and resolved-uncertainty diagnostic fixes are covered by the final CI above. The synthetic `0.1.6` was never published. This one HMR success does not guarantee every future upgrade activates without restart or fully rolls back arbitrary activation failures. Windows Desktop GUI has not been visually tested. Earlier completed release records remain below.
-
-## Historical CI verification — 0.1.4
-
-Date: 2026-10-29. Both jobs in run 40845896781 passed on runtime commit f8a409a1967f2f252438128390e4307cca4f70ad, using official DSH 0.2.1-rc.3, Node 24.21.0, pnpm 11.28.5, isolated runtimes and synthetic profiles.
-
-| Platform | Completed CI evidence | Unit/client/service/scanner | Native integration |
-| --- | --- | --- | --- |
-| macOS (macos-14) | [Run 40845896781, job 123353173851](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40845896781/job/123353173851) | 152 passed, 3 Windows-only skipped; 155 total | 15 passed, 1 Windows-only skipped; 16 total |
-| Windows (windows-latest) | [Run 40845896781, job 123353173398](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40845896781/job/123353173398) | 152 passed, 3 POSIX-only skipped; 155 total | 16 passed, 0 skipped; 16 total |
-
-- Both jobs passed type/build checks, the committed lib comparison, documentation checks (7 pairs, 60 relative links), package validation, packing, SHA-256 verification and the isolated native package lifecycle: installation, local loopback-URL upgrade, reinstall and uninstall. The three Windows unit skips were Doctor's POSIX permission check, the scanner's POSIX unreadable-directory check and its POSIX canonical-alias exclusion check.
-- A new native integration check used actual LocalAttachmentStore, LocalSpillStore, the JSON backend, WorkspaceRegistry and SqliteSessionQueryEngine configured never to open its database. It loaded the plugin through applyPlugin and requested scans through the authenticated owner gateway; the in-memory search category remained unavailable and no query database was opened.
-- That native check counted three attachment hard-link paths once, separated attachment cache from other cache, excluded registered project directories from the DSH scan, and measured only the explicitly selected workspace: 35 bytes across two files. All reported file origins stayed unknown. Cancellation was followed by a successful rescan; a supplied path field returned 400 and a tool principal returned 403. Registry state, original session/attachment/spill bytes and unselected project data remained intact.
-- Scanner/provider regressions covered configured locations, exclusions, path/hard-link overlap, unknown and missing roots, entry/time/depth limits, cancellation, metadata changes and unsafe path refusal. Client checks covered explicit scan start, stale-response protection, localized refusal guidance, workspace-list refresh and sort-selection behavior. These are programmatic and rendered-markup checks, not a new Desktop graphical run.
-- Current-trash size and consent checks covered remaining log/temporary bytes, partial purges, missing-member journal admission, same-observation drift and restore/purge preview fingerprints. Native lifecycle and held-lease confirmation regressions continued to pass; no measured logical-byte value was treated as reclaimed physical space or broader deletion authority.
-- Local macOS verification also passed: 152 unit/client/service/scanner checks with 3 Windows-only skips, and 15 native checks with 1 Windows-only skip, plus packing and the isolated package lifecycle. It reused the installed official runtime without downloading another copy.
-- No new Desktop graphical evidence, public-network download timing or real-history data operation is claimed. Earlier completed release records remain below.
-
-## Historical CI verification — 0.1.3
-
-Date: 2026-10-29. Both jobs in run `40841619020` passed on runtime commit `b5c15ce87ae3b1b4a7c050646113d4dc56336378`, using official DSH `0.2.1-rc.3` JSONL persistence, Node `24.21.0`, pnpm `11.28.5`, isolated runtimes and synthetic profiles.
-
-| Platform | Completed CI evidence | Unit/client/service | Native integration |
-| --- | --- | --- | --- |
-| macOS | [Run 40841619020, job 123339102623](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40841619020/job/123339102623) | 109 passed, 3 Windows-only skipped; 112 total | 14 passed, 1 Windows-only skipped; 15 total |
-| Windows | [Run 40841619020, job 123339103108](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40841619020/job/123339103108) | 111 passed, 1 POSIX-only write-permission check skipped; 112 total | 15 passed, 0 skipped; 15 total |
-
-- Both platform jobs passed build/type checks, documentation and package checks, the committed `lib` comparison, packaging, SHA-256 verification and the extended native package lifecycle.
-- Restore and permanent purge recheck the confirmed trash fingerprint after obtaining the native lease, before mutation. Two added regressions change trash log bytes while the lease is being acquired; both reject the old confirmation and preserve the contents.
-- The three native managed-release tests passed on both platforms. A factory-managed parent and dedicated child released their actual lifecycle and writer ownership, moved to trash and were permanently purged through the same service/process. An independent fork's log bytes remained intact.
-- Admission checks refused maintenance, pending inbox input, a runtime-owned child outside the confirmed group, and an ambiguous lifecycle effect. Missing safe-release capability retains the pending fallback. The service rechecks content, archive state, members and write leases after teardown before moving.
-- Client regressions cover ending an old pending request, opening a fresh preview without executing it, close/cancel races, and uncertain cancellation handling. Existing trash was also moved and purged within one open client/service; a busy purge retained its logs and did not become a pending deletion.
-- Startup replay remains separate from fresh manual idle release. The completed checks do not add Desktop graphical verification, public-network performance claims or tests on real user history.
-- Local macOS checks also exercised the no-restart native lifecycle, packing and the extended package lifecycle. The final CI counts above include the two later lock-time consent-race regressions. Earlier completed release records remain below.
-
-## Historical CI verification — 0.1.2
-
-Date: 2026-10-29. Both jobs in run `40835348347` passed on the same runtime commit, `d2bb1257f2706742d851ca4712cfcd707ea187b5`, using official DSH `0.2.1-rc.3` JSONL persistence, Node `24.21.0`, pnpm `11.28.5`, isolated runtimes, and temporary synthetic profiles.
-
-| Platform | Completed CI evidence | Unit/client/service | Native integration |
-| --- | --- | --- | --- |
-| macOS | [Run 40835348347, job 123318710293](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40835348347/job/123318710293) | 89 passed, 3 Windows-only skipped; 92 total | 11 passed, 1 Windows-only skipped; 12 total |
-| Windows | [Run 40835348347, job 123318709939](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40835348347/job/123318709939) | 91 passed, 1 POSIX-only write-permission check skipped; 92 total | 12 passed, 0 skipped; 12 total |
-
-- Both platform jobs passed build/type checks, documentation and package checks, the committed `lib` comparison, packaging and SHA-256 verification, and the extended native package lifecycle.
-- Packed Doctor CLI checks passed for a structured JSON report and invalid-usage exit code 2. Reports retained `runtimeState: unverified`; offline prerequisites were not represented as live activation.
-- All three installation paths loaded the authenticated API. Fixed-URL upgrade checks used two distinct local HTTP asset URLs, replaced the dependency with `add` without first removing it, and preserved custom manifest fields, bundle entries, and the byte content of synthetic session logs already in trash. The upgraded installation also loaded its API.
-- Raw pnpm removal reproduced a stale bundle entry, followed by idempotent cleanup preserving other fields and trash. The tested Desktop CLI removed its entry automatically; manager reinstall/removal checks also preserved trash. These results document the tested invocation modes rather than assuming every host build behaves identically.
-- This is native runtime and package verification. It does not add a graphical Desktop run, a public GitHub download benchmark, or a network/proxy performance claim. The HTTP asset server is a local fixture.
-
-## Historical local verification — 0.1.2
-
-Date: 2026-10-29. The local macOS run used the existing DSH `0.2.1-rc.3` JSONL runtime, Node `24.21.0`, pnpm `11.28.5`, and temporary synthetic profiles. The corresponding completed CI matrix is recorded above; the previous release's matrix remains a separate historical record below.
-
-| Check | Completed local result |
-| --- | --- |
-| Unit/client/service | 89 passed; 3 Windows-only cases skipped |
-| Native integration | 11 passed; 1 Windows-only case skipped |
-| Packed Doctor CLI | Structured JSON report passed; an invalid invocation returned usage exit code 2 |
-| Installation lifecycle | Three installation paths loaded the authenticated native API; manager reinstall/removal retained trash |
-| Fixed-URL upgrade | Two distinct local HTTP asset URLs replaced the dependency in place with `add`, without first removing it |
-| Registration and uninstall | Raw pnpm removal left the selected bundle; explicit cleanup was idempotent. This local Desktop CLI cleaned its entry automatically |
-
-- The expanded lifecycle fixture uses a local HTTP server to model versioned Release asset URLs. It verifies the dependency source/version changes while custom manifest fields, existing bundles, and the byte content of synthetic session logs already moved into trash remain intact. It does not claim a public GitHub download or network/proxy benchmark.
-- The actual Desktop CLI launcher, direct dependency-only installation followed by manual registration, and the native manager remain separate checks. Their packed plugin copies reached the authenticated API. Reinstall and removal checks preserved synthetic trash, and manual bundle edits preserved unrelated profile fields.
-- Doctor checks run against the packed executable and synthetic profile. JSON output retains `runtimeState: unverified`; the report does not claim live activation. The usage-error check is distinct from a failed/incomplete diagnostic report.
-- The new local results do not rerun the historical macOS graphical interaction checks or visually exercise Windows Desktop. No real user sessions or primary profile were used.
-
-## Historical CI verification — 0.1.1
-
-Date: 2026-10-28. Target: official DSH `0.2.1-rc.3`, JSONL backend, Node `24.21.0`, and pnpm `11.28.5`. CI uses a fresh isolated official runtime and temporary synthetic profiles. Both platform jobs below passed on the same verified commit, `7e434b4`, in the same matrix run. The `0.1.1` release retained that runtime unchanged; only package-version and documentation metadata were updated afterward.
-
-| Platform | Completed CI evidence | Unit/client/service | Native integration |
-| --- | --- | --- | --- |
-| macOS | [Run 40697905681, job 122849499014](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40697905681/job/122849499014) | 78 passed, 3 Windows-only skipped | 10 passed, 1 Windows-only skipped |
-| Windows | [Run 40697905681, job 122849499350](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40697905681/job/122849499350) | 81 passed, 0 skipped | 11 passed, 0 skipped |
-
-- Both completed jobs passed build/type checks, documentation and package checks, a clean diff of committed `lib` artifacts, `pnpm pack`, and the native package lifecycle check.
-- Native integration uses real Cordis, JSONL persistence, storage domains, workspace registration, projection cache, Connection gateway, and platform-compatible native leases. It verifies move/restore/purge, durable official titles after cache-domain reopen, readable independent forks after parent/subagent trash, owner admission, external/native leases, pending cancellation/replay, Agent waiting-state admission, default zstd byte preservation, live runtime-version admission, partial-purge retry, and interrupted-move rollback. Agent waiting status uses a controlled boundary fixture.
-- Windows exercised actual host-compatible kernel semaphores, foreign-process ownership, release after the owner process exits, and contention at both original and relocated session paths. Native Windows filesystem checks exercised junction/file-symlink refusal, canonical storage identity, and case aliases. Lexical checks reject UNC/device paths, reserved names, and ambiguous aliases; drive-type admission rejects remote and unknown media.
-- Request-journal tests cover persisted intent, per-target results, duplicate/conflicting requests, restart, completion redaction, crash-left temporaries, cancellation, early oversized-intent refusal, and reserved capacity for all 100 worst-escaped outcomes. Recovery regressions include result-write failure after committed move/restore/purge, missing-manifest cleanup, empty staging, partial purge, changed trash previews, invalid commit proof, post-crash writers, original pending-receipt updates, mismatched identities/paths, and oversized-queue refusal without source changes.
-- On each platform, package verification exercised **three installation paths**: the actual Desktop CLI launcher with a bundle check; direct pnpm installation without activation followed by explicit registration; and the native plugin manager with automatic registration. Each installed copy loaded through normal module resolution and a real authenticated API returned `supported: true`. No peer overrides or resolution hooks supplied the plugin's dependencies. The tested Desktop CLI registered automatically; the direct pnpm path did not, and applying the documented repair twice preserved other settings without duplicate bundles.
-- The additional manager reinstall/remove steps exited successfully in `normal-offline-cache` mode. A synthetic trash marker stayed byte-identical, and removal cleared the dependency and bundle registration. Installations used precompiled artifacts with dependency scripts disabled; no missing-peer warnings were reported.
-- Unsupported-version tests verify startup diagnostics, the visible required/current versions and upgrade instruction, and refusal of data operations. Documentation checks verify relative link targets and matching command/version references.
-
-## Historical macOS Desktop GUI evidence — 0.1.0
-
-An isolated copy of the installed Electron app, using a separate synthetic home/profile, rendered the plugin details button and native management dialog. Selecting one parent previewed two group members; confirmed move reported one success and one trash entry, then confirmed restore reported one success with the archive list restored and trash empty. Select-all and clearing selection on page/tab changes were checked. The polished native **Move to trash** menu opened its preview, and a host-held fork showed **Pending restart**. The card layout, compact badges, and result details were visually inspected; screenshots matched accessibility state. The completed/title-free move and restore receipts and the restored synthetic parent log were independently checked.
-
-## Verification limits
-
-Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; graphical purge completed in 0.1.6 as recorded above. Graphical cancel-pending clicks remain unverified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been visually exercised; its native integration and package checks above passed. The historical macOS GUI checks were not rerun for `0.1.1`, `0.1.2` or `0.1.3`. No new Desktop graphical storage-overview run was performed for `0.1.4`. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.
-
-For `0.1.5`, the isolated macOS graphical updater completed review, cancellation, confirmation, activation and full quit/reopen with retained synthetic-data hashes, as recorded above. Its fixture response and shell modifications remain separate from the official native SDK and package-admission checks.
+Windows Desktop GUI, physical cross-volume moves and whole-machine power loss were not visually/physically exercised. Native Windows integration, layout rejection and synthetic/process-level recovery checks are separate evidence. Graphical cancel-pending remains unverified. One successful HMR update does not guarantee every future upgrade activates without restart or fully rolls back arbitrary activation failures. Compatibility is limited to the stated host/storage/OS capabilities.

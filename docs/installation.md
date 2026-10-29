@@ -13,26 +13,26 @@ Move archived conversations to trash, restore them, or permanently clear selecte
 Open **Plugins → Add plugin** and paste the versioned Release package URL:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.1/qwqbig-dsh-archive-delete-0.0.1.tgz
 ```
 
 1. **Add and enable.** The native manager installs the dependency and registers its bundle in the current profile. Fully quit and reopen DSH when it requests a restart.
 2. **Choose archived conversations.** Archive with DSH's original action first. Choose **Move to trash** in the conversation menu, or plugin details → **Manage archives, trash and storage** for a batch.
 3. **Review and confirm.** Check targets and dedicated subagents, then confirm. Results distinguish **Moved to trash**, **Pending restart**, **Skipped**, and **Failed**. Resolve the stated reason before retrying a specific failed target.
 
-Release `.tgz` assets contain only the package's declared installable files, including precompiled `lib/` artifacts. Repository archives from `codeload` contain source, tests, lockfiles, and CI configuration as well; they are not the recommended install package. No source build, dependency `prepare`, or installation hook is needed. These versions are not published to npm.
+Release `.tgz` assets contain only the package's declared installable files, including precompiled `lib/` artifacts. Repository archives from `codeload` contain source, tests, lockfiles, and CI configuration as well; they are not the recommended install package. No source build, dependency `prepare`, or installation hook is needed. The plugin is distributed through GitHub Releases, not npm.
 
-For a downloaded package, retain its matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz.sha256). With both files in the same directory, check on macOS:
+For a downloaded package, retain its matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.1/qwqbig-dsh-archive-delete-0.0.1.tgz.sha256). With both files in the same directory, check on macOS:
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.6.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.1.tgz.sha256
 ```
 
 In Windows PowerShell, compare the reported hash with the checksum file:
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.1.6.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.1.6.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.0.1.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.0.1.tgz.sha256
 ```
 
 A fixed version URL identifies the chosen release; the checksum checks the downloaded file. No fixed byte-size claim is made across releases.
@@ -92,7 +92,7 @@ CLI installation is intended for managed or unattended setups where the caller c
 With a Desktop-enabled DSH CLI:
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.1/qwqbig-dsh-archive-delete-0.0.1.tgz
 ```
 
 A successful package-manager exit alone does not prove activation. A manager-enabled CLI can register bundles automatically, while an installation-only path can leave them absent. If the standalone CLI rejects the reserved `desktop` profile, use Desktop's manager rather than selecting a different profile.
@@ -117,7 +117,7 @@ A successful package-manager exit alone does not prove activation. A manager-ena
 Start the actual target host and check the plugin component is running, its details contain **Manage archives, trash and storage**, and the dialog responds. After successful recovery and authenticated API registration, the current startup emits a line like:
 
 ```text
-[archive-delete] v0.1.5 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.0.1 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
 Use a fresh line from the current process and check its version/path. It is not emitted for disabled or failed startup. A configuration dump such as `--dump-config` may succeed even with an unresolved bundle; it does not prove startup or activation.
@@ -162,11 +162,11 @@ Use the actual home/profile when customized. `--runtime` is optional when the ho
 
 ## Updates in the plugin
 
-An installation older than `0.1.5` needs one manual upgrade using the Release URL above; it does not yet contain the update controls. From `0.1.5`, open **Plugin updates** in plugin details or the management dialog.
+Update controls are included in the plugin details and management dialog. A compact row shows the running version and current update status, with **Check** and, when available, **Review update**. Expand **Details** for version information, the last check and release details. The update row is hidden while a move-to-trash, restore or permanent-delete confirmation is open.
 
 ### Check and confirm
 
-Automatic checking starts only on supported DSH Desktop `0.2.1-rc.3`, with a verifiable profile-owned installation and the supported native manager. On an unsupported host, the existing compatibility gate remains in force; this updater is not a self-upgrade path on future DSH versions. While DSH is running, successful checks are cached for 24 hours. **Check for updates** requests a fresh check after a minimum interval of one minute; earlier clicks use the recorded result. A network, rate-limit or metadata failure remains an error, with an automatic retry after one hour. It does not establish that the installed version is up to date. No check downloads the full package or installs anything.
+Automatic checking starts only on supported DSH Desktop `0.2.1-rc.3`, with a verifiable profile-owned installation and the supported native manager. On an unsupported host, the existing compatibility gate remains in force; this updater is not a self-upgrade path on future DSH versions. While DSH is running, successful checks are cached for 24 hours. **Check** requests a fresh check after a minimum interval of one minute; earlier clicks use the recorded result. A network, rate-limit or metadata failure remains an error, with an automatic retry after one hour. It does not establish that the installed version is up to date. No check downloads the full package or installs anything.
 
 Only stable releases from `QwQBiG/dsh-archive-delete` are considered, with the exact required DSH version and a compatible macOS/Windows declaration. Choose **Review update** to read the version and plain-text notes, then **Confirm upgrade** to install. A changed release requires a fresh check and review. The browser supplies a candidate ID and request ID, never a URL or package path.
 
@@ -215,7 +215,7 @@ Removal retains `<DSH_HOME>/archive-delete/`, including trash, pending/recovery 
 | `skipping profile bundle … cannot resolve` | Bundle selected but its package is absent/unresolvable | In that profile, reinstall the intended dependency or remove only the stale bundle entry after uninstall. Then actually start DSH. |
 | Package present, no management button | Wrong profile, missing registration, or startup failure | Check the real profile, bundle array, startup diagnostics, and component state. A configuration dump or package directory alone is insufficient. |
 | Unsupported host/version | Runtime admission failed | Read required/current versions in diagnostics and the management dialog. Use Desktop `0.2.1-rc.3` with the supported storage/capabilities. `engines.dsh` is descriptive, not a pnpm install gate. |
-| Missing peer warnings from an older install | Old package metadata or missing runtime capabilities | Current host peers are optional. Check the installed plugin version and runtime diagnostics; do not install a second Cordis/React/native stack into the profile. |
+| Host peer warnings | Package metadata or runtime capabilities need checking | Release packages mark host-provided peers as optional. Check the installed package and runtime diagnostics; do not install a second Cordis/React/native stack into the profile. |
 | `exec: : not found` from the internal Node wrapper | Missing Desktop launch environment | Use the installed DSH command or native manager. Development/diagnostics need a real Node 24+ executable; see [Contributing](../CONTRIBUTING.md). |
 | Update check fails or is rate-limited | GitHub/network request did not complete | Keep the installed version, inspect the diagnostic, and check again later; errors do not mean “up to date.” Automatic retry is after one hour. |
 | Release or package verification fails | Changed metadata, checksum, compatibility or archive | Check again and review the current compatible release. Do not install an unverified file or bypass the confirmation. |
@@ -240,7 +240,7 @@ With DSH's CLI installed, create a fresh test home and install into its isolated
 
 ```sh
 DSH_ARCHIVE_DELETE_TEST_HOME="$(mktemp -d)"
-DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/artifacts/qwqbig-dsh-archive-delete-0.1.6.tgz"
+DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/artifacts/qwqbig-dsh-archive-delete-0.0.1.tgz"
 ```
 
 Verify the isolated profile's registration and activation as above. On Windows, use the automated isolated package lifecycle check in [Contributing](../CONTRIBUTING.md). Keep the temporary home path if launching that host manually. A packed artifact keeps development dependencies out of the runtime; primary history is not a fixture.

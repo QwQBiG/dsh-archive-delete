@@ -42,7 +42,7 @@ pnpm test:integration
 打包后，使用 Node 24 或更新版本，在另一个全新临时 home 中验证包管理生命周期：
 
 ```sh
-node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.1.6.tgz
+node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.0.1.tgz
 ```
 
 此脚本复用选定的官方运行时和可用包管理器。包安装／重装／卸载检查使用离线缓存；单独的固定 URL 升级夹具通过本地 HTTP 提供安装包，不连接 GitHub 或公共包源。脚本通过普通模块解析加载打包后的宿主部分，并核对合成回收站内容保留。管理器会注册 bundle，CLI 启用行为取决于宿主构建及调用模式。仅安装依赖的调用仍可能遗漏登记，应核对清单，不能把依赖存在当作已启用；测试和报告中应区分这两条安装路径，手动使用命令行时按 [CLI 注册说明](docs/installation.zh-CN.md) 操作。评估结果时应核对报告的安装模式与诊断；不会安装到当前 Desktop profile。
@@ -57,7 +57,7 @@ node scripts/release-artifacts.mjs artifacts
 node --import tsx scripts/check-update-package.mjs artifacts
 ```
 
-产物脚本保留既有 `.tgz.sha256` 格式，并根据实际安装包字节生成对应 `.update.json`。元数据声明固定包名、稳定版本、精确 DSH 版本要求、支持平台，以及安装包名称／字节数／SHA-256。三个资产必须属于同一个 tag 的发行版。本地打包及 CI 都必须在生成元数据后、生命周期安装前通过 `check-update-package.mjs`；它用本地响应夹具调用实际来源模块，验证发行发现、固定身份、校验和及归档准入。更新器自动读取发行元数据，只有明确确认后才下载 `.tgz`；元数据或归档准入本身都不能证明插件能成功启用。
+产物脚本写入 `.tgz.sha256` 校验文件，并根据实际安装包字节生成对应 `.update.json`。元数据声明固定包名、稳定版本、精确 DSH 版本要求、支持平台，以及安装包名称／字节数／SHA-256。三个资产必须属于同一个 tag 的发行版。本地打包及 CI 都必须在生成元数据后、生命周期安装前通过 `check-update-package.mjs`；它用本地响应夹具调用实际来源模块，验证发行发现、固定身份、校验和及归档准入。更新器自动读取发行元数据，只有明确确认后才下载 `.tgz`；元数据或归档准入本身都不能证明插件能成功启用。
 
 更新测试使用合成发行版、受控 HTTP 响应和隔离的原生管理器 profile。复用已安装 DSH 运行时，不向真实 profile 安装更新，单元测试不访问 GitHub。覆盖稳定版本／宿主／平台选择、响应与归档上限、重定向、发行 pin 变化、校验和、不安全 tar 条目、安装钩子／依赖、缓存时机、同请求重试，以及归档队列排空。原生集成须证明只替换当前 profile 中的同名 bundle、保留精确安装包引用，并正确区分已安装与正在运行的版本。原生拒绝测试验证清单／锁文件回滚，但不能据此承诺任意启用或热重载失败后的完整回滚。
 

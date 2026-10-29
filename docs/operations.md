@@ -85,7 +85,7 @@ The maintenance gate stops accepting new archive mutations and drains accepted w
 
 Disposal aborts update checks but does not cancel or await a native installation already delegated to the host. Self-replacement can unload the old plugin while the native job is running; awaiting that job from its disposer would deadlock the reload. The host job settles its own result, and startup reconciles the saved request with the installed package. Lost responses are not success proof; use status reconciliation or the same request ID rather than launching another install. If the result remains unknown, fully quit and reopen DSH to reconcile before proceeding.
 
-Native package-manager failure tests cover manifest and lockfile rollback. Activation of new code is a later boundary and cannot guarantee complete runtime rollback. Keep the journals and verified package, inspect diagnostics, and follow restart guidance when running/installed versions differ. An old installation before `0.1.5` must first use the manual Release URL to obtain this updater; distribution remains GitHub-only.
+Native package-manager failure tests cover manifest and lockfile rollback. Activation of new code is a later boundary and cannot guarantee complete runtime rollback. Keep the journals and verified package, inspect diagnostics, and follow restart guidance when running/installed versions differ. Installation and manual replacement use the fixed Release asset URL; distribution remains GitHub-only.
 
 ## Recovery expectations
 
