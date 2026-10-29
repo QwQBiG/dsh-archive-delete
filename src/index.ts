@@ -1,8 +1,10 @@
-import { ArchiveError, PACKAGE_NAME, type ArchiveApi, type DshAdapter, type Lease, type SupportStatus } from './contracts.js';
+import { join } from 'node:path';
+import { ArchiveError, PACKAGE_NAME, SUPPORTED_DSH_VERSION, type ArchiveApi, type DshAdapter, type Lease, type SupportStatus } from './contracts.js';
 import { acquirePluginLease, createDshAdapter, getHostPaths, getNativeLockExclusive, getNativeWindowsLock, type HostContext } from './dsh-adapter.js';
 import { registerHostRoutes } from './host-routes.js';
 import { ArchiveService } from './service.js';
 import { TrashStore } from './storage.js';
+import { PLUGIN_VERSION } from './version.js';
 
 export const name = 'dsh-archive-delete';
 export const inject = ['connection', 'workspaceRegistry', 'sessionPersistence', 'sessions', 'sessionProjectionCache', 'sessionProjections', 'profileContext', 'dshHomePath'];
@@ -16,6 +18,7 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
   let api: ArchiveApi;
   let lease: Lease | undefined;
   let archive: ArchiveService | undefined;
+  let loaded: { version: string; trash: string } | undefined;
   try {
     const adapter: DshAdapter = await createDshAdapter(ctx);
     const support = await adapter.capabilities();
@@ -31,6 +34,7 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
       archive = new ArchiveService(adapter, store);
       await archive.initialize();
       api = archive;
+      loaded = { version: support.version, trash: join(paths.root, 'trash') };
     }
   } catch (error) {
     await archive?.close();
@@ -42,6 +46,10 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
   }
   try {
     const unmount = registerHostRoutes(ctx, api);
+    // A diagnostic exporter failure must not tear down an admitted API route.
+    try {
+      if (loaded) ctx.logger?.info?.(`[archive-delete] v${PLUGIN_VERSION} loaded · target DSH ${SUPPORTED_DSH_VERSION} (host ${loaded.version}) · trash ${JSON.stringify(loaded.trash)}`);
+    } catch { /* The host owns its logging transport. */ }
     return async () => { unmount(); await archive?.close(); await lease?.release(); };
   }
   catch (error) {

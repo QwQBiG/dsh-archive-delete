@@ -53,7 +53,7 @@ export interface HostContext {
   get?(name: string): unknown;
   waterfall?(event: string, request: { sessionId: string }, next: () => Promise<unknown[]>): Promise<unknown[]>;
   emit?(event: string, ...args: unknown[]): unknown;
-  logger?: { warn(message: string): void };
+  logger?: { warn(message: string): void; info?(message: string): void };
   [key: string]: unknown;
 }
 export interface HostPaths { home: string; sessionsRoot: string; root: string }

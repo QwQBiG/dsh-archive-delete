@@ -40,10 +40,16 @@ pnpm test:integration
 After packing, use Node 24 or newer to exercise the package manager lifecycle in another new temporary home:
 
 ```sh
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.1.tgz
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.2.tgz
 ```
 
-This uses the selected official runtime and available package manager in offline mode, loads the packed host through normal module resolution, and records install/reinstall/remove results plus synthetic trash-marker retention. The manager registers bundles; CLI activation behavior depends on the host build and invocation mode. An installation-only invocation can leave bundle registration absent; verify the manifest instead of treating dependency presence as activation. Keep these installation paths separate in tests and reports, and follow the [CLI registration instructions](docs/installation.md) for manual CLI use. Read the reported installation mode and diagnostics when evaluating the result. It does not install into the current Desktop profile.
+This reuses the selected official runtime and available package manager. Package install/reinstall/remove checks use offline cache; a separate fixed-URL upgrade fixture serves tarballs on local HTTP without contacting GitHub or a public registry. It loads the packed host through normal module resolution and checks synthetic trash retention. The manager registers bundles; CLI activation behavior depends on the host build and invocation mode. An installation-only invocation can leave bundle registration absent; verify the manifest instead of treating dependency presence as activation. Keep these installation paths separate in tests and reports, and follow the [CLI registration instructions](docs/installation.md) for manual CLI use. Read the reported installation mode and diagnostics when evaluating the result. It does not install into the current Desktop profile.
+
+## Release package and diagnostics
+
+Distribute the generated `.tgz` as a versioned GitHub Release asset, alongside its SHA-256 checksum. The primary user-facing address must point to that package rather than a repository archive. Check the packed file list against the package allowlist, including the host, browser and doctor artifacts. Exclude source, tests, lockfiles and CI files. A new version gets a new URL; do not replace published assets or retarget a published tag.
+
+Use the [doctor instructions](docs/installation.md) with the same isolated home/profile used by the test host. The doctor must remain read-only, report warnings for prerequisites it cannot establish, and never equate a configuration dump or stored directory with a running plugin. Changes to startup logging must prove that failed recovery or API registration cannot print a loaded signal. Package lifecycle checks must cover an explicit new dependency source, registration without duplicates, uninstall bundle cleanup, and retained trash.
 
 ## Changes that need regression evidence
 

@@ -62,6 +62,14 @@ Cordis, app boot, home paths, native system bindings, and React come from the ho
 
 Every access to an internal DSH shape belongs in the adapter. A future host change should require one explicit adapter update and real compatibility evidence, not a widened version range alone.
 
+## Distribution and diagnostics
+
+The primary installation source is a versioned GitHub Release `.tgz` built from the package file allowlist, with a matching SHA-256 file. Users explicitly add a new release URL to upgrade the same package name; the plugin does not add an updater, postinstall registration hook, or automatic profile editor. The native manager is preferred. Installation-only CLI paths require manifest registration checks, and removal requires cleaning this bundle's exact stale entry if the host leaves it behind.
+
+A successful startup reports the plugin version, supported/current host versions, and resolved trash directory only after recovery and authenticated API registration. Disabled or failed startup retains its diagnostic instead of a false loaded line. This signal belongs to the current process; old directories and configuration dumps are insufficient activation evidence.
+
+The separate packaged doctor is an offline read-only diagnostic boundary. It inspects the selected profile/package metadata, host package version, and existing storage access without opening session logs, creating directories, editing bundles, or performing repair. An offline pass checks prerequisites; the live management API and current loaded log demonstrate actual activation.
+
 ## Scope decisions
 
 - No automatic trash expiry, background cleanup timer, or agent deletion tool.

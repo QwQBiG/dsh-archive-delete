@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,9 @@ await mkdir(stage);
 try {
   await build({ entryPoints: [resolve(root, 'src/index.ts')], outfile: join(stage, 'index.js'),
     bundle: true, platform: 'node', format: 'esm', target: 'node24', packages: 'external', legalComments: 'inline' });
+  await build({ entryPoints: [resolve(root, 'src/doctor-cli.ts')], outfile: join(stage, 'doctor.js'),
+    bundle: true, platform: 'node', format: 'esm', target: 'node24', packages: 'external', legalComments: 'inline' });
+  await chmod(join(stage, 'doctor.js'), 0o755);
   const client = await build({ entryPoints: [resolve(root, 'src/client.tsx')], bundle: true,
     format: 'cjs', platform: 'browser', target: 'es2022', write: false,
     external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*'],

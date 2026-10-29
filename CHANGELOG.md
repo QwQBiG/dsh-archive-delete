@@ -2,6 +2,14 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
+## 0.1.2 — 2026-10-29
+
+- Recommend versioned GitHub Release `.tgz` assets and matching SHA-256 checksums; exclude repository-only files from the installed package.
+- Explain fixed-URL upgrades by adding the new asset URL, profile-specific activation, full process restart, and verification/cleanup of stale bundle entries after CLI removal.
+- Add an installation error table that distinguishes blocked builds, malformed profile YAML, missing dependencies/bundles, unsupported hosts, and Node wrapper failures.
+- Add a read-only doctor for profile registration, installed artifacts, host version, and existing storage access; keep diagnosis separate from live activation proof or repair.
+- Emit a versioned loaded log only after recovery and authenticated API registration succeed.
+
 ## 0.1.1 — 2026-10-28
 
 - Support Windows Desktop with native path and lease handling for local-drive JSONL storage, reserving original and relocated lock identities together.

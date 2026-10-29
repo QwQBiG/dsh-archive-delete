@@ -91,13 +91,15 @@ test('startup reports the required and current version before creating storage a
     const anchor = join(f.home, 'runtime-package.json');
     await writeFile(anchor, JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.2.1-rc.2' }));
     const warnings: string[] = [];
+    const info: string[] = [];
     let handler: ((request: Request) => Promise<Response>) | undefined;
     let unmounted = false;
     const close = await apply({ ...f.ctx, profileContext: { installAnchor: anchor }, dshHomePath: () => f.home,
-      logger: { warn: message => warnings.push(message) },
+      logger: { warn: message => warnings.push(message), info: message => info.push(message) },
       connection: { fetch: { register: (route: { fetch: (request: Request) => Promise<Response> }) => { handler = route.fetch; return () => { unmounted = true; }; } } },
     });
     assert.equal(warnings.length, 1);
+    assert.deepEqual(info, []);
     assert.match(warnings[0]!, /0\.2\.1-rc\.3.*0\.2\.1-rc\.2.*Update DSH Desktop/);
     await assert.rejects(access(join(f.home, 'archive-delete')), { code: 'ENOENT' });
     assert.ok(handler);

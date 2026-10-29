@@ -20,19 +20,21 @@ Trash never expires automatically. Removing the plugin keeps the trash.
 
 ## Install and use in three steps
 
-Install from GitHub with this address:
+In DSH Desktop, use **Plugins → Add plugin** with the versioned Release package:
 
 ```text
-github:QwQBiG/dsh-archive-delete#v0.1.1
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh-archive-delete-0.1.2.tgz
 ```
 
-1. **Install:** in DSH Desktop, open **Plugins → Add plugin**, enter the address, and enable it. Follow DSH's restart prompt.
+1. **Install:** enter the address above and enable the plugin. When asked to restart, fully quit DSH and open it again: **⌘Q / Quit** on macOS, or the app's **Exit/Quit** command on Windows. Closing a window alone can leave the process running.
 2. **Choose:** archive a conversation with DSH, then choose **Move to trash** in its native menu. For a batch, open the plugin details and **Manage archives and trash**.
 3. **Review:** check the targets and subagents, then confirm. Use **Trash** to restore selected groups or review **Delete permanently**.
 
 **Pending restart** means the original logs are still in place; no space has been freed yet. Use **Cancel pending move** in Archived to withdraw the request. Each page/batch holds up to 100 targets; select-all applies to that page. Changing pages or tabs clears selection.
 
-The plugin manager installs the package and registers its bundle. After CLI installation, verify bundle registration and add it if missing, following [installation and usage](docs/installation.md), before restarting DSH. Both host and browser artifacts are included; users do not need to build the plugin.
+The Release package contains the declared installable files and precompiled host/browser artifacts; it excludes source, tests, lockfiles, and CI configuration. Its [SHA-256 checksum](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh-archive-delete-0.1.2.tgz.sha256) is provided alongside it. Users do not need Git or a source build.
+
+The plugin manager installs the package and registers its bundle in the active profile. CLI installation is an alternative for managed or unattended setups and requires checking registration. To upgrade a fixed URL, add the newer release's URL again; `pnpm update` does not track new Release assets. [Installation and usage](docs/installation.md) covers upgrades, CLI bundle cleanup on uninstall, profile scope, full restart, troubleshooting, and the read-only Doctor for configuration and access checks.
 
 ## What changes on disk
 

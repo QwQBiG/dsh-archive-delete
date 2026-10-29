@@ -40,10 +40,16 @@ pnpm test:integration
 打包后，使用 Node 24 或更新版本，在另一个全新临时 home 中验证包管理生命周期：
 
 ```sh
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.1.tgz
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.2.tgz
 ```
 
-此脚本离线使用选定的官方运行时和可用包管理器，通过普通模块解析加载打包后的宿主部分，记录安装／重装／卸载结果及合成回收站标记保留情况。管理器会注册 bundle，CLI 启用行为取决于宿主构建及调用模式。仅安装依赖的调用仍可能遗漏登记，应核对清单，不能把依赖存在当作已启用；测试和报告中应区分这两条安装路径，手动使用命令行时按 [CLI 注册说明](docs/installation.zh-CN.md) 操作。评估结果时应核对报告的安装模式与诊断；不会安装到当前 Desktop profile。
+此脚本复用选定的官方运行时和可用包管理器。包安装／重装／卸载检查使用离线缓存；单独的固定 URL 升级夹具通过本地 HTTP 提供安装包，不连接 GitHub 或公共包源。脚本通过普通模块解析加载打包后的宿主部分，并核对合成回收站内容保留。管理器会注册 bundle，CLI 启用行为取决于宿主构建及调用模式。仅安装依赖的调用仍可能遗漏登记，应核对清单，不能把依赖存在当作已启用；测试和报告中应区分这两条安装路径，手动使用命令行时按 [CLI 注册说明](docs/installation.zh-CN.md) 操作。评估结果时应核对报告的安装模式与诊断；不会安装到当前 Desktop profile。
+
+## 发行包与诊断
+
+将生成的 `.tgz` 作为固定版本 GitHub Release 资产发布，并附带 SHA-256 校验文件。用户首选地址应指向安装包，不使用仓库归档。将打包文件清单与包白名单核对，包含宿主、浏览器和 Doctor 产物，排除源码、测试、锁文件及 CI 文件。新版本使用新 URL，不替换已发布资产，也不移动已发布 tag。
+
+按照 [Doctor 使用说明](docs/installation.zh-CN.md)，使用与测试宿主相同的隔离 home/profile。Doctor 必须保持只读，对无法确认的前置条件报告警告，不得把配置导出或残留目录等同于运行中插件。启动日志改动需证明恢复或 API 注册失败时不会输出加载成功信号。包生命周期检查应覆盖明确的新依赖来源、无重复注册、卸载 bundle 清理及回收站保留。
 
 ## 需要回归证据的改动
 
