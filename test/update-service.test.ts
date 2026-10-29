@@ -170,7 +170,7 @@ test('startup reconciles interrupted, pending-restart and installed receipts aga
   for (const scenario of ['old-disk', 'new-disk-old-code', 'new-code', 'stale-installed'] as const) {
     const f = await fixture(t);
     await writeFile(join(f.root, 'updates', `${createHash('sha256').update(f.host.profileId).digest('hex')}.installation.json`), JSON.stringify({ requestId: randomUUID(), candidateId: f.candidate.id,
-      version: f.candidate.version, status: scenario === 'stale-installed' ? 'installed' : 'installing', startedAt: f.state.now }));
+      version: f.candidate.version, status: scenario === 'stale-installed' ? 'installed' : 'unknown', code: 'update-install-unknown', startedAt: f.state.now }));
     if (scenario === 'new-disk-old-code' || scenario === 'new-code') f.state.installed = f.candidate.version;
     if (scenario === 'new-code') f.host.loadedVersion = f.candidate.version;
     const restarted = f.create(); await restarted.initialize();
@@ -178,6 +178,7 @@ test('startup reconciles interrupted, pending-restart and installed receipts aga
     assert.equal(result.installation?.status, scenario === 'old-disk' || scenario === 'stale-installed' ? 'interrupted'
       : scenario === 'new-code' ? 'installed' : 'restart-required');
     assert.deepEqual(f.calls.releases, scenario === 'new-disk-old-code' ? [true] : []);
+    if (scenario === 'new-code') assert.equal(result.installation?.code, undefined, 'a reconciled success must clear the old uncertainty diagnostic');
   }
 });
 

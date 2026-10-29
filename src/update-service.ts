@@ -135,6 +135,7 @@ export class UpdateService {
         this.installation = { ...this.installation, status: this.installedVersion === this.installation.version
           ? this.options.host.loadedVersion === this.installedVersion ? 'installed' : 'restart-required'
           : this.options.host.loadedVersion === this.installedVersion ? 'interrupted' : 'unknown' };
+        if (this.installation.status === 'installed') delete this.installation.code;
         await this.store.write('installation.json', this.installation);
       }
     }
