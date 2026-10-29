@@ -61,6 +61,8 @@ export interface DshAdapter {
   listArchived(): Promise<ArchivedSession[]>;
   inspect(sessionId: string): Promise<SessionGroup>;
   acquire(group: SessionGroup): Promise<LeaseResult>;
+  /** Optional pinned host lifecycle capability. No active work or raw locks may be forced closed. */
+  releaseIdle?(group: SessionGroup): Promise<boolean>;
   acquireLocated(group: SessionGroup, directories: (string | undefined)[]): Promise<LeaseResult>;
   removeRegistry(group: SessionGroup): Promise<void>;
   restoreRegistry(group: SessionGroup): Promise<void>;

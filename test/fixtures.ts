@@ -15,6 +15,8 @@ export class FixtureAdapter implements DshAdapter {
   failRemove = false;
   failRestore = false;
   supported = true;
+  canReleaseIdle = false;
+  releases = 0;
   locks = 0;
   async capabilities(): Promise<SupportStatus> { return { supported: this.supported, version: '0.2.1-rc.3', platform: 'darwin', reason: 'Synthetic unsupported fixture' }; }
   async listArchived(): Promise<ArchivedSession[]> {
@@ -41,6 +43,13 @@ export class FixtureAdapter implements DshAdapter {
     this.locks++; return { kind: 'acquired', lease: { release: async () => { this.locks--; } } };
   }
   async acquireLocated(group: SessionGroup, _directories: (string | undefined)[]): Promise<LeaseResult> { return this.acquire(group); }
+  async releaseIdle(group: SessionGroup): Promise<boolean> {
+    this.releases++;
+    if (!this.canReleaseIdle) return false;
+    if (group.members.some(member => this.active.has(member.id) || this.busy.has(member.id))) throw new ArchiveError('active', 'Synthetic work became active.');
+    group.members.forEach(member => this.loaded.delete(member.id));
+    return true;
+  }
   async removeRegistry(group: SessionGroup): Promise<void> {
     if (this.failRemove) { this.failRemove = false; throw new Error('Synthetic metadata failure'); }
     group.members.forEach(m => this.archived.delete(m.id));

@@ -29,6 +29,9 @@ registerHooks({ resolve(specifier, context, next) {
 const host = async (name: string): Promise<Record<string, any>> => import(name);
 const { Context, Service } = await host('@deepseek-ai/cordis');
 const { SessionStore, Session } = await host('@deepseek-ai/dsh-session');
+const { AgentRegistry } = await host('@deepseek-ai/dsh-agent');
+const { AgentLoop } = await host('@deepseek-ai/dsh-agent-loop');
+const { createUserMessage } = await host('@deepseek-ai/dsh-llm');
 const { DomainFacility } = await host('@deepseek-ai/dsh-storage-domain');
 const { JsonStorageBackend } = await host('@deepseek-ai/dsh-storage-json');
 const { SessionProjectionRegistry } = await host('@deepseek-ai/dsh-session-projection');
@@ -310,4 +313,99 @@ test('Windows: another process owns the plugin semaphore until process death', {
   child.kill('SIGKILL'); await exited;
   const afterCrash = await acquirePluginLease(join(f.home, 'archive-delete'), getNativeLockExclusive(f.ctx), { lockNamed: getNativeWindowsLock(f.ctx) });
   await afterCrash.release();
+});
+
+/** Real factory ownership and real JSONL handles, without model/network calls. */
+function managedAgents(f: Awaited<ReturnType<typeof fixture>>) {
+  new AgentRegistry(f.ctx);
+  f.ctx.provide('llm', {}); f.ctx.provide('tools', {}); f.ctx.provide('systemPrompt', { variable() {} });
+  new AgentLoop(f.ctx, { agents: [], maxParallelToolCalls: 10 });
+  const handles: any[] = [];
+  return {
+    async resume(id: string, parent?: any) {
+      const owner = parent?.ctx ?? f.ctx;
+      const handle = await owner.agents.resume({ resumeSessionId: id, agentOptions: {}, ...(parent ? { parentAgent: parent } : {}) });
+      handles.push(handle); return handle;
+    },
+    async close() { for (const handle of [...handles].reverse()) await handle.dispose(); },
+  };
+}
+
+async function createIndependentFork(f: Awaited<ReturnType<typeof fixture>>, sourceId: string, id: string) {
+  const reader = await f.persistence.open(sourceId, 'read');
+  let events: unknown[]; let header: JsonObject;
+  try { events = (await reader.read()).events; header = reader.header; } finally { await reader.close(); }
+  const forkStore = new SessionStore(new Context());
+  const source = forkStore.prepare(sourceId, { seed: events, meta: header }); const detach = forkStore.enter(source);
+  try {
+    const fork = forkStore.fork(source, undefined, id);
+    await f.create(fork.id, '', fork.header, fork.snapshotEvents(), fork.inheritedEventCount);
+  } finally { detach(); }
+}
+
+test('stock rc.3: managed idle parent and child move and purge in the same process without restarting', async t => {
+  const f = await fixture(t);
+  await f.create('hot-parent', 'Hot parent');
+  await f.create('hot-child', 'Hot child', { parentSession: 'hot-parent', origin: 'subagent' });
+  await createIndependentFork(f, 'hot-parent', 'hot-independent-fork');
+  const fork = (await f.adapter.inspect('hot-independent-fork')).members[0]!;
+  const forkFile = join(fork.directory, 'session.v4.jsonl'); const forkBytes = await readFile(forkFile);
+  const managed = managedAgents(f);
+  try {
+    const parent = await managed.resume('hot-parent'); await managed.resume('hot-child', parent.agent);
+    const preview = await f.api.preview('trash', ['hot-parent']);
+    assert.deepEqual(preview.items[0]!.memberIds, ['hot-parent', 'hot-child']);
+    const moved = await f.api.execute(preview.id, randomUUID());
+    assert.equal(moved.items[0]!.status, 'moved', JSON.stringify(moved));
+    assert.equal(f.ctx.agents.get('hot-parent'), undefined); assert.equal(f.ctx.sessions.get('hot-parent'), undefined);
+    assert.equal(f.ctx.agents.get('hot-child'), undefined); assert.equal(f.ctx.sessions.get('hot-child'), undefined);
+    assert.equal(await f.persistence.stat('hot-parent'), undefined); assert.equal(await f.persistence.stat('hot-child'), undefined);
+    const entry = (await f.api.list()).trash[0]!;
+    assert.equal((await f.execute('purge', [entry.id])).items[0]!.status, 'purged');
+    assert.equal((await f.api.list()).trash.length, 0);
+    assert.deepEqual(await readFile(forkFile), forkBytes);
+    assert.ok(f.registry.archivedSessionIds.includes('hot-independent-fork'));
+  } finally { await managed.close(); }
+});
+
+test('stock rc.3: idle status during maintenance and a queued inbox never authorize lifecycle release', async t => {
+  const f = await fixture(t); await f.create('hot-protected');
+  const managed = managedAgents(f);
+  let endMaintenance = () => {};
+  const barrier = new Promise<void>(resolve => { endMaintenance = resolve; });
+  let maintenance: Promise<unknown> | undefined;
+  try {
+    const handle = await managed.resume('hot-protected');
+    maintenance = handle.agent.runMaintenance(() => barrier);
+    assert.equal(handle.agent.status, 'idle'); assert.equal(handle.agent.phase.kind, 'maintenance');
+    await assert.rejects(f.adapter.releaseIdle!((await f.adapter.inspect('hot-protected'))), { code: 'active' });
+    assert.equal(f.ctx.agents.get('hot-protected'), handle.agent);
+    endMaintenance(); await maintenance; maintenance = undefined;
+    handle.agent.inject(createUserMessage({ content: [{ type: 'text', text: 'Synthetic queued input' }], source: { kind: 'user' } }));
+    await f.ctx.sessions.flush(handle.agent.session);
+    const member = (await f.adapter.inspect('hot-protected')).members[0]!;
+    const file = join(member.directory, 'session.v4.jsonl'); const before = await readFile(file);
+    await assert.rejects(f.adapter.releaseIdle!((await f.adapter.inspect('hot-protected'))), { code: 'active' });
+    assert.equal(handle.agent.inbox.hasPending, true);
+    assert.deepEqual(await readFile(file), before); assert.equal(f.ctx.sessions.get('hot-protected'), handle.agent.session);
+  } finally { endMaintenance(); await maintenance; await managed.close(); }
+});
+
+test('stock rc.3: runtime child outside the confirmed group and duplicate owner effects fail closed', async t => {
+  const f = await fixture(t); await f.create('hot-owner');
+  await createIndependentFork(f, 'hot-owner', 'hot-outside-fork');
+  const managed = managedAgents(f);
+  let duplicate: (() => unknown) | undefined;
+  try {
+    const parent = await managed.resume('hot-owner'); await managed.resume('hot-outside-fork', parent.agent);
+    const group = await f.adapter.inspect('hot-owner'); assert.deepEqual(group.members.map(member => member.id), ['hot-owner']);
+    await assert.rejects(f.adapter.releaseIdle!(group), { code: 'ambiguous-lineage' });
+    assert.equal(f.ctx.agents.get('hot-owner'), parent.agent);
+    // A second unrelated ownership claim must not make the adapter guess which disposer to call.
+    await managed.close();
+    const root = await managed.resume('hot-owner');
+    duplicate = f.ctx.effect(() => () => {}, 'agentLoop.lifecycle(hot-owner)');
+    await assert.rejects(f.adapter.releaseIdle!((await f.adapter.inspect('hot-owner'))), { code: 'ambiguous-lifecycle' });
+    assert.equal(f.ctx.agents.get('hot-owner'), root.agent);
+  } finally { await duplicate?.(); await managed.close(); }
 });

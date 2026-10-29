@@ -224,15 +224,15 @@ export class ArchiveService implements ArchiveApi {
           if (prepared.preview.action === 'trash') {
             const fresh = await this.adapter.inspect(item.id); groupReady(fresh);
             if (groupFingerprint(fresh) !== prepared.fingerprints.get(item.id)) throw new ArchiveError('source-changed', MESSAGE['source-changed']!);
-            outcome = await this.trashGroup(fresh, undefined, { requestId, targetId: item.id });
+            outcome = await this.trashGroup(fresh, undefined, { requestId, targetId: item.id }, true);
           } else {
             const current = await this.store.manifest(item.id);
             if (groupFingerprint(current.group) !== groupFingerprint(expected)
               || await this.store.entryFingerprint(item.id) !== prepared.fingerprints.get(item.id))
               throw new ArchiveError('source-changed', MESSAGE['source-changed']!);
             if (prepared.preview.action === 'restore') {
-              await this.restoreEntry(item.id, { requestId, targetId: item.id }); outcome = { id: item.id, title: item.title, status: 'restored' };
-            } else { await this.purgeEntry(item.id, { requestId, targetId: item.id }); outcome = { id: item.id, title: item.title, status: 'purged' }; }
+              await this.restoreEntry(item.id, { requestId, targetId: item.id }, prepared.fingerprints.get(item.id)!); outcome = { id: item.id, title: item.title, status: 'restored' };
+            } else { await this.purgeEntry(item.id, { requestId, targetId: item.id }, prepared.fingerprints.get(item.id)!); outcome = { id: item.id, title: item.title, status: 'purged' }; }
           }
         } catch (e) {
           // A rename can commit before its next journal write. Resolve that durable
@@ -248,8 +248,15 @@ export class ArchiveService implements ArchiveApi {
       return this.requests.complete(requestId);
     });
   }
-  private async trashGroup(group: SessionGroup, pending?: Operation, context?: OperationContext): Promise<ItemResult> {
-    const lease = await this.adapter.acquire(group);
+  private async trashGroup(group: SessionGroup, pending?: Operation, context?: OperationContext, releaseIdle = false): Promise<ItemResult> {
+    let lease = await this.adapter.acquire(group);
+    // Only a fresh user confirmation can release an idle native lifecycle.
+    // Startup replay retains its original one-pass, non-interrupting behavior.
+    if (lease.kind === 'loaded' && releaseIdle && this.adapter.releaseIdle && await this.adapter.releaseIdle(group)) {
+      const cold = await this.adapter.inspect(group.sessionId); groupReady(cold);
+      if (groupFingerprint(cold) !== groupFingerprint(group)) throw new ArchiveError('source-changed', MESSAGE['source-changed']!);
+      lease = await this.adapter.acquire(cold);
+    }
     if (lease.kind === 'busy') throw new ArchiveError('busy', MESSAGE.busy!);
     if (lease.kind === 'loaded') {
       if (!pending) await this.store.queue(group, 'Waiting for DSH to release this idle session at the next start.', context);
@@ -271,12 +278,13 @@ export class ArchiveService implements ArchiveApi {
       throw e;
     } finally { await lease.lease.release(); }
   }
-  private async restoreEntry(entryId: string, context?: OperationContext): Promise<void> {
+  private async restoreEntry(entryId: string, context: OperationContext, expectedFingerprint: string): Promise<void> {
     let op: Operation | undefined;
     const manifest = await this.store.manifest(entryId);
     const held = await this.adapter.acquireLocated(manifest.group, await this.store.entryLocations(entryId));
     if (held.kind !== 'acquired') throw new ArchiveError('busy', 'Restore is waiting for the session write lock.');
     try {
+      if (await this.store.entryFingerprint(entryId) !== expectedFingerprint) throw new ArchiveError('source-changed', MESSAGE['source-changed']!);
       op = await this.store.prepareRestore(entryId, context); await this.adapter.restoreRegistry(op.group);
       await this.store.markRestored(op); await this.store.commitRestore(op);
     } catch (e) {
@@ -288,11 +296,14 @@ export class ArchiveService implements ArchiveApi {
       throw e;
     } finally { await held.lease.release(); }
   }
-  private async purgeEntry(entryId: string, context: OperationContext): Promise<void> {
+  private async purgeEntry(entryId: string, context: OperationContext, expectedFingerprint: string): Promise<void> {
     const manifest = await this.store.manifest(entryId);
     const held = await this.adapter.acquireLocated(manifest.group, await this.store.entryLocations(entryId));
     if (held.kind !== 'acquired') throw new ArchiveError('busy', 'Permanent deletion is waiting for the session write lock.');
-    try { await this.store.purge(entryId, context); } finally { await held.lease.release(); }
+    try {
+      if (await this.store.entryFingerprint(entryId) !== expectedFingerprint) throw new ArchiveError('source-changed', MESSAGE['source-changed']!);
+      await this.store.purge(entryId, context);
+    } finally { await held.lease.release(); }
   }
   async cancelPending(ids: string[], requestId: string): Promise<BatchResult> {
     return this.serialize(async () => {

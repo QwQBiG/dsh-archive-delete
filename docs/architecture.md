@@ -14,7 +14,7 @@ DSH remains the authority for live sessions, workspaces, activity, and session h
 | --- | --- | --- |
 | `client` | Native menu item, management dialog, selection, preview, confirmation, localized results | Accept filesystem paths, guess a move succeeded, or mutate storage directly |
 | `service` | Validate requested actions, inspect complete groups, serialize transitions, revalidate before execution, report partial results | Know undocumented host field layouts or perform unjournaled filesystem mutation |
-| `dsh-adapter` | Exact-version capability admission, host lists/activity, explicit subagent relationships, canonical locations, compatible write leases, registration cleanup/restoration | Infer ownership merely from a supplied path or silently support unknown host generations |
+| `dsh-adapter` | Exact-version capability admission, host lists/activity, explicit subagent relationships, canonical locations, compatible write leases, native idle-release admission, registration cleanup/restoration | Infer ownership merely from a supplied path or silently support unknown host generations |
 | `storage` | Plugin-local manifests, durable operation stages, same-volume moves, recovery, confined purge | Recursively delete arbitrary paths, overwrite a conflicting source, or clean shared attachments |
 
 Shared types live in the contracts module. The service depends on the adapter contract rather than importing the entire DSH runtime. Tests can therefore exercise the real storage transitions with synthetic adapters, while separate integration tests exercise the actual host boundary.
@@ -46,6 +46,14 @@ The plugin does not keep a second full-text or projection mirror. Recovery metad
 
 Recovery JSON has the same 8 MiB read/write ceiling. Initial request intent is limited to 6 MiB, reserving room for up to 100 bounded per-target outcomes before any transition starts. Oversized metadata is rejected before a write/move and asks for a smaller batch; an admitted intent must remain writable as results accumulate.
 
+## Confirmed idle release
+
+Only a fresh manual move execution may ask the adapter to release a loaded archived group. The version-pinned adapter resolves the host-owned ordered AgentLoop lifecycle disposer through Cordis effect metadata and exact native identities, rather than detaching registry entries or closing an unknown writer itself. This is an internal capability for the admitted host generation, not a stable cross-version unload API. It admits only an unambiguous managed lifecycle with every affected member wholly idle, no pending inbox input, no active maintenance, and no runtime-owned child outside the confirmed dedicated group. Missing or ambiguous capabilities keep the fallback pending state; active work and external write ownership stay protected.
+
+After awaited native teardown, the service re-inspects the archived state, membership and content fingerprint, then acquires the normal session leases before any file move. A changed fingerprint requires fresh consent. Opening a list/preview and replaying an old startup queue do not trigger this idle-release path.
+
+For an existing pending row, the client uses the existing cancellation API to end the old request, then asks for a new preview. A late cancellation response cannot reopen a closed dialog, and an uncertain cancellation must be reconciled before a fresh operation. The new preview still requires confirmation. No new filesystem authority crosses the browser boundary.
+
 ## Platform-specific storage and leases
 
 - macOS uses the running host's native flock on each `session.lock`; held handles preserve ownership across a same-volume rename.
@@ -73,7 +81,7 @@ The separate packaged doctor is an offline read-only diagnostic boundary. It ins
 ## Scope decisions
 
 - No automatic trash expiry, background cleanup timer, or agent deletion tool.
-- No forced session shutdown or write-lock stealing.
+- No forced interruption of active or unmanaged sessions, and no write-lock stealing. Wholly idle, managed lifecycle release requires fresh manual confirmation.
 - No attachment garbage collection, spill cleanup, old third-party cache cleanup, project deletion, OCR, full-text search, or cross-agent migration.
 - No custom plugin updater; installation/update remains with DSH's plugin manager.
 - Opening the management list or preview does not mutate native session storage.

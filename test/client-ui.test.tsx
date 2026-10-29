@@ -53,9 +53,26 @@ test('confirmation explains descendants, delayed movement, and retained data in 
   }
 });
 
+test('pending rows expose explicit cancellation-and-review while staying outside bulk selection', async () => {
+  const current: Overview = { ...overview, archived: [{ ...overview.archived[0]!, pending: true }] };
+  const controller = new ArchiveClientController({ ...api, list: async () => current });
+  await controller.open(); controller.selectAll(true);
+  assert.deepEqual(controller.getSnapshot().selected, []);
+  for (const language of ['en', 'zh'] as const) {
+    const html = renderToStaticMarkup(<ArchiveDialogView state={controller.getSnapshot()} controller={controller} primitives={primitives} t={translator(language)} />);
+    assert.ok(html.includes(language === 'en' ? 'Cancel waiting and review' : '取消等待并重新核对'));
+    assert.ok(html.includes(language === 'en' ? 'Cancel pending move' : '取消待处理'));
+    assert.match(html, /<label><input[^>]*disabled=""[^>]*\/>A sample conversation<\/label>/);
+    assert.ok(html.includes(language === 'en' ? 'without restarting' : '无需重启'));
+  }
+  controller.dispose();
+});
+
 test('known host refusal reasons are localized while unfamiliar diagnostics retain their fallback', () => {
   assert.equal(localizeReason('active', 'English host detail', translator('zh')), zh.reasonActive);
   assert.equal(localizeReason('source-changed', 'English host detail', translator('zh')), zh.reasonChanged);
+  assert.equal(localizeReason('ambiguous-lifecycle', 'English host detail', translator('zh')), zh.reasonLifecycle);
+  assert.equal(localizeReason('release-failed', 'English host detail', translator('zh')), zh.reasonRelease);
   assert.equal(localizeReason('unknown-future-code', 'Future host detail', translator('zh')), 'Future host detail');
   const state: ClientState = { open: true, tab: 'archived', page: 0, overview: { ...overview, support: { supported: false, version: 'unknown', platform: 'darwin', reason: 'Archive storage could not be initialized. Check the host diagnostics, then reload the plugin.' } }, selected: [], loading: false, busy: false, preview: null, result: null, error: null, uncertainRequest: false };
   const html = renderToStaticMarkup(<ArchiveDialogView state={state} controller={new ArchiveClientController(api)} primitives={primitives} t={translator('zh')} />);

@@ -2,6 +2,14 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
+## 0.1.3 — 2026-10-29
+
+- Attempt native lifecycle release of wholly idle, host-managed archived groups after fresh manual confirmation, then recheck contents and locks before moving without restarting.
+- Add **Cancel waiting and review** for existing pending requests: retire the old queue and open a fresh preview, with no move until another confirmation.
+- Clarify that existing trash is permanently cleared in the current process; preserve active work, pending input, external writers and unknown ownership protections.
+- Keep startup queue replay separate from the fresh-manual release path; unavailable release capabilities retain the pending fallback.
+- Recheck the confirmed trash fingerprint while holding its native lease before restore or purge; refuse content changes racing with lock acquisition.
+
 ## 0.1.2 — 2026-10-29
 
 - Recommend versioned GitHub Release `.tgz` assets and matching SHA-256 checksums; exclude repository-only files from the installed package.

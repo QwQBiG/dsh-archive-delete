@@ -7,7 +7,7 @@
 | State | Meaning | Available next action |
 | --- | --- | --- |
 | Archived | Original logs remain in the host store | Preview and move to trash |
-| Pending move to trash | User confirmed, but this idle session is still write-owned by the current host | Cancel, or let the next startup recheck it |
+| Pending move to trash | User confirmed, but the host still owns the writer and safe immediate release was unavailable | Cancel waiting and review a fresh move, cancel the request, or let the next startup recheck it |
 | Trash | Logs have moved to plugin-owned trash and host bookkeeping has settled | Restore or preview permanent purge |
 | Failed / skipped | The requested transition did not complete for this item; the reason is visible | Inspect, then retry the specific failed target |
 | Purged | Selected trash logs and their recovery metadata are permanently removed | No restoration |
@@ -24,8 +24,8 @@ The service serializes mutations. It persists request intent before starting and
 
 1. Resolve the complete parent/subagent group and capture restore metadata.
 2. Reject unarchived parents, active work/interactions, unsafe or ambiguous storage, and external write ownership.
-3. If the only blocker is idle ownership by this host, persist a pending request without moving any log.
-4. Otherwise acquire compatible exclusive leases for the complete group and revalidate it.
+3. During a fresh manual execution, if the blocker is idle ownership by this host, attempt the admitted native lifecycle teardown for the complete group. Do not close active work, maintenance, queued input, unknown ownership, or externally held writers.
+4. After a successful release, re-inspect content, archive state and membership, then acquire compatible exclusive leases and revalidate the group. Changed data requires another confirmation. If safe release is unavailable, persist a pending request without moving any log.
 5. Persist the prepared operation, then use same-volume moves for owned session-log directories.
 6. Settle the corresponding host registration and projection metadata through the adapter, and publish a complete trash entry.
 7. Release leases and report the exact result. A failed intermediate stage is recorded for rollback/recovery, not reported as moved.
@@ -36,9 +36,9 @@ The operation record makes progress recoverable; it does not turn several filesy
 
 ## Pending requests
 
-Pending requests remain in the Archived tab. A request can be cancelled before the transition starts; cancellation and execution use the same serialized operation path.
+Pending requests remain in the Archived tab. A request can be cancelled before the transition starts; cancellation and execution use the same serialized operation path. **Cancel waiting and review** ends the old queued request and opens a new move preview. It does not execute a move or purge. Closing/cancelling that preview leaves the old queue cancelled and source logs intact; another confirmation is required to attempt processing now. An uncertain cancellation must be reconciled first.
 
-At plugin startup, recover interrupted transitions first, then attempt each pending move once. Recheck content revisions, archive state, subagent membership, paths, activity, and write leases. A session that changed or was unarchived requires a new confirmation. A still-held lease remains pending. There is no timer, background polling, forced unload, or lock stealing.
+At plugin startup, recover interrupted transitions first, then attempt each pending move once. Recheck content revisions, archive state, subagent membership, paths, activity, and write leases. A session that changed or was unarchived requires a new confirmation. A still-held lease remains pending. Startup replay does not invoke the fresh-manual idle-release capability. There is no timer, background polling, forced interruption of active work, or lock stealing.
 
 ## Restore
 
@@ -50,7 +50,7 @@ After successful host registration, remove the completed trash entry's recovery 
 
 ## Permanent purge
 
-Only existing trash entries can be purged. A second explicit preview/confirmation identifies the selected parent and child logs. Purge removes only verified, plugin-owned trash artifacts and the associated recovery metadata, including stored titles. Unknown files or unsafe paths block the action.
+Only existing trash entries can be purged. A second explicit preview/confirmation identifies the selected parent and child logs. Confirmation executes permanent purge in the current process; restarting the host is not a prerequisite. After a safe immediate move succeeds, its new trash entry can be purged in that same process. Purge removes only verified, plugin-owned trash artifacts and the associated recovery metadata, including stored titles. Unknown files or unsafe paths block the action.
 
 Permanent purge cannot undo bytes already removed. If it fails part-way, preserve and report the incomplete state and retry information; never offer a complete restore of a partly purged group.
 
