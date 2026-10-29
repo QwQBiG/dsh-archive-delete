@@ -9,6 +9,26 @@ import type { Action, ItemResult, SessionGroup } from '../src/contracts.js';
 import { RequestJournal } from '../src/request-journal.js';
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
+for (const action of ['restore', 'purge'] as const) {
+  test(`${action}: changed trash bytes while obtaining the lease require fresh consent`, async t => {
+    const f = await fixture(); t.after(f.close); const group = await f.add(`lock-race-${action}`);
+    const move = await f.service.preview('trash', [group.sessionId]); await f.service.execute(move.id, randomUUID());
+    const entry = (await f.store.list())[0]!; const file = join(f.store.root, 'trash', entry.id, '0', 'session.v4.jsonl');
+    const preview = await f.service.preview(action, [entry.id]);
+    const acquire = f.adapter.acquireLocated.bind(f.adapter); let changed = false;
+    f.adapter.acquireLocated = async (members, locations) => {
+      if (!changed) { changed = true; await appendFile(file, 'writer finished before lock admission\n'); }
+      return acquire(members, locations);
+    };
+    const outcome = await f.service.execute(preview.id, randomUUID());
+    assert.equal(outcome.items[0]!.status, 'failed'); assert.equal(outcome.items[0]!.code, 'source-changed');
+    assert.match(await readFile(file, 'utf8'), /writer finished before lock admission/);
+    assert.equal(await present(group.members[0]!.directory), false);
+    assert.equal((await f.store.list())[0]!.id, entry.id); assert.equal(f.adapter.locks, 0);
+    const fresh = await f.service.preview(action, [entry.id]);
+    assert.equal((await f.service.execute(fresh.id, randomUUID())).items[0]!.status, action === 'restore' ? 'restored' : 'purged');
+  });
+}
 async function perform(f: Fixture, action: Action, ids: string[]) {
   const preview = await f.service.preview(action, ids); return f.service.execute(preview.id, randomUUID());
 }

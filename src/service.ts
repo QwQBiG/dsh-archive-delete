@@ -231,8 +231,8 @@ export class ArchiveService implements ArchiveApi {
               || await this.store.entryFingerprint(item.id) !== prepared.fingerprints.get(item.id))
               throw new ArchiveError('source-changed', MESSAGE['source-changed']!);
             if (prepared.preview.action === 'restore') {
-              await this.restoreEntry(item.id, { requestId, targetId: item.id }); outcome = { id: item.id, title: item.title, status: 'restored' };
-            } else { await this.purgeEntry(item.id, { requestId, targetId: item.id }); outcome = { id: item.id, title: item.title, status: 'purged' }; }
+              await this.restoreEntry(item.id, { requestId, targetId: item.id }, prepared.fingerprints.get(item.id)!); outcome = { id: item.id, title: item.title, status: 'restored' };
+            } else { await this.purgeEntry(item.id, { requestId, targetId: item.id }, prepared.fingerprints.get(item.id)!); outcome = { id: item.id, title: item.title, status: 'purged' }; }
           }
         } catch (e) {
           // A rename can commit before its next journal write. Resolve that durable
@@ -278,12 +278,13 @@ export class ArchiveService implements ArchiveApi {
       throw e;
     } finally { await lease.lease.release(); }
   }
-  private async restoreEntry(entryId: string, context?: OperationContext): Promise<void> {
+  private async restoreEntry(entryId: string, context: OperationContext, expectedFingerprint: string): Promise<void> {
     let op: Operation | undefined;
     const manifest = await this.store.manifest(entryId);
     const held = await this.adapter.acquireLocated(manifest.group, await this.store.entryLocations(entryId));
     if (held.kind !== 'acquired') throw new ArchiveError('busy', 'Restore is waiting for the session write lock.');
     try {
+      if (await this.store.entryFingerprint(entryId) !== expectedFingerprint) throw new ArchiveError('source-changed', MESSAGE['source-changed']!);
       op = await this.store.prepareRestore(entryId, context); await this.adapter.restoreRegistry(op.group);
       await this.store.markRestored(op); await this.store.commitRestore(op);
     } catch (e) {
@@ -295,11 +296,14 @@ export class ArchiveService implements ArchiveApi {
       throw e;
     } finally { await held.lease.release(); }
   }
-  private async purgeEntry(entryId: string, context: OperationContext): Promise<void> {
+  private async purgeEntry(entryId: string, context: OperationContext, expectedFingerprint: string): Promise<void> {
     const manifest = await this.store.manifest(entryId);
     const held = await this.adapter.acquireLocated(manifest.group, await this.store.entryLocations(entryId));
     if (held.kind !== 'acquired') throw new ArchiveError('busy', 'Permanent deletion is waiting for the session write lock.');
-    try { await this.store.purge(entryId, context); } finally { await held.lease.release(); }
+    try {
+      if (await this.store.entryFingerprint(entryId) !== expectedFingerprint) throw new ArchiveError('source-changed', MESSAGE['source-changed']!);
+      await this.store.purge(entryId, context);
+    } finally { await held.lease.release(); }
   }
   async cancelPending(ids: string[], requestId: string): Promise<BatchResult> {
     return this.serialize(async () => {
