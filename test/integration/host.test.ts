@@ -495,9 +495,15 @@ async function updateManagerFixture(t: TestContext) {
   const packages = join(home, 'archive-delete', 'updates', 'packages'); await mkdir(packages, { recursive: true }); await mkdir(dir, { recursive: true });
   await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'synthetic-updater-profile', private: true, dependencies: {}, dsh: { profile: { bundles: [] } } }));
   await writeFile(join(dir, 'cordis.patch.yml'), '[]\n');
-  const bundled = process.env.DSH_PNPM_CLI ?? '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/primary-runtime/dependencies/pnpm/bin/pnpm.cjs';
-  let command = 'pnpm'; let args: string[] = [];
-  try { await access(bundled); command = process.execPath; args = [bundled]; } catch { /* CI provides pnpm on PATH. */ }
+  const candidates = [process.env.DSH_PNPM_CLI, process.env.npm_execpath,
+    '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/primary-runtime/dependencies/pnpm/bin/pnpm.cjs'];
+  let cli: string | undefined;
+  for (const path of candidates) if (path && /\.[cm]?js$/i.test(path)) {
+    try { await access(path); cli = path; break; } catch { /* Try the next explicit JavaScript entry. */ }
+  }
+  if (!cli) throw new Error('Set DSH_PNPM_CLI to the pnpm JavaScript entry for native tests.');
+  // Windows .cmd launchers cannot be invoked through execFile without a shell.
+  const command = process.execPath; const args = [cli];
   const env = { ...process.env, npm_config_offline: 'true', npm_config_registry: 'http://127.0.0.1:9',
     npm_config_manage_package_manager_versions: 'false', PNPM_OFFLINE: 'true' };
   const profile = { name: 'updater-qa', home, dir, patchPath: join(dir, 'cordis.patch.yml'), cwd: root,
