@@ -13,7 +13,7 @@ Supports **macOS and Windows**. Native host integration and package installation
 - **Native controls:** an archived-conversation menu action and an **Archived / Trash** management dialog.
 - **Clear scope:** preview selected conversations and their dedicated subagents, then see each result and retry a failed target.
 - **A way back:** restore to the original workspace in archived state. A missing workspace becomes Ungrouped; existing paths are never overwritten.
-- **Safe waiting:** idle conversations still held by DSH can wait for the next startup. Cancel the request, or let the plugin recheck it before moving.
+- **Work without restarting:** a confirmed move can release a wholly idle, host-managed conversation through its native lifecycle, then move it now. Already-trashed records can be permanently cleared in the same process. Protected or unavailable release paths remain pending.
 - **A familiar interface:** the host language, theme, and native controls.
 
 Trash never expires automatically. Removing the plugin keeps the trash.
@@ -23,16 +23,16 @@ Trash never expires automatically. Removing the plugin keeps the trash.
 In DSH Desktop, use **Plugins → Add plugin** with the versioned Release package:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh-archive-delete-0.1.2.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.3/qwqbig-dsh-archive-delete-0.1.3.tgz
 ```
 
 1. **Install:** enter the address above and enable the plugin. When asked to restart, fully quit DSH and open it again: **⌘Q / Quit** on macOS, or the app's **Exit/Quit** command on Windows. Closing a window alone can leave the process running.
 2. **Choose:** archive a conversation with DSH, then choose **Move to trash** in its native menu. For a batch, open the plugin details and **Manage archives and trash**.
 3. **Review:** check the targets and subagents, then confirm. Use **Trash** to restore selected groups or review **Delete permanently**.
 
-**Pending restart** means the original logs are still in place; no space has been freed yet. Use **Cancel pending move** in Archived to withdraw the request. Each page/batch holds up to 100 targets; select-all applies to that page. Changing pages or tabs clears selection.
+**Pending restart** means the original logs are still in place; no space has been freed yet. Use **Cancel waiting and review** to retire the old queued request and open a fresh move preview, or **Cancel pending move** to withdraw it. Only the new confirmation attempts an immediate move. After a successful move, use **Trash → Delete permanently** without restarting. Active work, pending input, external writers, and an unavailable safe-release capability remain protected. Each page/batch holds up to 100 targets; select-all applies to that page. Changing pages or tabs clears selection.
 
-The Release package contains the declared installable files and precompiled host/browser artifacts; it excludes source, tests, lockfiles, and CI configuration. Its [SHA-256 checksum](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh-archive-delete-0.1.2.tgz.sha256) is provided alongside it. Users do not need Git or a source build.
+The Release package contains the declared installable files and precompiled host/browser artifacts; it excludes source, tests, lockfiles, and CI configuration. Its [SHA-256 checksum](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.3/qwqbig-dsh-archive-delete-0.1.3.tgz.sha256) is provided alongside it. Users do not need Git or a source build.
 
 The plugin manager installs the package and registers its bundle in the active profile. CLI installation is an alternative for managed or unattended setups and requires checking registration. To upgrade a fixed URL, add the newer release's URL again; `pnpm update` does not track new Release assets. [Installation and usage](docs/installation.md) covers upgrades, CLI bundle cleanup on uninstall, profile scope, full restart, troubleshooting, and the read-only Doctor for configuration and access checks.
 

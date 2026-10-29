@@ -42,7 +42,19 @@ interface Persistence {
   locate(header: JsonObject): { kind: string; path: string } | undefined;
   findLog?(id: string): Promise<{ sourcePath?: string } | undefined>;
 }
-interface Sessions { get(id: string): unknown }
+interface Sessions { get(id: string): unknown; flush?(session: unknown): Promise<boolean> }
+interface LiveAgent {
+  id: string; session: { header: JsonObject }; status: string;
+  phase: { kind: string }; inbox: { hasPending: boolean };
+}
+interface AgentRegistry {
+  get(id: string): LiveAgent | undefined;
+  list(): LiveAgent[];
+  isOwnedBy(id: string, owner: LiveAgent): boolean;
+  requireFactory(): { target: unknown };
+}
+interface NativeLifecycleSymbols { effect: symbol; original?: symbol }
+interface ReleasePlan { id: string; session: unknown; agent: LiveAgent; dispose: () => unknown }
 interface ProjectionCache {
   cachedSnapshot(header: JsonObject, keys?: string[]): { values: Record<string, unknown> } | undefined;
   cachedPredecessorTitle?(header: JsonObject): { values: Record<string, unknown> } | undefined;
@@ -64,6 +76,8 @@ export interface AdapterOptions {
   home?: string;
   lockExclusive?: (fd: number) => Promise<void>;
   lockNamed?: (filename: string) => Promise<Lease>;
+  /** Test seam for the live Cordis module's diagnostic effect symbol. */
+  effectSymbol?: symbol;
 }
 const importHost = (specifier: string): Promise<Record<string, unknown>> => import(specifier) as Promise<Record<string, unknown>>;
 const LOG_FILE = /^session(?:\.v\d+)?\.jsonl(?:\.zstd)?$/;
@@ -232,7 +246,7 @@ export async function createDshAdapter(ctx: HostContext, options: AdapterOptions
   }
   const paths = await getHostPaths(ctx, options.home);
   const lockExclusive = options.lockExclusive ?? getNativeLockExclusive(ctx);
-  return new NativeAdapter(ctx, paths, version, options.platform ?? process.platform, lockExclusive, options.lockNamed ?? getNativeWindowsLock(ctx));
+  return new NativeAdapter(ctx, paths, version, options.platform ?? process.platform, lockExclusive, options.lockNamed ?? getNativeWindowsLock(ctx), options.effectSymbol);
 }
 
 class NativeAdapter implements DshAdapter {
@@ -243,7 +257,7 @@ class NativeAdapter implements DshAdapter {
   constructor(private readonly ctx: HostContext, private readonly paths: HostPaths,
     private readonly version: string, private readonly platform: string,
     private readonly lockExclusive: (fd: number) => Promise<void>,
-    private readonly lockNamed: (filename: string) => Promise<Lease>) {
+    private readonly lockNamed: (filename: string) => Promise<Lease>, private readonly effectSymbol?: symbol) {
     this.persistence = service(ctx, 'sessionPersistence');
     this.registry = service(ctx, 'workspaceRegistry');
     this.sessions = service(ctx, 'sessions');
@@ -263,6 +277,117 @@ class NativeAdapter implements DshAdapter {
   private async requireSupported(): Promise<void> {
     const support = await this.capabilities();
     if (!support.supported) throw new ArchiveError('unsupported-host', support.reason ?? 'Unsupported host');
+  }
+  private async lifecycleSymbols(): Promise<NativeLifecycleSymbols | undefined> {
+    if (this.effectSymbol) return { effect: this.effectSymbol };
+    const profile = service<{ installAnchor?: unknown }>(this.ctx, 'profileContext');
+    if (typeof profile?.installAnchor !== 'string' || !isAbsolute(profile.installAnchor)) return undefined;
+    try {
+      const filename = createRequire(profile.installAnchor).resolve('@deepseek-ai/cordis');
+      const module = await importHost(pathToFileURL(filename).href);
+      const symbols = module.symbols;
+      if (!object(symbols) || typeof symbols.effect !== 'symbol') return undefined;
+      return { effect: symbols.effect, ...(typeof symbols.original === 'symbol' ? { original: symbols.original } : {}) };
+    } catch { return undefined; }
+  }
+  /** Invoke only the exact rc.3 owner teardown; never close a borrowed writer or edit registries. */
+  async releaseIdle(group: SessionGroup): Promise<boolean> {
+    await this.requireSupported();
+    if (group.members.every(member => this.sessions!.get(member.id) === undefined)) return true;
+    const symbols = await this.lifecycleSymbols();
+    const agents = service<AgentRegistry>(this.ctx, 'agents');
+    const loop = service<Record<string, unknown>>(this.ctx, 'agentLoop');
+    if (!symbols || !agents || !loop || typeof this.sessions!.flush !== 'function'
+      || !['get', 'list', 'isOwnedBy', 'requireFactory'].every(key => typeof (agents as unknown as Record<string, unknown>)[key] === 'function')) return false;
+    let factory: unknown;
+    try { factory = agents.requireFactory().target; } catch { return false; }
+    const originalLoop = symbols.original ? (loop as Record<symbol, unknown>)[symbols.original] ?? loop : loop;
+    if (originalLoop !== factory || !object(factory) || !object(factory.runtime) || !object(factory.runtime.ctx)) return false;
+    const loopContext = factory.runtime.ctx;
+    const registry = loopContext.registry;
+    if (!object(registry) || typeof registry.values !== 'function') return false;
+    const fibers = new Set<Record<string, unknown>>();
+    const ancestors = (candidate: unknown) => {
+      while (object(candidate) && !fibers.has(candidate)) {
+        fibers.add(candidate); candidate = object(candidate.parent) ? candidate.parent.fiber : undefined;
+      }
+    };
+    ancestors(this.ctx.fiber); ancestors(loopContext.fiber);
+    try {
+      for (const runtime of (registry.values as () => Iterable<unknown>).call(registry)) {
+        if (!object(runtime) || !object(runtime.fibers) || typeof (runtime.fibers as Record<symbol, unknown>)[Symbol.iterator] !== 'function') return false;
+        for (const fiber of runtime.fibers as unknown as Iterable<unknown>) ancestors(fiber);
+      }
+    } catch { return false; }
+    const rootArchived = () => {
+      if (!this.registry!.archivedSessionIds.includes(group.sessionId)) throw new ArchiveError('not-archived', 'Only archived sessions can be released for trash.');
+    };
+    const inspectPlan = (): ReleasePlan[] | undefined => {
+      rootArchived();
+      const plans: ReleasePlan[] = []; const ids = new Set(group.members.map(member => member.id));
+      const live = agents.list();
+      if (!Array.isArray(live) || live.some(agent => !object(agent) || typeof agent.id !== 'string')) return undefined;
+      for (const member of group.members) {
+        const session = this.sessions!.get(member.id); const agent = agents.get(member.id);
+        if (session === undefined) {
+          if (agent !== undefined) throw new ArchiveError('ambiguous-lifecycle', 'The host agent and session lifecycles disagree.');
+          continue;
+        }
+        if (!agent || !object(agent.phase) || !object(agent.inbox)) return undefined;
+        if (agent.session !== session || agent.id !== member.id || JSON.stringify(agent.session.header) !== JSON.stringify(member.header))
+          throw new ArchiveError('source-changed', 'The loaded session identity changed. Review a new preview.');
+        // The public status also calls maintenance idle. The actual phase and
+        // durable inbox are both required before a teardown that cancels input.
+        if (agent.status !== 'idle' || agent.phase.kind !== 'idle' || agent.inbox.hasPending !== false)
+          throw new ArchiveError('active', 'A session has active maintenance or queued input. Nothing was released.');
+        if (live.some(child => !ids.has(child.id) && agents.isOwnedBy(child.id, agent)))
+          throw new ArchiveError('ambiguous-lineage', 'The host owns a child outside the confirmed session group.');
+        const matches = new Set<() => unknown>();
+        for (const fiber of fibers) {
+          const disposables = fiber._disposables;
+          if (!object(disposables) || typeof (disposables as Record<symbol, unknown>)[Symbol.iterator] !== 'function') return undefined;
+          for (const dispose of disposables as unknown as Iterable<unknown>) {
+            if (typeof dispose !== 'function') continue;
+            const metadata = (dispose as unknown as Record<symbol, unknown>)[symbols.effect];
+            if (object(metadata) && metadata.label === `agentLoop.lifecycle(${member.id})`) matches.add(dispose as () => unknown);
+          }
+        }
+        if (!matches.size) return undefined;
+        if (matches.size !== 1) throw new ArchiveError('ambiguous-lifecycle', 'Multiple host owners claim this session lifecycle. Nothing was released.');
+        plans.push({ id: member.id, session, agent, dispose: [...matches][0]! });
+      }
+      // Claim children first; every native teardown is awaited before return.
+      const ordered: ReleasePlan[] = [];
+      while (plans.length) {
+        const leaf = plans.findIndex(parent => !plans.some(child => child !== parent && agents.isOwnedBy(child.id, parent.agent)));
+        if (leaf < 0) throw new ArchiveError('ambiguous-lineage', 'The host runtime ownership graph is cyclic.');
+        ordered.push(plans.splice(leaf, 1)[0]!);
+      }
+      return ordered;
+    };
+    const checkActivity = async () => {
+      rootArchived();
+      for (const member of group.members) {
+        if ((await this.ctx.waterfall!('workspace/session-activity', { sessionId: member.id }, async () => [])).length)
+          throw new ArchiveError('active', 'A session or related task is active. Nothing was released.');
+      }
+    };
+    await checkActivity();
+    const prepared = inspectPlan(); if (prepared === undefined) return false;
+    for (const plan of prepared) await this.sessions!.flush!(plan.session);
+    await checkActivity();
+    // No await between the final identity/idle checks and claiming every native
+    // owner disposer. Each native teardown memoizes its own ordered settlement.
+    const current = inspectPlan();
+    if (!current || current.length !== prepared.length || current.some((plan, index) => plan.agent !== prepared[index]!.agent
+      || plan.session !== prepared[index]!.session || plan.dispose !== prepared[index]!.dispose))
+      throw new ArchiveError('source-changed', 'A session lifecycle changed while release was being prepared.');
+    const settlements = await Promise.allSettled(current.map(plan => {
+      try { return Promise.resolve(plan.dispose()); } catch (error) { return Promise.reject(error); }
+    }));
+    if (settlements.some(settlement => settlement.status === 'rejected') || group.members.some(member => this.sessions!.get(member.id) !== undefined || agents.get(member.id) !== undefined))
+      throw new ArchiveError('release-failed', 'The host could not finish releasing this idle session. Its logs have not been moved.');
+    return true;
   }
   private async snapshots(): Promise<Snapshot[]> {
     const snapshots = await this.persistence!.list();

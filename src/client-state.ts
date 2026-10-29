@@ -23,7 +23,7 @@ export class ClientTransportError extends Error {
 
 type Mutation =
   | { kind: 'execute'; previewId: string; requestId: string }
-  | { kind: 'cancel'; ids: string[]; requestId: string };
+  | { kind: 'cancel'; ids: string[]; requestId: string; review?: { id: string; openGeneration: number } };
 
 /** IDs currently eligible for selection; pending entries have a dedicated cancel action. */
 export function pageItems<T>(items: readonly T[], page: number): readonly T[] { return items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE); }
@@ -78,6 +78,7 @@ export class ArchiveClientController {
 
   async open(sessionId?: string): Promise<void> {
     const generation = ++this.openGeneration;
+    this.previewGeneration++;
     this.update({ open: true, tab: 'archived', page: 0, selected: [], preview: null, error: this.uncertainMutation ? this.state.error : null });
     await this.refresh();
     if (!sessionId || generation !== this.openGeneration || !this.state.open || this.state.busy || this.uncertainMutation || this.state.error || !this.state.overview?.support.supported) return;
@@ -182,6 +183,14 @@ export class ArchiveClientController {
     await this.perform({ kind: 'cancel', ids: [...new Set(ids)], requestId: this.createId() });
   }
 
+  /** Cancel the old queued consent before offering a new, explicit confirmation. */
+  async reviewPending(id: string): Promise<void> {
+    if (this.disposed || !this.state.open || this.state.busy || this.state.loading || this.uncertainMutation
+      || this.state.tab !== 'archived' || !this.state.overview?.support.supported
+      || !pageItems(this.state.overview.archived, this.state.page).some(item => item.id === id && item.pending)) return;
+    await this.perform({ kind: 'cancel', ids: [id], requestId: this.createId(), review: { id, openGeneration: this.openGeneration } });
+  }
+
   async retryUncertain(): Promise<void> {
     if (this.state.busy || !this.uncertainMutation) return;
     await this.perform(this.uncertainMutation);
@@ -203,6 +212,16 @@ export class ArchiveClientController {
       this.uncertainMutation = null;
       this.update({ busy: false, preview: null, selected: [], result: this.withKnownTitles(result), error: null, uncertainRequest: false });
       await this.refresh();
+      if (mutation.kind === 'cancel' && mutation.review) {
+        const review = mutation.review;
+        if (this.disposed || review.openGeneration !== this.openGeneration || !this.state.open || this.state.error
+          || this.state.loading || this.uncertainMutation || this.state.tab !== 'archived' || !this.state.overview?.support.supported
+          || result.action !== 'cancel' || !result.items.some(item => item.id === review.id && item.status === 'cancelled')) return;
+        const index = this.state.overview.archived.findIndex(item => item.id === review.id && !item.pending);
+        if (index < 0) return;
+        this.update({ page: Math.floor(index / PAGE_SIZE), selected: [review.id] });
+        await this.preview('trash', [review.id]);
+      }
     } catch (error) {
       const uncertain = error instanceof ClientTransportError;
       this.uncertainMutation = uncertain ? mutation : null;

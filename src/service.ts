@@ -224,7 +224,7 @@ export class ArchiveService implements ArchiveApi {
           if (prepared.preview.action === 'trash') {
             const fresh = await this.adapter.inspect(item.id); groupReady(fresh);
             if (groupFingerprint(fresh) !== prepared.fingerprints.get(item.id)) throw new ArchiveError('source-changed', MESSAGE['source-changed']!);
-            outcome = await this.trashGroup(fresh, undefined, { requestId, targetId: item.id });
+            outcome = await this.trashGroup(fresh, undefined, { requestId, targetId: item.id }, true);
           } else {
             const current = await this.store.manifest(item.id);
             if (groupFingerprint(current.group) !== groupFingerprint(expected)
@@ -248,8 +248,15 @@ export class ArchiveService implements ArchiveApi {
       return this.requests.complete(requestId);
     });
   }
-  private async trashGroup(group: SessionGroup, pending?: Operation, context?: OperationContext): Promise<ItemResult> {
-    const lease = await this.adapter.acquire(group);
+  private async trashGroup(group: SessionGroup, pending?: Operation, context?: OperationContext, releaseIdle = false): Promise<ItemResult> {
+    let lease = await this.adapter.acquire(group);
+    // Only a fresh user confirmation can release an idle native lifecycle.
+    // Startup replay retains its original one-pass, non-interrupting behavior.
+    if (lease.kind === 'loaded' && releaseIdle && this.adapter.releaseIdle && await this.adapter.releaseIdle(group)) {
+      const cold = await this.adapter.inspect(group.sessionId); groupReady(cold);
+      if (groupFingerprint(cold) !== groupFingerprint(group)) throw new ArchiveError('source-changed', MESSAGE['source-changed']!);
+      lease = await this.adapter.acquire(cold);
+    }
     if (lease.kind === 'busy') throw new ArchiveError('busy', MESSAGE.busy!);
     if (lease.kind === 'loaded') {
       if (!pending) await this.store.queue(group, 'Waiting for DSH to release this idle session at the next start.', context);

@@ -12,15 +12,18 @@ The scenario table defines the acceptance targets. The verification record below
 
 | Area | Scenario | Required outcome |
 | --- | --- | --- |
-| Cold archived session | Preview, move, restart, restore, restart, purge | Log bytes and native bookkeeping agree with each visible state |
+| Cold archived session | Preview, move, restore and purge in one process; repeat across restart boundaries | Log bytes and native bookkeeping agree with each visible state; purge does not require restart |
 | Scope | Request an unarchived or unknown session | No source mutation; explicit rejection/skip |
 | Ownership | Parent with explicit subagents and an independent fork | Subagents move with parent; fork remains intact and readable |
 | Activity | Running turn, subagent, background job, schedule, or pending interaction | Group is not moved or queued as idle |
-| Own-host lease | Idle session opened earlier in this process | Pending status; original logs remain; next startup rechecks |
+| Own-host lease | A wholly idle managed session opened earlier in this process | Fresh manual confirmation may release its native lifecycle and move now; unavailable safe release keeps logs pending |
 | External lease | Another process holds `session.lock` | Refusal without stealing the lock |
 | Pending cancellation | Cancel, restart | Target is not moved |
 | Pending drift | Add content or unarchive after queuing | Old request does not move changed data |
-| Pending retry | Still owned at next startup | Remains pending, no forced movement |
+| Pending retry | Cancel waiting and review; close/cancel/confirm the new preview, or reconcile an uncertain response | Old queue ends explicitly; a fresh confirmation is required, and a late response never reopens a closed dialog |
+| Idle-release protection | Running or maintenance phase, pending input, unknown lifecycle, ambiguous disposer, or runtime-owned child outside the group | Refuse teardown/move, preserving work and independent relationships |
+| Release drift | Native teardown fails or changes content/archive state before a move | Do not move changed or unverified data; report the reason and require fresh review |
+| Startup replay | An old queued request encounters a loaded session | Do not invoke the fresh-manual idle-release path; retain protected pending behavior |
 | Batch | Ready, pending, skipped, and failed targets together | Exact per-item statuses and consistent counts; retry only failed targets |
 | Idempotency | Double click, duplicate request, response lost | One transition and a stable result |
 | Confirmation | Cancel a move/purge confirmation | No mutation occurs |
@@ -50,12 +53,16 @@ The scenario table defines the acceptance targets. The verification record below
 ```sh
 pnpm verify
 pnpm pack
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.2.tgz
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.3.tgz
 ```
 
 `verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
-## CI verification — 0.1.2
+## Verification status — 0.1.3
+
+The no-restart idle-release and pending-review changes are being implemented and verified. No completed test count, native host result or Desktop GUI pass is claimed here for `0.1.3` yet. The completed records below apply to their named earlier versions.
+
+## Historical CI verification — 0.1.2
 
 Date: 2026-10-29. Both jobs in run `40835348347` passed on the same runtime commit, `d2bb1257f2706742d851ca4712cfcd707ea187b5`, using official DSH `0.2.1-rc.3` JSONL persistence, Node `24.21.0`, pnpm `11.28.5`, isolated runtimes, and temporary synthetic profiles.
 
@@ -70,7 +77,7 @@ Date: 2026-10-29. Both jobs in run `40835348347` passed on the same runtime comm
 - Raw pnpm removal reproduced a stale bundle entry, followed by idempotent cleanup preserving other fields and trash. The tested Desktop CLI removed its entry automatically; manager reinstall/removal checks also preserved trash. These results document the tested invocation modes rather than assuming every host build behaves identically.
 - This is native runtime and package verification. It does not add a graphical Desktop run, a public GitHub download benchmark, or a network/proxy performance claim. The HTTP asset server is a local fixture.
 
-## Local verification — 0.1.2
+## Historical local verification — 0.1.2
 
 Date: 2026-10-29. The local macOS run used the existing DSH `0.2.1-rc.3` JSONL runtime, Node `24.21.0`, pnpm `11.28.5`, and temporary synthetic profiles. The corresponding completed CI matrix is recorded above; the previous release's matrix remains a separate historical record below.
 

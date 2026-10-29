@@ -14,20 +14,20 @@ export const en = {
   selectAll: 'Select all ({n})', selected: '{n} selected',
   moveSelected: 'Move selected to trash', restoreSelected: 'Restore selected', purgeSelected: 'Delete permanently',
   moveTitle: 'Move these conversations to trash?', restoreTitle: 'Restore these conversations?', purgeTitle: 'Permanently delete these conversations?',
-  moveDescription: 'Review the selected conversations and their dedicated subagents.',
+  moveDescription: 'Review the selected conversations and dedicated subagents. Confirmation can try to release idle DSH sessions without restarting. Active work and other processes remain protected; a session that cannot be released stays pending.',
   restoreDescription: 'Restore the original logs in their archived state. A missing workspace becomes Ungrouped; existing paths will never be overwritten.',
-  purgeDescription: 'Delete the selected session logs and recovery records from this machine. This cannot be undone.',
+  purgeDescription: 'Confirm to delete the selected session logs and recovery records now, without restarting DSH. Busy entries remain protected. This cannot be undone.',
   confirmTrash: 'Confirm move to trash', confirmRestore: 'Confirm restore', confirmPurge: 'Confirm permanent deletion',
   previewExpired: 'This preview expired. Go back and review your selection again.',
   previewEmpty: 'No eligible records remain. Go back and refresh the list.',
   archivedHint: 'Running work and uncertain relationships stay protected.',
-  trashHint: 'Restored conversations remain archived.',
+  trashHint: 'Permanently delete selected trash after confirmation without restarting DSH. Restored conversations remain archived.',
   retention: 'No automatic deletion', scopeTitle: 'What this includes',
   pages: 'Conversation pages', previousPage: 'Previous', nextPage: 'Next', pageNumber: 'Page {page} of {pages}',
-  pending: 'Pending restart', pendingHint: 'Still held by DSH. No disk space has been freed yet.',
-  cancelPending: 'Cancel pending move', pendingCancelled: 'Pending move cancelled',
+  pending: 'Pending restart', pendingHint: 'No disk space has been freed yet. Confirmation can try releasing an idle DSH session without restarting; if release is unavailable, the move stays pending.',
+  cancelPending: 'Cancel pending move', reviewPending: 'Cancel waiting and review', pendingCancelled: 'Pending move cancelled',
   childCount: 'Subagents: {n}', memberCount: 'Conversations: {n}',
-  ready: 'Ready', blocked: 'Protected', pendingPreview: 'After restart',
+  ready: 'Ready', blocked: 'Protected', pendingPreview: 'Try idle release',
   previewCount: 'Selected: {n}', previewMembers: 'Conversations: {n}',
   previewSize: 'Session log size: {size}', expires: 'Confirmation is valid until {time}.',
   result: 'Latest result', resultDetails: 'View details', resultSummary: '{succeeded} succeeded · {pending} pending · {skipped} skipped · {failed} failed',
@@ -40,11 +40,13 @@ export const en = {
   listFailure: 'Unable to read the current records. Refresh to try again.',
   reasonActive: 'This conversation or a related task is active. Finish it before continuing.',
   reasonBusy: 'Another process holds the session write lock. Close that instance and review again.',
-  reasonLoaded: 'DSH still holds this idle conversation. The move will wait for the next start.',
+  reasonLoaded: 'DSH still holds this idle conversation. It remains pending; cancel waiting and review to try again, or let the next startup recheck it.',
+  reasonLifecycle: 'DSH could not safely verify who owns this conversation. Its logs have not been moved. Refresh and review again.',
+  reasonRelease: 'DSH could not safely release this idle conversation. Its logs have not been moved. Refresh and review again.',
   reasonChanged: 'The archive state or session content changed. Review a new preview.',
   reasonRecovery: 'An interrupted operation needs recovery before another change is allowed.',
   reasonInterrupted: 'This operation was interrupted. Review its current state before retrying.',
-  reasonPending: 'This conversation is already waiting for the next start.',
+  reasonPending: 'This conversation is already pending. Cancel waiting and review for a fresh confirmation.',
   reasonArchived: 'Only archived conversations can be moved to trash.',
   reasonMissing: 'The selected record no longer exists. Refresh the list.',
   reasonLineage: 'A related conversation has uncertain ownership. This group is protected.',
@@ -71,20 +73,20 @@ export const zh: Record<TextKey, string> = {
   selectAll: '全选（{n}）', selected: '已选择 {n} 项',
   moveSelected: '将所选移入回收站', restoreSelected: '恢复所选', purgeSelected: '永久清除',
   moveTitle: '将这些会话移入回收站？', restoreTitle: '恢复这些会话？', purgeTitle: '永久清除这些会话？',
-  moveDescription: '请核对所选会话及其专属子代理的处理范围。',
+  moveDescription: '请核对所选会话及专属子代理。确认后可尝试安全释放 DSH 持有的闲置会话，无需重启；运行中的任务和其他进程的占用会受保护，无法释放时仍保留待处理。',
   restoreDescription: '恢复原始日志并保持已归档状态。原工作区不存在时归入“未分组”，不会覆盖已有路径。',
-  purgeDescription: '将从本机清除所选会话的日志与恢复记录，此操作无法撤销。',
+  purgeDescription: '确认后直接清除所选会话日志与恢复记录，无需重启 DSH。仍被占用的条目会受保护，此操作无法撤销。',
   confirmTrash: '确认移入回收站', confirmRestore: '确认恢复', confirmPurge: '确认永久清除',
   previewExpired: '预览已过期，请返回并重新核对目标。',
   previewEmpty: '没有可操作记录，请返回并刷新列表。',
   archivedHint: '运行中的工作与关联不明的会话会受到保护。',
-  trashHint: '恢复后会话仍保持已归档状态。',
+  trashHint: '回收站内容确认后即可永久清除，无需重启 DSH；恢复后仍保持已归档状态。',
   retention: '不会自动清除', scopeTitle: '处理范围',
   pages: '会话分页', previousPage: '上一页', nextPage: '下一页', pageNumber: '第 {page} / {pages} 页',
-  pending: '待重启处理', pendingHint: 'DSH 仍占用此会话，目前尚未释放磁盘空间。',
-  cancelPending: '取消待处理', pendingCancelled: '已取消待处理',
+  pending: '待重启处理', pendingHint: '目前尚未释放磁盘空间。确认后可尝试安全释放 DSH 持有的闲置会话，无需重启；无法释放时仍保留待处理。',
+  cancelPending: '取消待处理', reviewPending: '取消等待并重新核对', pendingCancelled: '已取消待处理',
   childCount: '子代理 {n}', memberCount: '会话 {n} 个',
-  ready: '可执行', blocked: '已保护', pendingPreview: '重启后处理',
+  ready: '可执行', blocked: '已保护', pendingPreview: '尝试释放闲置占用',
   previewCount: '已选择 {n} 项', previewMembers: '共 {n} 个会话',
   previewSize: '会话日志大小：{size}', expires: '本次确认在 {time} 前有效。',
   result: '最近结果', resultDetails: '查看明细', resultSummary: '成功 {succeeded} · 待处理 {pending} · 跳过 {skipped} · 失败 {failed}',
@@ -97,11 +99,13 @@ export const zh: Record<TextKey, string> = {
   listFailure: '无法读取当前记录，请刷新重试。',
   reasonActive: '此会话或关联任务正在运行，请完成后重新核对。',
   reasonBusy: '其他进程持有会话写锁，请关闭相应实例后重新核对。',
-  reasonLoaded: 'DSH 仍持有此闲置会话，将等待下次启动后移入回收站。',
+  reasonLoaded: 'DSH 仍持有此闲置会话，暂保留待处理；可以取消等待并重新核对后再试，或等下次启动复查。',
+  reasonLifecycle: 'DSH 无法安全确认此会话的持有状态，日志尚未移动。请刷新后重新核对。',
+  reasonRelease: 'DSH 未能安全释放此闲置会话，日志尚未移动。请刷新后重新核对。',
   reasonChanged: '归档状态或会话内容已经变化，请重新预览并确认。',
   reasonRecovery: '存在需要恢复的中断操作，恢复完成前不能继续修改。',
   reasonInterrupted: '上次操作已中断，请核对当前状态后重新确认。',
-  reasonPending: '此会话已在等待下次启动后处理。',
+  reasonPending: '此会话已处于待处理状态，请取消等待并重新核对后确认。',
   reasonArchived: '只有已归档会话可以移入回收站。',
   reasonMissing: '所选记录已不存在，请刷新列表。',
   reasonLineage: '关联会话的归属不明确，已保护此组记录。',
@@ -125,6 +129,7 @@ export function translator(language: 'en' | 'zh'): Translate {
 export function localizeReason(code: string | undefined, message: string, t: Translate): string {
   const keys: Record<string, TextKey> = {
     active: 'reasonActive', busy: 'reasonBusy', 'host-loaded': 'reasonLoaded',
+    'ambiguous-lifecycle': 'reasonLifecycle', 'release-failed': 'reasonRelease',
     'source-changed': 'reasonChanged', 'stale-preview': 'reasonChanged', 'preview-expired': 'previewExpired',
     'recovery-required': 'reasonRecovery', 'operation-interrupted': 'reasonInterrupted', 'purge-interrupted': 'reasonInterrupted',
     'already-pending': 'reasonPending', 'not-archived': 'reasonArchived',
@@ -296,7 +301,7 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
           {!state.loading && state.overview && state.overview[state.tab].length === 0 && <EmptyState tab={state.tab} t={t} />}
           {state.tab === 'archived' ? pageItems(state.overview?.archived ?? [], state.page).map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)} data-pending={item.pending === true}>
             <div className="dad-row-main"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported || item.pending === true} onChange={() => controller.toggle(item.id)} label={item.title || item.id} /><div className="dad-meta"><span className="dad-workspace">{item.workspace || t('ungrouped')}</span><span>{formatBytes(item.sizeBytes)}</span>{item.descendantCount > 0 && <span className="dad-badge">{t('childCount', { n: item.descendantCount })}</span>}{item.pending && <span className="dad-badge dad-badge-pending">{t('pending')}</span>}</div>{item.pending && <p className="dad-pending">{t('pendingHint')}</p>}</div>
-            {item.pending && <Button size="sm" variant="outline" disabled={locked || !supported} onClick={() => { void controller.cancelPending([item.id]); }}>{t('cancelPending')}</Button>}
+            {item.pending && <div className="dad-row-actions"><Button size="sm" variant="outline" disabled={locked || !supported} onClick={() => { void controller.reviewPending(item.id); }}>{t('reviewPending')}</Button><Button size="sm" variant="ghost" disabled={locked || !supported} onClick={() => { void controller.cancelPending([item.id]); }}>{t('cancelPending')}</Button></div>}
           </div>) : pageItems(state.overview?.trash ?? [], state.page).map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)}>
             <div className="dad-row-main"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported} onChange={() => controller.toggle(item.id)} label={item.title || item.sessionId} /><div className="dad-meta"><time dateTime={isoTime(item.trashedAt)}>{formatTime(item.trashedAt)}</time><span>{formatBytes(item.sizeBytes)}</span><span className="dad-badge">{t('memberCount', { n: item.memberCount })}</span></div></div>
           </div>)}
@@ -327,7 +332,7 @@ export const CLIENT_CSS = `
 .dad-row[data-selected=true]{border-color:color-mix(in srgb,var(--dad-primary) 32%,transparent);background:color-mix(in srgb,var(--dad-primary) 6%,transparent)}
 .dad-row[data-pending=true]{border-style:dashed}.dad-row-main{flex:1;min-width:0}.dad-row-main>label{min-width:0;align-items:flex-start;font-size:13px;font-weight:500}.dad-row-main>label>span{overflow-wrap:anywhere}
 .dad-meta{gap:5px 10px;flex-wrap:wrap;margin-top:5px;padding-left:25px;color:var(--dad-muted);font-size:11px;line-height:1.5}.dad-meta>span,.dad-meta>time{overflow-wrap:anywhere}.dad-workspace{max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dad-badge{padding:1px 6px;border-radius:5px;background:color-mix(in srgb,var(--dad-primary) 5%,transparent);font-size:10px}.dad-badge-pending{border:1px solid var(--dad-border);background:transparent}
-.dad-pending{margin:6px 0 0 25px!important;color:var(--dad-muted);font-size:11px;line-height:1.5}.dad-row>button{flex-shrink:0;margin-top:1px}
+.dad-pending{margin:6px 0 0 25px!important;color:var(--dad-muted);font-size:11px;line-height:1.5}.dad-row-actions{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;margin-top:1px}.dad-row-actions>button{max-width:190px;white-space:normal;text-align:right}
 .dad-list-foot{align-items:flex-start;justify-content:space-between;gap:12px}.dad-hint,.dad-expiry{color:var(--dad-muted);font-size:11px;line-height:1.5}.dad-hint{padding:1px 2px}.dad-pagination{flex-shrink:0;gap:5px;font-size:11px;color:var(--dad-muted)}.dad-pagination button{padding:1px 5px;min-height:22px}.dad-pagination>span{font-variant-numeric:tabular-nums;white-space:nowrap}
 .dad-selection{margin-right:auto;font-size:12px;color:var(--dsw-alias-label-secondary,GrayText)}
 .dad-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:180px;padding:25px 18px;text-align:center;border:1px dashed var(--dad-border);border-radius:12px;color:var(--dad-muted)}.dad-empty strong{color:var(--dad-primary);font-size:13px;font-weight:500}.dad-empty p{max-width:340px;font-size:12px}.dad-empty-icon{display:flex;align-items:center;justify-content:center;width:42px;height:42px;margin-bottom:5px;border:1px solid var(--dad-border);border-radius:13px;background:var(--dsw-alias-bg-layer-1,#8881)}
@@ -340,4 +345,5 @@ export const CLIENT_CSS = `
 .dad-danger{color:var(--dsw-alias-status-error,#bd3d3d)!important}.dad-results{border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#88805);font-size:11px}.dad-results summary{display:flex;align-items:center;gap:10px;list-style:none;padding:10px 12px;cursor:pointer}.dad-results summary::-webkit-details-marker{display:none}.dad-results summary:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px;border-radius:9px}.dad-result-label{font-weight:500;white-space:nowrap}.dad-result-summary{flex:1;color:var(--dad-muted);font-variant-numeric:tabular-nums}.dad-result-disclosure{font-size:16px;line-height:1;color:var(--dad-muted);transition:transform .15s}.dad-results[open] .dad-result-disclosure{transform:rotate(180deg)}.dad-results[open] summary{border-bottom:1px solid var(--dad-border)}.dad-results ul{padding:0 12px;max-height:190px;overflow:auto}.dad-results li{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--dad-border)}.dad-results li:last-child{border-bottom:0}.dad-results li>div{min-width:0}.dad-results li strong{font-weight:500;overflow-wrap:anywhere}.dad-result-status{display:inline-block;margin-left:8px;font-size:10px;color:var(--dad-muted)}.dad-result-failed{color:var(--dsw-alias-status-error,#bd3d3d)}.dad-results li p{font-size:11px;line-height:1.5;margin-top:4px;overflow-wrap:anywhere}
 @media(prefers-reduced-motion:reduce){.dad-row,.dad-result-disclosure{transition:none}}
 @media(max-width:560px){.dad-dialog{width:calc(100vw - 20px);max-width:calc(100vw - 20px)}.dad-content{max-height:65vh}.dad-toolbar{gap:8px}.dad-tabs button{padding:6px 9px}.dad-row{padding:10px;gap:8px}.dad-row-title{flex-wrap:wrap;gap:6px}.dad-list-foot{flex-direction:column;gap:6px}.dad-retention{font-size:10px}.dad-results summary{flex-wrap:wrap;gap:4px 9px}.dad-result-summary{flex-basis:75%}.dad-result-disclosure{margin-left:auto}.dad-workspace{max-width:100%}}
+@media(max-width:560px){.dad-row[data-pending=true]{flex-wrap:wrap}.dad-row-actions{width:100%;flex-direction:row;flex-wrap:wrap;justify-content:flex-end}.dad-row-actions>button{max-width:100%}}
 `;

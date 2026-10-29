@@ -13,7 +13,7 @@ Move archived conversations to trash, restore them, or permanently clear selecte
 Open **Plugins → Add plugin** and paste the versioned Release package URL:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh-archive-delete-0.1.2.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.3/qwqbig-dsh-archive-delete-0.1.3.tgz
 ```
 
 1. **Add and enable.** The native manager installs the dependency and registers its bundle in the current profile. Fully quit and reopen DSH when it requests a restart.
@@ -22,17 +22,17 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh
 
 Release `.tgz` assets contain only the package's declared installable files, including precompiled `lib/` artifacts. Repository archives from `codeload` contain source, tests, lockfiles, and CI configuration as well; they are not the recommended install package. No source build, dependency `prepare`, or installation hook is needed. These versions are not published to npm.
 
-For a downloaded package, retain its matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh-archive-delete-0.1.2.tgz.sha256). With both files in the same directory, check on macOS:
+For a downloaded package, retain its matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.3/qwqbig-dsh-archive-delete-0.1.3.tgz.sha256). With both files in the same directory, check on macOS:
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.2.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.3.tgz.sha256
 ```
 
 In Windows PowerShell, compare the reported hash with the checksum file:
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.1.2.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.1.2.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.1.3.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.1.3.tgz.sha256
 ```
 
 A fixed version URL identifies the chosen release; the checksum checks the downloaded file. No fixed byte-size claim is made across releases.
@@ -48,11 +48,19 @@ Closing a window is not necessarily quitting DSH. On macOS, use **⌘Q** or the 
 | Tab / state | What to do | What happens |
 | --- | --- | --- |
 | Archived | Move selected to trash | Logs move with their dedicated subagents; independent forks stay |
-| Pending restart | Cancel pending move, or leave queued | Original logs stay until a checked startup attempt can move them |
+| Pending restart | Cancel waiting and review, cancel the request, or leave queued | Fresh review retires the old queue; only its new confirmation attempts a safe immediate move. Otherwise original logs stay |
 | Trash | Restore selected | Return archived to the original workspace, or archived Ungrouped if it is gone; never overwrite |
-| Trash | Delete permanently | Review a new confirmation, then remove only selected trash logs and recovery metadata |
+| Trash | Delete permanently | Review a new confirmation, then immediately remove only selected trash logs and recovery metadata; no host restart is required |
 
 Each page/batch contains up to 100 targets. **Select all** applies to the current page; changing pages or tabs clears selection. A pending request does not free space. Changed, unarchived, newly active, or unsafe targets require a fresh review. Trash never expires automatically.
+
+### Move and clear without restarting
+
+A confirmed move first checks the complete parent/subagent group. When an archived group is wholly idle and the pinned host provides an unambiguous native lifecycle teardown, the plugin asks that lifecycle to finish and release its writer. It then checks the archived state, group, contents, activity and write leases again before moving logs. A content change during release requires another preview. Running work, maintenance, pending input, external writers, unknown ownership and an unavailable release capability are not forcibly closed.
+
+For an existing **Pending restart** record, choose **Cancel waiting and review**. This cancels the old queued request and opens a fresh move preview; it does not execute the move. Confirm that preview to attempt processing now. If you close or cancel it, the old queue remains cancelled and the source logs remain. Once the result says **Moved to trash**, select the resulting Trash entry and confirm **Delete permanently** in the same app process. If safe release is unavailable, the move can remain pending rather than taking a lock by force.
+
+Restart prompts during installation or upgrade concern loading the new plugin package. They are separate from permanently clearing records that have already reached Trash.
 
 Shared attachments, spill, project files, other plugin caches, and remote copies are outside permanent cleanup. The confirmation shows the scope; permanent cleanup cannot be undone.
 
@@ -63,7 +71,7 @@ CLI installation is intended for managed or unattended setups where the caller c
 With a Desktop-enabled DSH CLI:
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh-archive-delete-0.1.2.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.3/qwqbig-dsh-archive-delete-0.1.3.tgz
 ```
 
 A successful package-manager exit alone does not prove activation. A manager-enabled CLI can register bundles automatically, while an installation-only path can leave them absent. If the standalone CLI rejects the reserved `desktop` profile, use Desktop's manager rather than selecting a different profile.
@@ -88,7 +96,7 @@ A successful package-manager exit alone does not prove activation. A manager-ena
 Start the actual target host and check the plugin component is running, its details contain **Manage archives and trash**, and the dialog responds. After successful recovery and authenticated API registration, the current startup emits a line like:
 
 ```text
-[archive-delete] v0.1.2 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.1.3 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
 Use a fresh line from the current process and check its version/path. It is not emitted for disabled or failed startup. A configuration dump such as `--dump-config` may succeed even with an unresolved bundle; it does not prove startup or activation.
@@ -179,7 +187,7 @@ With DSH's CLI installed, create a fresh test home and install into its isolated
 
 ```sh
 DSH_ARCHIVE_DELETE_TEST_HOME="$(mktemp -d)"
-DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.1.2.tgz"
+DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.1.3.tgz"
 ```
 
 Verify the isolated profile's registration and activation as above. On Windows, use the automated isolated package lifecycle check in [Contributing](../CONTRIBUTING.md). Keep the temporary home path if launching that host manually. A packed artifact keeps development dependencies out of the runtime; primary history is not a fixture.
