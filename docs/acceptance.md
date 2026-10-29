@@ -75,7 +75,24 @@ node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-
 
 `verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
-## Verification status — 0.1.5
+## Verification status — 0.1.6
+
+Date: 2026-10-29. Runtime/client commit: `e7c5d2ff41c815fef7066f21bbf110ed30eedee4`. The local macOS full verification passed 202 of 205 checks, with 3 Windows-only skips; native integration passed 19 of 20, with 1 Windows-only skip. Type/build, committed bundles, documentation/package checks, packed-updater admission and isolated installation/URL upgrade/reinstallation/removal passed using the installed official DSH `0.2.1-rc.3`, Node `24.21.0` and pnpm `11.28.5`.
+
+| Platform | CI evidence | Unit/client/service/scanner/updater | Native integration |
+| --- | --- | --- | --- |
+| Windows | [Run 40876833948, job 123466401016](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40876833948/job/123466401016) | 202 passed, 3 POSIX-only skipped; 205 total | 20 passed; 20 total |
+| macOS | [Run 40876833948, retry job 123466398142](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40876833948/job/123466398142) | 202 passed, 3 Windows-only skipped; 205 total | 19 passed, 1 Windows-only skipped; 20 total |
+
+Both platform jobs passed all build/type, committed-bundle, documentation/package, packing, checksum/update-metadata, updater-admission and isolated package-lifecycle steps. The first macOS CI attempt was cancelled while waiting for a runner without executing a test; its completed retry is the macOS evidence linked above.
+
+- The new native regression genuinely calls `agents.create`, rather than resuming persisted data. It proves that the live parent omits `delegationDepth` while JSONL supplies `0`, then moves the parent and dedicated child and purges them in one process. An independent fork's bytes and archive registration remain intact. Actual depth, working-directory, creation-time and seeded-state differences still refuse release.
+- Unit checks additionally protect explicit invalid depth, unknown fields, different session-object identity and key-order independence. UI checks cover compact status, optional details, escaped explicit update review, actionable errors/restart state, and the absence of update controls during archive confirmation.
+- Isolated macOS Desktop used an APFS clone of the installed app, separate home/profile/userData, current prebuilt code, a QA-only bootstrap calling `agents.create`, and no model calls. The copied shell inherited local modifications; QA changes gave it a unique window title and skipped only its empty-profile first-use page, retaining native gateway authentication. No real credentials/history or primary-profile mutation was used, and no app was downloaded.
+- The native details and management dialog showed the compact version/status/check/details strip. The move confirmation omitted it and showed the live synthetic session with **Try idle release**. Confirmed move displayed **1 succeeded, 0 pending, 0 failed**, with Archived 0 / Trash 1. After explicit permission for this disposable fixture, graphical permanent deletion displayed **Your trash is empty**, Trash 0 and **1 succeeded, 0 failed**. The host PID stayed the same across both operations; no DSH restart was used. Durable receipts recorded moved/purged outcomes, and project-file/shared-attachment marker SHA-256 values remained unchanged.
+- This is one isolated macOS graphical flow and separate official-runtime integration evidence. Windows Desktop GUI, arbitrary shell modifications, future DSH versions and physical power loss are not covered by it.
+
+## Historical verification — 0.1.5
 
 Status: release verification completed. Automated verification passed on both platforms, and the isolated macOS Desktop confirmation, activation and restart checks below completed.
 
@@ -195,6 +212,6 @@ An isolated copy of the installed Electron app, using a separate synthetic home/
 
 ## Verification limits
 
-Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been visually exercised; its native integration and package checks above passed. The historical macOS GUI checks were not rerun for `0.1.1`, `0.1.2` or `0.1.3`. No new Desktop graphical storage-overview run was performed for `0.1.4`. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.
+Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; graphical purge completed in 0.1.6 as recorded above. Graphical cancel-pending clicks remain unverified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been visually exercised; its native integration and package checks above passed. The historical macOS GUI checks were not rerun for `0.1.1`, `0.1.2` or `0.1.3`. No new Desktop graphical storage-overview run was performed for `0.1.4`. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.
 
-For `0.1.5`, the macOS graphical updater evidence currently covers review and cancellation only. Final graphical installation/restart and post-install retention checks remain incomplete pending manual unlock; automated native SDK success and package-admission rollback do not substitute for those clicks.
+For `0.1.5`, the isolated macOS graphical updater completed review, cancellation, confirmation, activation and full quit/reopen with retained synthetic-data hashes, as recorded above. Its fixture response and shell modifications remain separate from the official native SDK and package-admission checks.
