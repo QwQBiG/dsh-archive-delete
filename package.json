@@ -1,6 +1,6 @@
 {
   "name": "@qwqbig/dsh-archive-delete",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Recoverable archived-session cleanup for DeepSeek Harness · DSH 归档会话回收站",
   "type": "module",
   "license": "Apache-2.0",

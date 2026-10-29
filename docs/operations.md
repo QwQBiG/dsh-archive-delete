@@ -56,6 +56,14 @@ Permanent purge cannot undo bytes already removed. If it fails part-way, preserv
 
 No automatic expiry or empty-trash task is installed. Shared attachments, spill files, project working directories, third-party caches, and remote copies are outside the operation.
 
+## Size observations and storage scans
+
+Archived and Trash can be sorted in default order or largest first. Changing sort, page or tab clears selection. Trash row/preview sizes and the confirmation fingerprint come from a current checked observation of remaining owned files; saved original sizes do not describe a partial purge. Recovery metadata and lock files are outside the row figure. Both restore and purge recheck the fingerprint under the native lease before mutation. A changed observation requires another confirmation, not an adjusted old one.
+
+**Storage overview** is a separate read-only flow: choose DSH storage or one registered workspace, explicitly start a scan, then view its measured categories, files, folders, time and limits. Opening it does not scan files. DSH scans exclude valid registered project directories even below the data home; projects require their own explicitly selected scan. Refreshing the workspace list does not refresh measured sizes. There is one active scan at a time; cancellation, scope changes and closing prevent late results from replacing the current view. An incomplete or unavailable scan is not a failed archive operation and does not change pending requests or recovery journals.
+
+The result measures logical file bytes. Verified path/hard-link identities are globally counted once; folder totals count aliases and overlapping subtotals are not additive. Missing/unavailable categories remain unknown. Metadata can change during scanning, so partial sizes and observation timestamps are retained. A result never represents reclaimed physical space, proves AI origin or authorizes deleting a file. There is no storage-category purge, project cleanup, automatic scan or receipt expiry; permanent mutation still requires the existing Trash preview and confirmation.
+
 ## Recovery expectations
 
 | Interrupted boundary | Required observation and outcome |

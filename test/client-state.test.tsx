@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ArchiveClientController, ClientTransportError, canExecutePreview, visibleSelection, PAGE_SIZE, pageCount } from '../src/client-state.js';
-import { ArchiveError, type ArchiveApi, type BatchResult, type Overview, type Preview } from '../src/contracts.js';
+import { ArchiveError, type ArchiveApi, type BatchResult, type Overview, type Preview, type StorageOverview } from '../src/contracts.js';
 import { fixture, present } from './fixtures.js';
 
 function overview(): Overview {
@@ -41,6 +41,137 @@ function deferred<T>() {
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
+
+function storageOverview(workspaceId?: string): StorageOverview {
+  return { metric: 'logical-file-bytes', scope: workspaceId ? 'workspace' : 'host', ...(workspaceId ? { workspaceId } : {}),
+    workspaces: [{ id: 'project-1', title: 'First project' }, { id: 'project-2', title: 'Second project' }],
+    startedAt: 100, finishedAt: 110, durationMs: 10, complete: true, fileBytes: 0, referencedBytes: 0,
+    fileCount: 0, uniqueFileCount: 0, duplicateHardlinks: 0, duplicatePaths: 0, identityUnknown: 0, categories: [] };
+}
+
+test('size sorting is immutable and changing sort clears the page, preview and visible selection', async () => {
+  const current = overview();
+  current.archived = Array.from({ length: 105 }, (_, i) => ({ id: `archive-${i}`, title: `Conversation ${i}`, workspace: 'QA', sizeBytes: i, descendantCount: 0 }));
+  current.trash.push({ ...current.trash[0]!, id: 'trash-large', sessionId: 'source-large', sizeBytes: 900 });
+  const originalIds = current.archived.map(item => item.id);
+  const requested: string[][] = [];
+  const controller = new ArchiveClientController(api({ list: async () => current, preview: async (_action, ids) => { requested.push(ids); return preview(); } }));
+  await controller.open();
+  controller.setPage(1); controller.selectAll(true);
+  await controller.preview('trash');
+  controller.setSort('size-desc');
+  assert.equal(controller.getSnapshot().page, 0);
+  assert.deepEqual(controller.getSnapshot().selected, []);
+  assert.equal(controller.getSnapshot().preview, null);
+  controller.selectAll(true);
+  assert.equal(controller.getSnapshot().selected[0], 'archive-104');
+  assert.equal(controller.getSnapshot().selected.at(-1), 'archive-5');
+  assert.deepEqual(current.archived.map(item => item.id), originalIds);
+  controller.setTab('trash'); controller.selectAll(true);
+  assert.deepEqual(controller.getSnapshot().selected, ['trash-large', 'trash-a']);
+  controller.close();
+  await controller.open('archive-0');
+  assert.equal(controller.getSnapshot().page, 1);
+  assert.deepEqual(controller.getSnapshot().selected, ['archive-0']);
+  assert.deepEqual(requested.at(-1), ['archive-0']);
+  assert.deepEqual(current.trash.map(item => item.id), ['trash-a', 'trash-large']);
+});
+
+test('storage is a read-only tab: no scan on open, no selection and workspace scans require an explicit registered ID', async () => {
+  const requests: Array<string | undefined> = [];
+  const current = { ...overview(), storageWorkspaces: storageOverview().workspaces };
+  let mutations = 0;
+  const controller = new ArchiveClientController(api({ list: async () => current, storage: async workspaceId => { requests.push(workspaceId); return storageOverview(workspaceId); }, execute: async () => { mutations++; return result(); } }));
+  await controller.open(); controller.selectAll(true);
+  controller.setTab('storage'); controller.selectAll(true); controller.toggle('archive-a');
+  assert.deepEqual(controller.getSnapshot().selected, []);
+  assert.equal(pageCount(controller.getSnapshot()), 1);
+  assert.deepEqual(requests, []);
+  await controller.scanStorage('workspace');
+  controller.setStorageWorkspace('/unregistered/path');
+  await controller.scanStorage('workspace');
+  assert.deepEqual(requests, []);
+  controller.setStorageWorkspace('project-1');
+  assert.deepEqual(requests, []);
+  await controller.scanStorage('workspace');
+  await controller.scanStorage('host');
+  await controller.preview('trash', ['archive-a']);
+  assert.deepEqual(requests, ['project-1', undefined]);
+  assert.equal(controller.getSnapshot().storage.result?.scope, 'host');
+  assert.equal(controller.getSnapshot().preview, null);
+  assert.equal(controller.getSnapshot().loading, false);
+  assert.equal(controller.getSnapshot().busy, false);
+  assert.equal(mutations, 0);
+});
+
+test('only the latest storage request can publish results even when transport ignores cancellation', async () => {
+  const first = deferred<StorageOverview>();
+  const second = deferred<StorageOverview>();
+  const requests: Array<{ id: string | undefined; signal: AbortSignal | undefined }> = [];
+  const controller = new ArchiveClientController(api({ list: async () => ({ ...overview(), storageWorkspaces: storageOverview().workspaces }), storage: (id, signal) => { requests.push({ id, signal }); return requests.length === 1 ? first.promise : second.promise; } }));
+  await controller.open(); controller.setTab('storage');
+  const old = controller.scanStorage('host');
+  controller.setStorageWorkspace('project-2');
+  const fresh = controller.scanStorage('workspace');
+  assert.equal(requests[0]!.signal?.aborted, true);
+  assert.equal(requests[1]!.signal?.aborted, false);
+  second.resolve(storageOverview('project-2')); await fresh;
+  const published = controller.getSnapshot();
+  first.resolve(storageOverview()); await old;
+  assert.equal(controller.getSnapshot(), published);
+  assert.equal(controller.getSnapshot().storage.result?.workspaceId, 'project-2');
+});
+
+test('cancelling, leaving, closing or disposing aborts a scan and rejects its late response without a new state update', async () => {
+  for (const leave of ['cancel', 'tab', 'close', 'dispose'] as const) {
+    const pending = deferred<StorageOverview>();
+    let signal: AbortSignal | undefined;
+    const controller = new ArchiveClientController(api({ storage: (_id, received) => { signal = received; return pending.promise; } }));
+    await controller.open(); controller.setTab('storage');
+    const scan = controller.scanStorage('host');
+    if (leave === 'cancel') controller.cancelStorage();
+    else if (leave === 'tab') controller.setTab('trash');
+    else if (leave === 'close') controller.close();
+    else controller.dispose();
+    assert.equal(signal?.aborted, true, leave);
+    const afterLeaving = controller.getSnapshot();
+    if (leave === 'close') pending.reject(new Error('Late scan failure'));
+    else pending.resolve(storageOverview());
+    await scan;
+    assert.equal(controller.getSnapshot(), afterLeaving, leave);
+    assert.equal(controller.getSnapshot().storage.result, null, leave);
+    assert.equal(controller.getSnapshot().storage.scanning, false, leave);
+  }
+});
+
+test('storage failure and mismatched scope stay separate from mutation state and a removed workspace aborts its scan', async () => {
+  let current: Overview = { ...overview(), storageWorkspaces: storageOverview().workspaces };
+  const pending = deferred<StorageOverview>();
+  let signal: AbortSignal | undefined;
+  let calls = 0;
+  const controller = new ArchiveClientController(api({ list: async () => current, storage: (_id, received) => {
+    calls++; signal = received;
+    if (calls === 1) return Promise.reject(new ArchiveError('storage-unavailable', 'Provider missing.'));
+    if (calls === 2) return Promise.resolve(storageOverview('project-1'));
+    return pending.promise;
+  } }));
+  await controller.open(); controller.setTab('storage');
+  await controller.scanStorage('host');
+  assert.equal(controller.getSnapshot().storage.error?.code, 'storage-unavailable');
+  assert.equal(controller.getSnapshot().error, null);
+  assert.equal(controller.getSnapshot().uncertainRequest, false);
+  await controller.scanStorage('host');
+  assert.equal(controller.getSnapshot().storage.error?.code, 'request-failed');
+  controller.setStorageWorkspace('project-1');
+  const scan = controller.scanStorage('workspace');
+  current = { ...current, storageWorkspaces: [] };
+  await controller.refresh();
+  assert.equal(signal?.aborted, true);
+  assert.equal(controller.getSnapshot().storage.workspaceId, '');
+  pending.resolve(storageOverview('project-1')); await scan;
+  assert.equal(controller.getSnapshot().storage.result, null);
+  assert.equal(controller.getSnapshot().error, null);
+});
 
 test('selection is limited to the active tab and cannot include pending entries', async () => {
   const controller = new ArchiveClientController(api());

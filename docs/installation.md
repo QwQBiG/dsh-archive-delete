@@ -13,26 +13,26 @@ Move archived conversations to trash, restore them, or permanently clear selecte
 Open **Plugins → Add plugin** and paste the versioned Release package URL:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.3/qwqbig-dsh-archive-delete-0.1.3.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh-archive-delete-0.1.4.tgz
 ```
 
 1. **Add and enable.** The native manager installs the dependency and registers its bundle in the current profile. Fully quit and reopen DSH when it requests a restart.
-2. **Choose archived conversations.** Archive with DSH's original action first. Choose **Move to trash** in the conversation menu, or plugin details → **Manage archives and trash** for a batch.
+2. **Choose archived conversations.** Archive with DSH's original action first. Choose **Move to trash** in the conversation menu, or plugin details → **Manage archives, trash and storage** for a batch.
 3. **Review and confirm.** Check targets and dedicated subagents, then confirm. Results distinguish **Moved to trash**, **Pending restart**, **Skipped**, and **Failed**. Resolve the stated reason before retrying a specific failed target.
 
 Release `.tgz` assets contain only the package's declared installable files, including precompiled `lib/` artifacts. Repository archives from `codeload` contain source, tests, lockfiles, and CI configuration as well; they are not the recommended install package. No source build, dependency `prepare`, or installation hook is needed. These versions are not published to npm.
 
-For a downloaded package, retain its matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.3/qwqbig-dsh-archive-delete-0.1.3.tgz.sha256). With both files in the same directory, check on macOS:
+For a downloaded package, retain its matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh-archive-delete-0.1.4.tgz.sha256). With both files in the same directory, check on macOS:
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.3.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.4.tgz.sha256
 ```
 
 In Windows PowerShell, compare the reported hash with the checksum file:
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.1.3.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.1.3.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.1.4.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.1.4.tgz.sha256
 ```
 
 A fixed version URL identifies the chosen release; the checksum checks the downloaded file. No fixed byte-size claim is made across releases.
@@ -43,7 +43,7 @@ The bundle is enabled only in the profile where it is registered. Desktop normal
 
 Closing a window is not necessarily quitting DSH. On macOS, use **⌘Q** or the application's **Quit** menu. On Windows, use DSH's **Exit/Quit** command, including its tray-menu exit if the app remains there. Reopen only after the application process has exited. Follow this full restart after install, upgrade, or removal when DSH asks for it.
 
-## Using the two tabs
+## Using the tabs
 
 | Tab / state | What to do | What happens |
 | --- | --- | --- |
@@ -51,8 +51,9 @@ Closing a window is not necessarily quitting DSH. On macOS, use **⌘Q** or the 
 | Pending restart | Cancel waiting and review, cancel the request, or leave queued | Fresh review retires the old queue; only its new confirmation attempts a safe immediate move. Otherwise original logs stay |
 | Trash | Restore selected | Return archived to the original workspace, or archived Ungrouped if it is gone; never overwrite |
 | Trash | Delete permanently | Review a new confirmation, then immediately remove only selected trash logs and recovery metadata; no host restart is required |
+| Storage overview | Start a DSH or selected-workspace scan | Read file metadata and display sizes; no files are deleted |
 
-Each page/batch contains up to 100 targets. **Select all** applies to the current page; changing pages or tabs clears selection. A pending request does not free space. Changed, unarchived, newly active, or unsafe targets require a fresh review. Trash never expires automatically.
+Each page/batch contains up to 100 targets. **Select all** applies to the current page; changing pages, tabs or sort order clears selection. Archived and Trash lists support default order or largest first. A pending request does not free space. Changed, unarchived, newly active, or unsafe targets require a fresh review. Trash never expires automatically.
 
 ### Move and clear without restarting
 
@@ -64,6 +65,26 @@ Restart prompts during installation or upgrade concern loading the new plugin pa
 
 Shared attachments, spill, project files, other plugin caches, and remote copies are outside permanent cleanup. The confirmation shows the scope; permanent cleanup cannot be undone.
 
+## Storage overview
+
+Open plugin details → **Manage archives, trash and storage** → **Storage overview**. Choose **Scan DSH storage**, or choose one workspace from the registered list and then **Scan selected workspace**. Opening the window, selecting the tab or changing the workspace does not start a scan. No all-project scan runs in the background. **Refresh workspace list** refreshes the registered choices, not the measured sizes; start another scan to update the figures. **Cancel scan**, closing the dialog or changing tabs stops the current scan; a late result is not displayed as a new result.
+
+### Locations and categories
+
+**DSH storage** uses the running host's configured locations: session logs; this plugin's trash, staging, operation records and receipts; attachments and their cache; other DSH cache; settings storage; plugin profiles; spill; the configured search-index file; and other files in the DSH data home. A configured session, attachment, spill or settings location may be outside that home. Known child categories are excluded from their parent categories to avoid counting the same subtree twice. Valid registered project directories are also excluded from the DSH scan, including projects located inside the data home; only a separate selected-workspace scan reads them. An in-memory search index has no file to measure. Missing providers, unresolved locations, inaccessible paths and missing directories are reported distinctly from measured empty directories.
+
+**Workspace** reads the project directory currently registered with DSH for the selected workspace. The browser submits the workspace ID, never a path. A drive root, the user home or its ancestors, a redirected path or a project inside protected DSH storage is refused; known host-data subdirectories within an otherwise admitted project are excluded. If the registration or path changes while scanning, select it again and rescan. Missing project directories are reported, not recreated.
+
+### What the numbers mean
+
+The main total is **logical file bytes** with verified duplicate paths and hard links counted once across categories. It is not exclusive physical disk allocation or a promise of free space after deletion. Per-category totals deduplicate within that category; overlapping categories must not be added together. Top-level folder totals count file paths, including hard-link aliases, and can differ from the main total. If file identity cannot be established, the result discloses that duplicate detection may be incomplete.
+
+Categories appear largest first, with unmeasured categories last. Expand one for up to 20 largest measured files, up to 20 top-level folder totals and scan notes. Workspace file origins are **unknown**: the scan does not identify AI-generated files, judge whether they are needed, or authorize their deletion. The overview has no deletion control for attachments, caches, spill, profiles, receipts or project files. Only the existing Trash action permanently clears the confirmed conversation logs and recovery metadata.
+
+The scanner reads filesystem metadata, not file contents; it does not run Git, programs or project commands. Each request is bounded to 50,000 entries, directory depth 32 and about 5 seconds of scan work. Links/junctions, redirected paths, other volumes, special files and unreadable entries are skipped. A limit, concurrent change or unsafe/unreadable skipped entry makes the result partial and is shown with its observation time. Results describe the scan window, not a fixed snapshot; rescan after files change. Cancellation does not undo an archive operation already confirmed separately. If a previous scan is still finishing, wait briefly before scanning again. Workspace changes or missing registration call for refreshing the workspace list and selecting again; an unsafe project path must be changed rather than repeatedly retried.
+
+Trash rows and their previews measure the current remaining owned files rather than the original move's saved size. A partially completed purge therefore shows the remaining size when it is listed again. These row sizes exclude recovery metadata and lock files, so they need not equal the Storage overview's entire Trash category. Restore/purge still recheck the confirmed fingerprint while holding the native lease; a size display does not grant permission to mutate changed contents.
+
 ## CLI alternative: verify bundle registration
 
 CLI installation is intended for managed or unattended setups where the caller can check the profile and restart the host. Use the native interface above for ordinary desktop installation; the two paths can differ in registration and package-manager environment handling. Fully quit Desktop before changing its profile from a separate CLI.
@@ -71,7 +92,7 @@ CLI installation is intended for managed or unattended setups where the caller c
 With a Desktop-enabled DSH CLI:
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.3/qwqbig-dsh-archive-delete-0.1.3.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh-archive-delete-0.1.4.tgz
 ```
 
 A successful package-manager exit alone does not prove activation. A manager-enabled CLI can register bundles automatically, while an installation-only path can leave them absent. If the standalone CLI rejects the reserved `desktop` profile, use Desktop's manager rather than selecting a different profile.
@@ -93,10 +114,10 @@ A successful package-manager exit alone does not prove activation. A manager-ena
 
 ## Check that the plugin loaded
 
-Start the actual target host and check the plugin component is running, its details contain **Manage archives and trash**, and the dialog responds. After successful recovery and authenticated API registration, the current startup emits a line like:
+Start the actual target host and check the plugin component is running, its details contain **Manage archives, trash and storage**, and the dialog responds. After successful recovery and authenticated API registration, the current startup emits a line like:
 
 ```text
-[archive-delete] v0.1.3 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.1.4 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
 Use a fresh line from the current process and check its version/path. It is not emitted for disabled or failed startup. A configuration dump such as `--dump-config` may succeed even with an unresolved bundle; it does not prove startup or activation.
@@ -187,7 +208,7 @@ With DSH's CLI installed, create a fresh test home and install into its isolated
 
 ```sh
 DSH_ARCHIVE_DELETE_TEST_HOME="$(mktemp -d)"
-DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.1.3.tgz"
+DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.1.4.tgz"
 ```
 
 Verify the isolated profile's registration and activation as above. On Windows, use the automated isolated package lifecycle check in [Contributing](../CONTRIBUTING.md). Keep the temporary home path if launching that host manually. A packed artifact keeps development dependencies out of the runtime; primary history is not a fixture.

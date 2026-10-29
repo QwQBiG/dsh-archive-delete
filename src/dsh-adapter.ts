@@ -1,15 +1,17 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { createRequire } from 'node:module';
+import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { lstat, mkdir, open, readFile, readdir, realpath } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep, win32 } from 'node:path';
+import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep, win32 } from 'node:path';
 import {
   ArchiveError, SUPPORTED_DSH_VERSION,
   type Activity, type ArchivedSession, type DshAdapter, type JsonObject,
-  type Lease, type LeaseResult, type SessionGroup, type SessionMember, type SupportStatus,
+  type Lease, type LeaseResult, type SessionGroup, type SessionMember, type StorageWorkspace, type SupportStatus,
 } from './contracts.js';
-import { assertCanonicalStoragePath, assertLocalStoragePath, samePath } from './filesystem.js';
+import { assertCanonicalStoragePath, assertLocalStoragePath, isWithin, samePath } from './filesystem.js';
+import type { UsageRoot } from './storage-usage.js';
 
 /** The small, version-pinned structural boundary around DSH's runtime services. */
 interface Header extends JsonObject { id: string; version: number; createdAt: number }
@@ -231,6 +233,140 @@ export async function getHostPaths(ctx: HostContext, homeOverride?: string): Pro
   const root = join(home, 'archive-delete');
   for (const path of [home, sessionsRoot, root]) assertLocalStoragePath(path);
   return { home, sessionsRoot, root };
+}
+
+/** Storage views read only metadata already held by the host; no provider is opened. */
+function storageService(ctx: HostContext, name: string): unknown {
+  try { return service(ctx, name); } catch { return undefined; }
+}
+function storagePath(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.includes('\0') || !isAbsolute(value)) return undefined;
+  try { assertLocalStoragePath(value); return resolve(value); } catch { return undefined; }
+}
+function registeredStorageWorkspace(ctx: HostContext, id: string): { id: string; title: string; path: unknown } | undefined {
+  const registry = storageService(ctx, 'workspaceRegistry');
+  if (!object(registry) || typeof registry.requireState !== 'function' || !(registry.entities instanceof Map)) return undefined;
+  try {
+    const state: unknown = registry.requireState();
+    if (!object(state) || !Array.isArray(state.workspaceIds) || !state.workspaceIds.includes(id)) return undefined;
+    const entity: unknown = registry.entities.get(id);
+    if (!object(entity) || !object(entity.record)) return undefined;
+    const record = entity.record;
+    const title = typeof record.title === 'string' && record.title.trim() ? record.title
+      : typeof record.path === 'string' ? basename(record.path) || 'Workspace' : 'Workspace';
+    return { id, title, path: record.path };
+  } catch { return undefined; }
+}
+/** Cheap registry-only enumeration. Paths never cross the API boundary. */
+export function getStorageWorkspaces(ctx: HostContext): StorageWorkspace[] {
+  const registry = storageService(ctx, 'workspaceRegistry');
+  if (!object(registry) || typeof registry.requireState !== 'function') return [];
+  try {
+    const state: unknown = registry.requireState();
+    if (!object(state) || !Array.isArray(state.workspaceIds)) return [];
+    return [...new Set(state.workspaceIds)].flatMap((id: unknown) => {
+      if (typeof id !== 'string' || !id || id.length > 512 || id.includes('\0')) return [];
+      const entry = registeredStorageWorkspace(ctx, id);
+      return entry ? [{ id, title: entry.title }] : [];
+    });
+  } catch { return []; }
+}
+/** Resolve current storage owners, including configured roots outside DSH_HOME. */
+export async function getStorageSources(ctx: HostContext, workspaceId?: string): Promise<UsageRoot[]> {
+  const profile = storageService(ctx, 'profileContext');
+  let version = 'unknown';
+  if (object(profile) && typeof profile.installAnchor === 'string' && isAbsolute(profile.installAnchor)) {
+    try {
+      const manifest: unknown = JSON.parse(await readFile(profile.installAnchor, 'utf8'));
+      if (object(manifest) && manifest.name === '@deepseek-ai/dsh' && typeof manifest.version === 'string') version = manifest.version;
+    } catch { /* Unknown layouts are not an invitation to guess storage roots. */ }
+  }
+  if (version !== SUPPORTED_DSH_VERSION) throw new ArchiveError('unsupported-host', `Storage inspection requires DSH ${SUPPORTED_DSH_VERSION}; the current runtime is ${version}.`);
+  let home: string | undefined;
+  const homeResolver = storageService(ctx, 'dshHomePath');
+  if (typeof homeResolver === 'function') { try { home = storagePath(homeResolver()); } catch { /* Report unavailable below. */ } }
+  const persistence = storageService(ctx, 'sessionPersistence');
+  const attachments = storageService(ctx, 'attachments');
+  const spill = storageService(ctx, 'spillStore');
+  const query = storageService(ctx, 'sessionQuery');
+  const storage = storageService(ctx, 'storage');
+  let settings: unknown;
+  try {
+    if (object(storage) && object(storage.backend) && typeof storage.backend.get === 'function') settings = storage.backend.get('json');
+  } catch { /* A missing backend stays unknown; do not initialize one. */ }
+  const property = (owner: unknown, key: string): string | undefined => object(owner) ? storagePath(owner[key]) : undefined;
+  const pluginRoot = home ? join(home, 'archive-delete') : undefined;
+  const queryPath = object(query) && object(query.config) ? query.config.path : undefined;
+  const root = (id: string, path: string | undefined, unavailableReason = 'root-unresolved'): UsageRoot =>
+    ({ id, kind: id, readOnly: true, ...(path ? { path } : { unavailableReason }) });
+  const roots: UsageRoot[] = [
+    root('sessions', property(persistence, 'root')),
+    ...['trash', 'staging', 'operations', 'receipts'].map(id => root(id, pluginRoot ? join(pluginRoot, id) : undefined)),
+    root('attachments', property(attachments, 'root')),
+    root('attachment-cache', property(attachments, 'cacheRoot')),
+    root('cache', home ? join(home, 'cache') : undefined),
+    root('settings', property(settings, 'root')),
+    root('profiles', home ? join(home, 'profiles') : undefined),
+    root('spill', property(spill, 'root')),
+    { ...root('search', storagePath(queryPath), queryPath === ':memory:' ? 'in-memory' : 'root-unresolved'), file: true },
+    root('other', home),
+  ];
+  // Every category owns its configured subtree. Parent summaries omit known
+  // descendants, so cache and other do not count those paths a second time.
+  for (const item of roots) if (item.path && !item.file) {
+    const descendants = roots.flatMap(candidate => candidate.path && isWithin(item.path!, candidate.path) ? [candidate.path] : []);
+    const excludes = [...new Set(descendants)].filter(path => !descendants.some(parent => parent !== path && isWithin(parent, path)));
+    if (excludes.length) item.excludePaths = excludes;
+  }
+  const protectedPaths = [pluginRoot, ...roots.filter(item => item.id !== 'other').map(item => item.path)]
+    .filter((path): path is string => path !== undefined);
+  const isInternal = (path: string, boundary: string) => samePath(path, boundary) || isWithin(boundary, path);
+  const userHome = resolve(homedir());
+  const protectedWorkspace = (path: string) => samePath(path, parse(path).root) || samePath(path, userHome) || isWithin(path, userHome)
+    || (home !== undefined && samePath(path, home)) || protectedPaths.some(boundary => isInternal(path, boundary));
+  if (workspaceId === undefined) {
+    // Registered project folders require an explicit workspace scan even when
+    // they live below DSH_HOME. Metadata enumeration does not read the project.
+    const projects = getStorageWorkspaces(ctx).flatMap(workspace => {
+      const path = storagePath(registeredStorageWorkspace(ctx, workspace.id)?.path);
+      return path && !protectedWorkspace(path) ? [path] : [];
+    });
+    for (const item of roots) if (item.path && !item.file) {
+      const paths = [...(item.excludePaths ?? []), ...projects.filter(path => isWithin(item.path!, path))];
+      const minimal = [...new Set(paths)].filter(path => !paths.some(parent => parent !== path && isWithin(parent, path)));
+      if (minimal.length) item.excludePaths = minimal;
+    }
+    return roots;
+  }
+  if (!workspaceId || workspaceId.length > 512 || workspaceId.includes('\0')) throw new ArchiveError('invalid-request', 'A registered workspace ID is required.');
+  const selected = registeredStorageWorkspace(ctx, workspaceId);
+  if (!selected) throw new ArchiveError('workspace-not-found', 'The selected workspace is no longer registered.');
+  const selectedPath = storagePath(selected.path);
+  if (!selectedPath) throw new ArchiveError('unsafe-workspace', 'The selected workspace does not have a safe absolute path.');
+  if (protectedWorkspace(selectedPath))
+    throw new ArchiveError('unsafe-workspace', 'Select a project directory outside protected host storage.');
+  const exclusions = [...protectedPaths, ...(home ? [home] : [])].filter(path => isWithin(selectedPath, path));
+  try {
+    const entry = await lstat(selectedPath);
+    if (entry.isSymbolicLink() || !entry.isDirectory()) throw new ArchiveError('unsafe-workspace', 'The selected workspace must be a plain project directory.');
+    const canonical = await realpath(selectedPath);
+    await assertCanonicalStoragePath(selectedPath, canonical);
+    if (!samePath(selectedPath, canonical)) throw new ArchiveError('unsafe-workspace', 'The selected workspace path redirects through a symbolic link.');
+    for (const path of protectedPaths) {
+      let boundary = path;
+      try { boundary = await realpath(path); } catch { /* Keep the registered lexical boundary when absent. */ }
+      if (isInternal(canonical, boundary)) throw new ArchiveError('unsafe-workspace', 'The selected workspace is inside protected host storage.');
+      if (isWithin(canonical, boundary)) exclusions.push(boundary);
+    }
+  } catch (error) {
+    // A missing project is reported as missing by the scanner, never created.
+    if (code(error) !== 'ENOENT') throw error;
+  }
+  const current = registeredStorageWorkspace(ctx, workspaceId);
+  if (!current || current.path !== selected.path) throw new ArchiveError('workspace-changed', 'The selected workspace changed. Select it again and rescan.');
+  const excludePaths = [...new Set(exclusions)].filter(path => !exclusions.some(parent => parent !== path && isWithin(parent, path)));
+  return [{ id: 'workspace', kind: 'workspace', label: selected.title, path: selectedPath, readOnly: true,
+    ...(excludePaths.length ? { excludePaths } : {}) }];
 }
 
 /** Create the sole layer allowed to inspect DSH internals. It never installs or replaces services. */

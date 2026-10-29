@@ -13,26 +13,26 @@
 打开 **插件 → 添加插件**，粘贴固定版本的 Release 安装包地址：
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.3/qwqbig-dsh-archive-delete-0.1.3.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh-archive-delete-0.1.4.tgz
 ```
 
 1. **添加并启用。** 原生管理器会在当前 profile 安装依赖并注册 bundle；提示重启时，完全退出 DSH 再打开。
-2. **选择已归档会话。** 先用 DSH 原有功能归档。从会话菜单选择 **移入回收站**，或打开插件详情 → **管理归档与回收站** 批量处理。
+2. **选择已归档会话。** 先用 DSH 原有功能归档。从会话菜单选择 **移入回收站**，或打开插件详情 → **管理归档、回收站与存储** 批量处理。
 3. **核对并确认。** 检查目标和专属子代理后确认。结果区分 **已移入回收站、待重启处理、已跳过、失败**；解决所示原因后再重试相应失败目标。
 
 Release `.tgz` 资产仅包含包声明的可安装文件及预编译 `lib/` 产物。`codeload` 仓库归档还包含源码、测试、锁文件和 CI 配置，不是推荐安装包。安装无需源码构建、依赖 `prepare` 或安装钩子。这些版本暂不发布到 npm。
 
-下载后，请保留配套的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.3/qwqbig-dsh-archive-delete-0.1.3.tgz.sha256)。两个文件位于同一目录时，macOS 可运行：
+下载后，请保留配套的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh-archive-delete-0.1.4.tgz.sha256)。两个文件位于同一目录时，macOS 可运行：
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.3.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.4.tgz.sha256
 ```
 
 Windows PowerShell 中，将输出的哈希与校验文件比较：
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.1.3.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.1.3.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.1.4.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.1.4.tgz.sha256
 ```
 
 固定版本 URL 标识所选发行版，校验文件用于核对下载内容；不同版本不承诺固定字节大小。
@@ -43,7 +43,7 @@ bundle 仅在登记它的 profile 中启用。Desktop 通常使用 `desktop`，`
 
 关闭窗口不一定等于退出 DSH。macOS 使用 **⌘Q** 或应用菜单中的 **退出**；Windows 使用 DSH 的 **退出** 命令，如果应用仍驻留托盘，也需从托盘菜单退出。确认应用进程结束后再打开。安装、升级、卸载后若 DSH 要求重启，应按此方式完整退出。
 
-## 两个页签的操作
+## 页签操作
 
 | 页签／状态 | 操作 | 结果 |
 | --- | --- | --- |
@@ -51,8 +51,9 @@ bundle 仅在登记它的 profile 中启用。Desktop 通常使用 `desktop`，`
 | 待重启处理 | 取消等待并重新核对、取消请求，或继续等待 | 重新核对会结束旧排队；只有新的确认才尝试安全立即移动，否则原日志保留 |
 | 回收站 | 恢复所选 | 回到原工作区的已归档状态；工作区缺失时为未分组，不覆盖已有路径 |
 | 回收站 | 永久清除 | 重新核对确认后立即移除所选回收站日志和恢复元数据，无需重启宿主 |
+| 存储概览 | 开始 DSH 或所选工作区扫描 | 读取文件元数据并展示大小，不删除文件 |
 
-每页／每批最多 100 个目标。**全选** 只作用于当前页，换页或切换页签会清空选择。待处理不会释放空间；内容变化、取消归档、重新活动或路径不安全时，需要重新核对。回收站不会自动过期。
+每页／每批最多 100 个目标。**全选** 只作用于当前页，换页、切换页签或排序会清空选择；已归档与回收站支持默认顺序或按大小降序排列。待处理不会释放空间；内容变化、取消归档、重新活动或路径不安全时，需要重新核对。回收站不会自动过期。
 
 ### 无需重启地移动与清除
 
@@ -64,6 +65,26 @@ bundle 仅在登记它的 profile 中启用。Desktop 通常使用 `desktop`，`
 
 共享附件、spill、项目文件、其他插件缓存及远端副本均不在永久清理范围内。确认框会说明范围，永久清理无法撤销。
 
+## 存储概览
+
+打开插件详情 → **管理归档、回收站与存储** → **存储概览**，选择 **扫描 DSH 存储**，或从已登记列表中选择一个工作区后点击 **扫描所选工作区**。打开窗口、进入页签或更换工作区都不会开始扫描，也不会在后台扫描所有项目。**刷新工作区列表** 只更新已登记的可选项，不更新已测得的大小；需要更新数字时，应重新扫描。**取消扫描**、关闭弹窗或切换页签会停止当前扫描，较晚返回的结果不会重新显示。
+
+### 位置与分类
+
+**DSH 存储** 使用运行中宿主配置的位置：会话日志；本插件的回收站、操作暂存、操作记录和回执；附件及附件缓存；其他 DSH 缓存；设置存储；插件环境；spill；配置的搜索索引文件；以及 DSH 数据目录中的其他文件。配置的会话、附件、spill 或设置位置可能在该数据目录之外。已知子分类会从父分类排除，避免同一子目录重复统计。有效的已登记项目目录也会从 DSH 扫描排除，包括位于数据目录内的项目；只有单独选择工作区扫描才会读取它们。内存搜索索引没有可统计文件；缺少服务、位置未确定、无法访问和目录不存在，均与确认测得的空目录分开显示。
+
+**工作区** 读取 DSH 当前为所选工作区登记的项目目录。浏览器只提交工作区 ID，不提交路径。磁盘根目录、用户目录及其祖先、重定向路径及受保护 DSH 存储内的项目会被拒绝；合规项目内部的已知宿主数据子目录会被排除。登记或路径在扫描中变化时，需重新选择并扫描。项目目录不存在时仅报告，不会重建。
+
+### 数字的含义
+
+主合计是 **逻辑文件字节**，跨分类将已核实的重复路径和硬链接计一次；它不是独占物理占用，也不承诺删除后能释放多少空间。每个分类在内部去重，重叠分类不能直接相加。顶层目录按文件路径累计，包含硬链接别名，可能与主合计不同。无法确认文件身份时，结果会说明去重可能不完整。
+
+分类按已测得的大小降序排列，未测量分类放在末尾。展开后可以查看最多 20 个测得的大文件、最多 20 个顶层目录合计和扫描说明。工作区文件来源为 **未知**：扫描不识别 AI 产物、不判断文件是否有用，也不授权删除。概览不提供附件、缓存、spill、插件环境、回执或项目文件的删除控件；永久清除仍只通过现有回收站操作，处理确认的会话日志与恢复元数据。
+
+扫描只读取文件系统元数据，不读文件内容，不运行 Git、程序或项目命令。每次请求最多 50,000 个条目、32 层目录和约 5 秒扫描工作；跳过链接／junction、重定向路径、其他卷、特殊文件及无法读取的条目。达到上限、期间发生变化或跳过不安全／无法读取的条目时，结果标为部分统计并显示观察时间。数字反映扫描时段，不是固定快照；文件变化后应重新扫描。取消扫描不会撤销另行确认的归档操作。若上一次扫描仍在结束，请稍候再扫描；工作区变化或登记缺失时，刷新工作区列表并重新选择；项目路径不安全时，应更换路径，不要反复重试。
+
+回收站行及其预览测量当前仍存在的所属文件，不沿用移入时保存的大小；部分永久清除后，重新列出时会显示剩余大小。行大小不含恢复元数据和锁文件，因此可能不同于存储概览中的整个回收站分类。恢复／永久清除仍在持有原生写锁时复查已确认的指纹，容量展示不授权对已变化内容进行操作。
+
 ## CLI 备选：核对 bundle 登记
 
 CLI 适用于能自行核对 profile 并重启宿主的受管理或无人值守环境。普通桌面安装使用上方原生界面；两条路径在注册及包管理器环境处理上可能不同。从独立 CLI 修改 Desktop profile 前，请先完全退出 Desktop。
@@ -71,7 +92,7 @@ CLI 适用于能自行核对 profile 并重启宿主的受管理或无人值守�
 支持 Desktop profile 的 DSH CLI 可使用：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.3/qwqbig-dsh-archive-delete-0.1.3.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh-archive-delete-0.1.4.tgz
 ```
 
 包管理器成功退出本身不代表已启用。经过管理器的 CLI 可自动注册 bundle，仅安装依赖的路径则可能遗漏。若独立 CLI 拒绝保留的 `desktop` profile，请使用 Desktop 管理器，不要改选其他 profile。
@@ -93,10 +114,10 @@ dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/re
 
 ## 检查插件是否加载
 
-实际启动目标宿主，核对插件组件正在运行、详情中有 **管理归档与回收站**，且弹窗可以响应。成功完成恢复和鉴权 API 注册后，本次启动会输出类似日志：
+实际启动目标宿主，核对插件组件正在运行、详情中有 **管理归档、回收站与存储**，且弹窗可以响应。成功完成恢复和鉴权 API 注册后，本次启动会输出类似日志：
 
 ```text
-[archive-delete] v0.1.3 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.1.4 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
 应查看当前进程的新日志，并核对其中版本和路径；禁用或启动失败时不会输出此行。`--dump-config` 等配置导出可能在存在无法解析的 bundle 时仍成功，不能证明已启动或已启用。
@@ -187,7 +208,7 @@ pnpm pack
 
 ```sh
 DSH_ARCHIVE_DELETE_TEST_HOME="$(mktemp -d)"
-DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.1.3.tgz"
+DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.1.4.tgz"
 ```
 
 按上文核对隔离 profile 的注册和启用。Windows 使用 [参与贡献](../CONTRIBUTING.zh-CN.md) 中的自动隔离包生命周期检查；手动启动该宿主时保留临时 home 路径。打包产物可避免开发依赖进入运行时，主历史不能作为测试材料。

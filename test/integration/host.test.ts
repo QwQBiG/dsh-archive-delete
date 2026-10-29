@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { access, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir } from 'node:fs/promises';
+import { access, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { createRequire, registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import test, { type TestContext } from 'node:test';
-import { acquirePluginLease, createDshAdapter, getNativeLockExclusive, getNativeWindowsLock, type HostContext } from '../../src/dsh-adapter.js';
+import { acquirePluginLease, createDshAdapter, getNativeLockExclusive, getNativeWindowsLock, getStorageSources, getStorageWorkspaces, type HostContext } from '../../src/dsh-adapter.js';
 import { ArchiveService } from '../../src/service.js';
 import { TrashStore } from '../../src/storage.js';
 import { registerHostRoutes } from '../../src/host-routes.js';
 import { apply as applyPlugin } from '../../src/index.js';
 import { PLUGIN_VERSION } from '../../src/version.js';
-import type { JsonObject } from '../../src/contracts.js';
+import type { JsonObject, StorageOverview } from '../../src/contracts.js';
 
 const runtimeRoot = process.env.DSH_RUNTIME_ROOT ?? '/Applications/DeepSeek Harness.app/Contents/Resources/app/dsh';
 const hostRequire = createRequire(join(runtimeRoot, 'package.json'));
@@ -144,6 +144,76 @@ test('stock rc.3: native Connection keeps plugin route behind owner admission', 
   assert.equal(response.status, 200); assert.equal((await response.json()).value.archived[0].id, 'gateway');
 });
 
+test('stock rc.3: native storage owners and authenticated read-only overview use their real configured roots', async t => {
+  const f = await fixture(t); await f.create('storage-native'); f.ctx.provide('dshHomePath', () => f.home);
+  const { LocalAttachmentStore } = await host('@deepseek-ai/dsh-attachment-local');
+  const { LocalSpillStore } = await host('@deepseek-ai/dsh-spill-local');
+  const { SqliteSessionQueryEngine } = await host('@deepseek-ai/dsh-session-query-sqlite');
+  const attachments = new LocalAttachmentStore(f.ctx, { dshHome: f.home });
+  // Disable the SDK's cleanup discovery so this test can touch only its fixture.
+  const spill = new LocalSpillStore(f.ctx, { root: join(f.home, 'synthetic-spill'), cleanupPeriodDays: 0 });
+  const query = new SqliteSessionQueryEngine(f.ctx, { path: ':memory:', openAt: 'never' }); await query[Service.init]();
+  const attachmentBytes = Buffer.from('Synthetic shared attachment');
+  const attachment = await attachments.saveFile({ name: 'first.txt', data: attachmentBytes });
+  await attachments.saveFile({ name: 'second.txt', data: attachmentBytes });
+  await mkdir(attachments.cacheRoot, { recursive: true }); await writeFile(join(attachments.cacheRoot, 'synthetic-cache'), Buffer.alloc(7));
+  await writeFile(join(f.home, 'cache', 'unrelated-cache'), Buffer.alloc(5));
+  const spilled = await spill.saveText({ owner: { sessionId: 'storage-native' }, suggestedName: 'output.txt', content: 'Synthetic spill' });
+  await mkdir(join(f.project, 'nested')); await writeFile(join(f.project, 'AI-final.tmp'), Buffer.alloc(23));
+  await writeFile(join(f.project, 'nested', 'output.bin'), Buffer.alloc(12));
+  const otherProject = join(f.home, 'other-project'); await mkdir(otherProject); await writeFile(join(otherProject, 'unselected.bin'), Buffer.alloc(99));
+  const otherWorkspace = await f.registry.create(otherProject, 'Other synthetic project');
+  const roots = await getStorageSources(f.ctx as HostContext); const byId = new Map(roots.map(root => [root.id, root]));
+  assert.equal(byId.get('sessions')?.path, f.persistence.root);
+  assert.equal(byId.get('attachments')?.path, attachments.root); assert.equal(byId.get('attachment-cache')?.path, attachments.cacheRoot);
+  assert.equal(byId.get('settings')?.path, f.ctx.get('storage').backend.get('json').root);
+  assert.equal(byId.get('spill')?.path, spill.root); assert.equal(byId.get('search')?.unavailableReason, 'in-memory');
+  assert.deepEqual(getStorageWorkspaces(f.ctx as HostContext).map(workspace => workspace.id).sort(), [f.workspace.id, otherWorkspace.id].sort());
+  assert.ok(byId.get('other')?.excludePaths?.includes(f.project)); assert.ok(byId.get('other')?.excludePaths?.includes(otherProject));
+  const registryBefore = JSON.stringify(f.registry.requireState());
+  const session = (await f.adapter.inspect('storage-native')).members[0]!;
+  const sessionBytes = await readFile(join(session.directory, 'session.v4.jsonl'));
+  const connection = new HostConnectionService(f.ctx, ['127.0.0.1'], { isAuthenticated: (request: Request) => request.headers.get('cookie') === 'synthetic=owner', authenticateApi: () => undefined });
+  const close = await applyPlugin(f.ctx as HostContext);
+  try {
+    const gateway = connection.createSharedFetchHandler('/api');
+    const request = (body: unknown, signal?: AbortSignal) => new Request('http://127.0.0.1/api/dsh-archive-delete', {
+      method: 'POST', headers: { host: '127.0.0.1', cookie: 'synthetic=owner', 'content-type': 'application/json' }, body: JSON.stringify(body), ...(signal ? { signal } : {}),
+    });
+    const read = async (body: unknown): Promise<StorageOverview> => {
+      const response = await gateway.fetch(request(body), connection.browserPeer); assert.equal(response.status, 200);
+      const payload = await response.json() as { ok: boolean; value: StorageOverview }; assert.equal(payload.ok, true); return payload.value;
+    };
+    assert.equal(connection.requestRejection(request({ action: 'storage' })), undefined);
+    assert.equal((await gateway.fetch(request({ action: 'storage' }), { principal: { kind: 'tool' } })).status, 403);
+    const hostUsage = await read({ action: 'storage' });
+    const category = (kind: string) => hostUsage.categories.find(item => item.kind === kind)!;
+    assert.equal(category('attachments').status, 'complete'); assert.equal(category('attachments').fileBytes, attachmentBytes.length);
+    assert.equal(category('attachments').referencedBytes, attachmentBytes.length * 3); assert.equal(category('attachments').counters.duplicateHardlinks, 2);
+    assert.equal(category('attachment-cache').fileBytes, 7); assert.equal(category('cache').fileBytes, 5);
+    assert.ok(category('settings').fileBytes! > 0); assert.equal(category('spill').fileBytes, spilled.bytes);
+    assert.equal(category('search').status, 'unavailable'); assert.equal(category('search').fileBytes, null); assert.equal(query._db, undefined);
+    assert.ok(hostUsage.categories.every(item => item.largestFiles.every(file => !file.relativePath.includes('unselected.bin') && !file.relativePath.includes('AI-final.tmp'))));
+    const selected = await read({ action: 'storage', workspaceId: f.workspace.id });
+    assert.equal(selected.scope, 'workspace'); assert.equal(selected.workspaceId, f.workspace.id); assert.equal(selected.complete, true);
+    assert.equal(selected.fileBytes, 35); assert.equal(selected.fileCount, 2); assert.equal(selected.categories.length, 1);
+    assert.deepEqual(selected.categories[0]!.largestFiles.map(file => [file.relativePath, file.source]), [['AI-final.tmp', 'unknown'], ['nested/output.bin', 'unknown']]);
+    assert.equal(JSON.stringify(selected).includes(f.home), false);
+    const rejected = await gateway.fetch(request({ action: 'storage', workspaceId: f.workspace.id, path: otherProject }), connection.browserPeer);
+    assert.equal(rejected.status, 400); assert.equal((await rejected.json()).error.code, 'invalid-request');
+    const controller = new AbortController(); const pending = gateway.fetch(request({ action: 'storage', workspaceId: f.workspace.id }, controller.signal), connection.browserPeer);
+    controller.abort(); const cancelled = await pending;
+    assert.equal(cancelled.status, 409); assert.equal((await cancelled.json()).error.code, 'scan-cancelled');
+    assert.equal((await read({ action: 'storage', workspaceId: f.workspace.id })).fileBytes, 35);
+    assert.equal(JSON.stringify(f.registry.requireState()), registryBefore); assert.equal(query._db, undefined);
+    assert.deepEqual(await readFile(join(session.directory, 'session.v4.jsonl')), sessionBytes);
+    assert.deepEqual(await readFile(attachments.fileHostPath(attachment)), attachmentBytes);
+    assert.equal(await readFile(spilled.locator, 'utf8'), 'Synthetic spill');
+    assert.equal((await lstat(join(otherProject, 'unselected.bin'))).size, 99);
+    assert.deepEqual((await readdir(f.project)).sort(), ['AI-final.tmp', 'nested']);
+  } finally { await close(); await query.close(); }
+});
+
 test('stock rc.3: relocated session leases exclude native writers without obstructing rename', async t => {
   const f = await fixture(t); await f.create('leased');
   const group = await f.adapter.inspect('leased');
@@ -263,17 +333,23 @@ test('stock rc.3: explicit partial-purge retry locks the remaining member with p
   const entry = (await f.api.list()).trash[0]!;
   const { readdir, rmdir, unlink } = await import('node:fs/promises');
   const removedMember = join(f.home, 'archive-delete', 'trash', entry.id, '0');
-  // Model a crash after the first synthetic member was completely purged.
+  const manifest = await f.store.manifest(entry.id);
+  const operation = { schema: 1, id: randomUUID(), entryId: entry.id, phase: 'purging', group: manifest.group, createdAt: Date.now(), moved: [] };
+  await writeFile(join(f.store.root, 'operations', `${operation.id}.json`), JSON.stringify(operation), { mode: 0o600 });
+  // A real purge persists its journal before removing the first member.
   for (const filename of await readdir(removedMember)) await unlink(join(removedMember, filename));
   await rmdir(removedMember);
-  const manifest = await f.store.manifest(entry.id); const locations = await f.store.entryLocations(entry.id);
+  const locations = await f.store.entryLocations(entry.id);
   assert.equal(locations.length, 2); assert.equal(locations[0], undefined);
   const held = await f.adapter.acquireLocated(manifest.group, locations); assert.equal(held.kind, 'acquired');
   if (held.kind !== 'acquired') return;
   try { assert.equal((await f.adapter.acquireLocated(manifest.group, locations)).kind, 'busy'); }
   finally { await held.lease.release(); }
   const restore = await f.api.preview('restore', [entry.id]); assert.equal(restore.items[0]!.disposition, 'blocked');
-  assert.equal((await f.execute('purge', [entry.id])).items[0]!.status, 'purged');
+  const purge = await f.api.preview('purge', [entry.id]);
+  const remainingBytes = (await lstat(join(locations[1]!, 'session.v4.jsonl'))).size;
+  assert.equal(purge.items[0]!.sizeBytes, remainingBytes); assert.ok(remainingBytes < entry.sizeBytes);
+  assert.equal((await f.api.execute(purge.id, randomUUID())).items[0]!.status, 'purged');
   assert.equal((await f.api.list()).trash.length, 0);
 });
 

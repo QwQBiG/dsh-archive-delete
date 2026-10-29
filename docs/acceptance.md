@@ -46,6 +46,16 @@ The scenario table defines the acceptance targets. The verification record below
 | Upgrade and removal | Replace dependency with a new fixed URL, check bundle, clean stale selection after removal | No duplicate registration; preserve other profile fields, trash and recovery records |
 | Doctor | Check registration, artifacts, host version and existing directory access | Read-only; do not create/repair directories or treat offline checks as a live-loaded signal |
 | Loaded signal | Recovery/API registration succeeds, or startup refuses/fails | Emit plugin/host versions and trash location only on successful startup |
+| Storage start/cancel | Open dialog/tab, choose a workspace, start/cancel, change tab or close during a scan | No automatic traversal; only an explicit start scans, cancelled/late results do not replace the current view |
+| Storage source resolution | Configured roots outside DSH home, nested categories, missing providers and an in-memory search index | Resolve actual owners, exclude known child roots, measure only the configured index file; unknown/unavailable is not zero |
+| Storage metrics | Hard links, repeated/overlapping roots and unknown file identities | Global logical-byte total counts verified duplicates once; category/folder aliases and incomplete identity checks are disclosed |
+| Storage bounds | Entry/time/depth limits, unreadable entries, concurrent writes/removals | Bounded streaming metadata scan, explicit partial state and observation time; no file-content/Git/program reads |
+| Storage path safety | Symlink/junction, ancestor redirection, cross-device descendant or special file | Do not follow the redirect or measure its outside target; preserve fixture bytes |
+| Workspace scope | Registered ID, stale membership/path, drive root, user home/ancestor or protected host data | Scan one current admitted project only, reject unsafe roots and exclude known host-data descendants |
+| Workspace provenance | Large project files or file names suggesting generated output | Show unknown origin; no AI classification, deletion action or cleanup authority |
+| Current trash size | File changes after move or journaled partial purge, including a fully removed member | List/preview remaining bytes from the checked fingerprint observation, not historical manifest totals; drift invalidates old consent |
+| Sorting | Default/largest-first changes across a page boundary | Stable visible ordering, reset to page one and clear old selection/preview; pending controls retain their protections |
+| Read-only retention | Scan attachments, cache, spill, profiles, project files and receipts | No cleanup or automatic receipt expiry; all contents remain unchanged |
 | Documentation | Links, commands, and version references | Existing relative targets and consistent documented commands/versions |
 
 ## Commands
@@ -53,12 +63,16 @@ The scenario table defines the acceptance targets. The verification record below
 ```sh
 pnpm verify
 pnpm pack
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.3.tgz
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.4.tgz
 ```
 
 `verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
-## CI verification — 0.1.3
+## Verification status — 0.1.4
+
+The storage overview, sorting and current-trash measurements are the current implementation scope. A completed verification record for this version has not yet been recorded here; the scenario table is an acceptance target, not a claim that every new check passed. Final platform counts, package lifecycle results and any graphical evidence must be added from the actual runs before release. The completed 0.1.3 results below remain historical evidence for that release.
+
+## Historical CI verification — 0.1.3
 
 Date: 2026-10-29. Both jobs in run `40841619020` passed on runtime commit `b5c15ce87ae3b1b4a7c050646113d4dc56336378`, using official DSH `0.2.1-rc.3` JSONL persistence, Node `24.21.0`, pnpm `11.28.5`, isolated runtimes and synthetic profiles.
 
@@ -131,4 +145,4 @@ An isolated copy of the installed Electron app, using a separate synthetic home/
 
 ## Verification limits
 
-Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been visually exercised; its native integration and package checks above passed. The historical macOS GUI checks were not rerun for `0.1.1`, `0.1.2` or `0.1.3`. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.
+Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been visually exercised; its native integration and package checks above passed. The historical macOS GUI checks were not rerun for `0.1.1`, `0.1.2` or `0.1.3`. No new Desktop graphical storage-overview run is recorded for `0.1.4` at this stage. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.

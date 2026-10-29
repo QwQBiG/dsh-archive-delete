@@ -1,12 +1,21 @@
-import { ArchiveError, type Action, type ArchiveApi, type BatchResult, type Overview, type Preview } from './contracts.js';
+import { ArchiveError, type Action, type ArchiveApi, type BatchResult, type Overview, type Preview, type StorageOverview } from './contracts.js';
 
-export type ArchiveTab = 'archived' | 'trash';
+export type ArchiveTab = 'archived' | 'trash' | 'storage';
+export type ArchiveSort = 'default' | 'size-desc';
 export const PAGE_SIZE = 100;
 export interface ClientError { code: string; message: string; uncertain: boolean }
+export interface StorageClientState {
+  workspaceId: string;
+  scanning: boolean;
+  result: StorageOverview | null;
+  error: ClientError | null;
+  cancelled: boolean;
+}
 export interface ClientState {
   open: boolean;
   tab: ArchiveTab;
   page: number;
+  sort: ArchiveSort;
   overview: Overview | null;
   selected: readonly string[];
   loading: boolean;
@@ -15,6 +24,7 @@ export interface ClientState {
   result: BatchResult | null;
   error: ClientError | null;
   uncertainRequest: boolean;
+  storage: StorageClientState;
 }
 
 export class ClientTransportError extends Error {
@@ -27,15 +37,18 @@ type Mutation =
 
 /** IDs currently eligible for selection; pending entries have a dedicated cancel action. */
 export function pageItems<T>(items: readonly T[], page: number): readonly T[] { return items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE); }
-export function pageCount(state: Pick<ClientState, 'tab' | 'overview'>): number { return Math.max(1, Math.ceil((state.overview?.[state.tab].length ?? 0) / PAGE_SIZE)); }
-export function selectableIds(state: Pick<ClientState, 'tab' | 'overview' | 'page'>): string[] {
-  if (!state.overview) return [];
+export function sortedItems<T extends { sizeBytes: number }>(items: readonly T[], sort: ArchiveSort): readonly T[] {
+  return sort === 'size-desc' ? items.toSorted((a, b) => b.sizeBytes - a.sizeBytes) : items;
+}
+export function pageCount(state: Pick<ClientState, 'tab' | 'overview'>): number { return state.tab === 'storage' ? 1 : Math.max(1, Math.ceil((state.overview?.[state.tab].length ?? 0) / PAGE_SIZE)); }
+export function selectableIds(state: Pick<ClientState, 'tab' | 'overview' | 'page' | 'sort'>): string[] {
+  if (!state.overview || state.tab === 'storage') return [];
   return state.tab === 'archived'
-    ? pageItems(state.overview.archived, state.page).filter((item) => !item.pending).map((item) => item.id)
-    : pageItems(state.overview.trash, state.page).map((item) => item.id);
+    ? pageItems(sortedItems(state.overview.archived, state.sort), state.page).filter((item) => !item.pending).map((item) => item.id)
+    : pageItems(sortedItems(state.overview.trash, state.sort), state.page).map((item) => item.id);
 }
 
-export function visibleSelection(state: Pick<ClientState, 'selected' | 'tab' | 'overview' | 'page'>): string[] {
+export function visibleSelection(state: Pick<ClientState, 'selected' | 'tab' | 'overview' | 'page' | 'sort'>): string[] {
   const visible = new Set(selectableIds(state));
   return state.selected.filter((id) => visible.has(id));
 }
@@ -47,13 +60,16 @@ export function canExecutePreview(preview: Preview | null, now = Date.now()): bo
 /** Owns only browser view state. Mutation requests continue if the dialog is closed. */
 export class ArchiveClientController {
   private state: ClientState = {
-    open: false, tab: 'archived', page: 0, overview: null, selected: [], loading: false,
+    open: false, tab: 'archived', page: 0, sort: 'default', overview: null, selected: [], loading: false,
     busy: false, preview: null, result: null, error: null, uncertainRequest: false,
+    storage: { workspaceId: '', scanning: false, result: null, error: null, cancelled: false },
   };
   private readonly listeners = new Set<() => void>();
   private loadGeneration = 0;
   private previewGeneration = 0;
   private openGeneration = 0;
+  private scanGeneration = 0;
+  private scanAbort: AbortController | null = null;
   private disposed = false;
   private uncertainMutation: Mutation | null = null;
   private readonly knownTitles = new Map<string, string>();
@@ -65,6 +81,7 @@ export class ArchiveClientController {
   ) {}
 
   getSnapshot = (): ClientState => this.state;
+  get storageAvailable(): boolean { return typeof this.api.storage === 'function'; }
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
@@ -79,10 +96,11 @@ export class ArchiveClientController {
   async open(sessionId?: string): Promise<void> {
     const generation = ++this.openGeneration;
     this.previewGeneration++;
+    this.cancelStorage();
     this.update({ open: true, tab: 'archived', page: 0, selected: [], preview: null, error: this.uncertainMutation ? this.state.error : null });
     await this.refresh();
     if (!sessionId || generation !== this.openGeneration || !this.state.open || this.state.busy || this.uncertainMutation || this.state.error || !this.state.overview?.support.supported) return;
-    const index = this.state.overview.archived.findIndex((item) => item.id === sessionId && !item.pending);
+    const index = sortedItems(this.state.overview.archived, this.state.sort).findIndex((item) => item.id === sessionId && !item.pending);
     if (index < 0) return;
     this.update({ page: Math.floor(index / PAGE_SIZE), selected: [sessionId] });
     await this.preview('trash', [sessionId]);
@@ -91,13 +109,60 @@ export class ArchiveClientController {
   close = (): void => {
     this.openGeneration++;
     this.previewGeneration++;
+    this.cancelStorage();
     this.update({ open: false, preview: null, selected: [], loading: false });
   };
 
   setTab = (tab: ArchiveTab): void => {
-    if (this.state.busy || this.state.loading || this.state.tab === tab) return;
+    if (this.state.busy || this.state.loading || this.uncertainMutation || this.state.tab === tab) return;
     this.previewGeneration++;
+    this.cancelStorage();
     this.update({ tab, page: 0, selected: [], preview: null, error: null });
+  };
+
+  setSort = (sort: ArchiveSort): void => {
+    if (this.state.busy || this.state.loading || this.uncertainMutation || this.state.tab === 'storage'
+      || !['default', 'size-desc'].includes(sort) || this.state.sort === sort) return;
+    this.previewGeneration++;
+    this.update({ sort, page: 0, selected: [], preview: null, error: null });
+  };
+
+  setStorageWorkspace = (workspaceId: string): void => {
+    if (!this.state.open || this.state.tab !== 'storage' || this.state.storage.workspaceId === workspaceId
+      || (workspaceId !== '' && !this.state.overview?.storageWorkspaces?.some(item => item.id === workspaceId))) return;
+    this.cancelStorage();
+    this.update({ storage: { workspaceId, scanning: false, result: null, error: null, cancelled: false } });
+  };
+
+  /** Read-only scans have their own lifetime and cannot create or resolve mutations. */
+  async scanStorage(scope: 'host' | 'workspace'): Promise<void> {
+    if (this.disposed || !this.state.open || this.state.tab !== 'storage' || !this.api.storage
+      || !this.state.overview?.support.supported) return;
+    const workspaceId = scope === 'workspace' ? this.state.storage.workspaceId : undefined;
+    if (scope === 'workspace' && (!workspaceId || !this.state.overview.storageWorkspaces?.some(item => item.id === workspaceId))) return;
+    this.cancelStorage();
+    const generation = ++this.scanGeneration;
+    const abort = new AbortController();
+    this.scanAbort = abort;
+    this.update({ storage: { ...this.state.storage, scanning: true, result: null, error: null, cancelled: false } });
+    try {
+      const result = await this.api.storage(workspaceId, abort.signal);
+      if (generation !== this.scanGeneration || abort.signal.aborted || this.disposed || !this.state.open || this.state.tab !== 'storage') return;
+      if (result.scope !== scope || result.workspaceId !== workspaceId) throw new ClientTransportError('DSH returned storage details for a different scope.');
+      this.scanAbort = null;
+      this.update({ storage: { ...this.state.storage, scanning: false, result, error: null } });
+    } catch (error) {
+      if (generation !== this.scanGeneration || abort.signal.aborted || this.disposed || !this.state.open || this.state.tab !== 'storage') return;
+      this.scanAbort = null;
+      this.update({ storage: { ...this.state.storage, scanning: false, error: this.error(error, false) } });
+    }
+  }
+
+  cancelStorage = (): void => {
+    this.scanGeneration++;
+    this.scanAbort?.abort();
+    this.scanAbort = null;
+    if (this.state.storage.scanning) this.update({ storage: { ...this.state.storage, scanning: false, cancelled: true } });
   };
 
   setPage = (page: number): void => {
@@ -132,6 +197,10 @@ export class ArchiveClientController {
         this.knownTitles.set(item.sessionId, item.title);
       }
       const overview = { ...received, recentResults: received.recentResults.map(this.withKnownTitles) };
+      if (this.state.storage.workspaceId && !overview.storageWorkspaces?.some(item => item.id === this.state.storage.workspaceId)) {
+        this.cancelStorage();
+        this.update({ storage: { workspaceId: '', scanning: false, result: null, error: null, cancelled: false } });
+      }
       this.update({ overview, page: Math.min(this.state.page, pageCount({ overview, tab: this.state.tab }) - 1), loading: false, error: this.uncertainMutation ? this.state.error : null });
       this.update({ selected: visibleSelection(this.state) });
       const recovered = this.uncertainMutation
@@ -148,7 +217,7 @@ export class ArchiveClientController {
   }
 
   async preview(action: Action, ids = visibleSelection(this.state)): Promise<void> {
-    if (this.state.busy || this.uncertainMutation || ids.length === 0) return;
+    if (this.state.busy || this.state.tab === 'storage' || this.uncertainMutation || ids.length === 0) return;
     const generation = ++this.previewGeneration;
     this.update({ loading: true, error: null, preview: null });
     try {
@@ -187,7 +256,7 @@ export class ArchiveClientController {
   async reviewPending(id: string): Promise<void> {
     if (this.disposed || !this.state.open || this.state.busy || this.state.loading || this.uncertainMutation
       || this.state.tab !== 'archived' || !this.state.overview?.support.supported
-      || !pageItems(this.state.overview.archived, this.state.page).some(item => item.id === id && item.pending)) return;
+      || !pageItems(sortedItems(this.state.overview.archived, this.state.sort), this.state.page).some(item => item.id === id && item.pending)) return;
     await this.perform({ kind: 'cancel', ids: [id], requestId: this.createId(), review: { id, openGeneration: this.openGeneration } });
   }
 
@@ -217,7 +286,7 @@ export class ArchiveClientController {
         if (this.disposed || review.openGeneration !== this.openGeneration || !this.state.open || this.state.error
           || this.state.loading || this.uncertainMutation || this.state.tab !== 'archived' || !this.state.overview?.support.supported
           || result.action !== 'cancel' || !result.items.some(item => item.id === review.id && item.status === 'cancelled')) return;
-        const index = this.state.overview.archived.findIndex(item => item.id === review.id && !item.pending);
+        const index = sortedItems(this.state.overview.archived, this.state.sort).findIndex(item => item.id === review.id && !item.pending);
         if (index < 0) return;
         this.update({ page: Math.floor(index / PAGE_SIZE), selected: [review.id] });
         await this.preview('trash', [review.id]);
@@ -243,6 +312,7 @@ export class ArchiveClientController {
   }
 
   dispose(): void {
+    this.cancelStorage();
     this.disposed = true;
     this.loadGeneration++;
     this.previewGeneration++;

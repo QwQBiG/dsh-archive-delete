@@ -1,11 +1,12 @@
 import React, { useEffect, useId, useRef, useSyncExternalStore } from 'react';
-import { SUPPORTED_DSH_VERSION, type Action, type BatchResult, type ItemStatus, type Preview, type SupportStatus } from './contracts.js';
-import { ArchiveClientController, canExecutePreview, pageCount, pageItems, selectableIds, visibleSelection, type ArchiveTab, type ClientError, type ClientState } from './client-state.js';
+import { SUPPORTED_DSH_VERSION, type Action, type BatchResult, type ItemStatus, type Preview, type StorageOverview, type SupportStatus } from './contracts.js';
+import { ArchiveClientController, canExecutePreview, pageCount, pageItems, selectableIds, sortedItems, visibleSelection, type ArchiveSort, type ArchiveTab, type ClientError, type ClientState, type StorageClientState } from './client-state.js';
+import type { UsageCategory, UsageCounters } from './storage-usage.js';
 
 export const CLIENT_NAMESPACE = 'qwqbig.archiveDelete';
 export const en = {
-  title: 'Archives & trash', manage: 'Manage archives and trash', menuTrash: 'Move to trash',
-  archived: 'Archived', trash: 'Trash', close: 'Close', refresh: 'Refresh', cancel: 'Cancel', back: 'Back',
+  title: 'Archives, trash & storage', manage: 'Manage archives, trash and storage', menuTrash: 'Move to trash',
+  archived: 'Archived', trash: 'Trash', storage: 'Storage overview', close: 'Close', refresh: 'Refresh', cancel: 'Cancel', back: 'Back',
   loading: 'Loading…', working: 'Processing the selected records…',
   intro: 'Clean up archived conversations, with the option to restore them.',
   scope: 'Session logs and their dedicated subagent logs are included. Shared attachments, spill files, project files and other plugins’ caches are retained.',
@@ -59,12 +60,35 @@ export const en = {
   reasonCapabilities: 'Required DSH services are unavailable or incompatible.',
   reasonInitialization: 'Archive storage could not be initialized. Check the host diagnostics and reload the plugin.',
   reasonStoreBusy: 'Another DSH process owns this trash store. Close that instance before continuing.',
+  sort: 'Sort', sortDefault: 'Default order', sortSize: 'Largest first',
+  storageIntro: 'See where DSH and a selected workspace store files. Scans are read-only and start only when you request them.',
+  storageHost: 'DSH storage', storageHostScan: 'Scan DSH storage', storageWorkspace: 'Workspace', storageWorkspaceChoose: 'Choose a workspace…', storageWorkspaceScan: 'Scan selected workspace',
+  storageWorkspaceHint: 'Choose one registered workspace to scan. Other project folders are not scanned.',
+  storageReadOnly: 'Read-only', storageScanning: 'Reading file metadata…', storageCancel: 'Cancel scan',
+  storageRefreshWorkspaces: 'Refresh workspace list',
+  storageReasonBusy: 'The previous scan is still finishing. Wait a moment, then scan again.', storageReasonClosed: 'The plugin is stopping. Reload it before scanning again.',
+  storageReasonWorkspaceChanged: 'The workspace changed during the scan. Refresh the workspace list, select it again and rescan.', storageReasonWorkspaceMissing: 'This workspace is no longer registered. Refresh the workspace list and choose another.',
+  storageReasonUnsafeWorkspace: 'Choose a project folder outside protected DSH storage. Home folders, drive roots and redirected paths cannot be scanned as workspaces.',
+  storageCancelled: 'Scan cancelled. Start a new scan when you are ready.', storageFailed: 'Storage could not be read. Try a new scan.', storageUnavailable: 'Storage overview is unavailable on this host.',
+  storageEmpty: 'Start a scan to see storage usage', storageEmptyHint: 'Opening this tab does not scan files.',
+  storageMeasured: 'Measured file size', storageMetric: 'Logical file bytes, with verified duplicate paths and hard links counted once. This is not disk space that can be reclaimed.',
+  storageComplete: 'Scan completed', storagePartial: 'Partial scan', storagePartialHint: 'Some entries were skipped or a scan limit was reached. The size shown covers only the files measured.',
+  storageObserved: 'Observed {time} · {duration} ms', storageWindow: 'Scan started {time}', storageFiles: '{unique} unique files · {paths} file paths', storageDirectoryFiles: '{n} file paths',
+  storageUnknown: 'Unknown', storageMissing: 'Not found', storageCategoryUnavailable: 'Unavailable', storageCategoryComplete: 'Complete', storageCategoryPartial: 'Partial',
+  storageBreakdown: 'Storage categories', storageOverlap: 'Some categories overlap. Their sizes cannot be added together; the total above removes verified duplicates.', storageIdentity: 'File identity was unavailable for {n} paths; duplicate detection may be incomplete.', storageDeduplicated: 'Counted once: {links} duplicate hard links and {paths} repeated paths.',
+  storageDetails: 'Files, folders and scan details', storageLargest: 'Largest measured files', storageDirectories: 'Top-level folders', storageRootFiles: 'Files at the root',
+  storageDirectoryMetric: 'Folder totals count file paths, including hard-link aliases, and may overlap other categories.',
+  storageNoFiles: 'No files measured in this category.', storageNoDirectories: 'No folder totals available.', storageSource: 'Origin unknown', storageProvenance: 'File origin has not been identified. These results cannot establish that files were AI-generated, unnecessary or safe to delete.',
+  storageNotSnapshot: 'Files can change while a scan is running. Results describe the observation window, not a fixed snapshot.', storageIssues: 'Scan notes', storageOtherIssue: 'Some entries could not be measured ({code}).',
+  storageIssueTime: 'Time limit reached', storageIssueEntries: 'Entry limit reached', storageIssueDepth: 'Folder depth limit reached', storageIssueCancelled: 'Scan cancelled', storageIssueLink: 'Symbolic link skipped', storageIssueDevice: 'Another volume skipped', storageIssueSpecial: 'Special file skipped', storageIssueChanged: 'File or folder changed during the scan', storageIssueUnreadable: 'File or folder could not be read', storageIssueRoot: 'Storage location is unavailable', storageIssueSize: 'Size could not be represented exactly', storageIssueMemory: 'This index is held in memory; there is no disk file to measure.',
+  storageSkipped: 'Skipped or uncertain entries', storageCounterSymlinks: 'Symbolic links: {n}', storageCounterUnreadable: 'Unreadable: {n}', storageCounterChanged: 'Changed: {n}', storageCounterUnsupported: 'Unsupported: {n}', storageCounterCrossDevice: 'Other volumes: {n}', storageCounterDepth: 'Depth limits: {n}', storageCounterHardlinks: 'Duplicate hard links: {n}', storageCounterPaths: 'Duplicate paths: {n}', storageCounterExcluded: 'Separately categorized paths: {n}',
+  storageCategorySessions: 'Session logs', storageCategoryTrash: 'Trash', storageCategoryStaging: 'Operation staging', storageCategoryReceipts: 'Operation receipts', storageCategoryOperations: 'Operation records', storageCategoryAttachments: 'Attachments', storageCategoryCache: 'DSH cache', storageCategoryAttachmentCache: 'Attachment cache', storageCategorySpill: 'Spill files', storageCategorySettings: 'DSH settings', storageCategoryWorkspace: 'Workspace files', storageCategoryProfiles: 'Plugin profiles', storageCategorySearch: 'Search index', storageCategoryOther: 'Other DSH files',
 } as const;
 export type TextKey = keyof typeof en;
 export type Translate = (key: TextKey, values?: Record<string, string | number>) => string;
 export const zh: Record<TextKey, string> = {
-  title: '归档与回收站', manage: '管理归档与回收站', menuTrash: '移入回收站',
-  archived: '已归档', trash: '回收站', close: '关闭', refresh: '刷新', cancel: '取消', back: '返回',
+  title: '归档、回收站与存储', manage: '管理归档、回收站与存储', menuTrash: '移入回收站',
+  archived: '已归档', trash: '回收站', storage: '存储概览', close: '关闭', refresh: '刷新', cancel: '取消', back: '返回',
   loading: '正在读取…', working: '正在处理选中的记录…',
   intro: '清理已归档会话，需要时可以恢复。',
   scope: '处理范围包含会话日志及其专属子代理日志。共享附件、spill 文件、项目文件和其他插件缓存会保留。',
@@ -118,6 +142,29 @@ export const zh: Record<TextKey, string> = {
   reasonCapabilities: '所需的 DSH 服务不可用或不兼容。',
   reasonInitialization: '回收站存储初始化失败，请检查宿主诊断后重新加载插件。',
   reasonStoreBusy: '其他 DSH 进程正在使用此回收站，请关闭相应实例后继续。',
+  sort: '排序', sortDefault: '默认顺序', sortSize: '按大小从大到小',
+  storageIntro: '查看 DSH 及指定工作区的文件分布。扫描仅读取信息，由你主动开始。',
+  storageHost: 'DSH 存储', storageHostScan: '扫描 DSH 存储', storageWorkspace: '工作区', storageWorkspaceChoose: '请选择工作区…', storageWorkspaceScan: '扫描所选工作区',
+  storageWorkspaceHint: '选择一个已登记的工作区后扫描，不会遍历其他项目目录。',
+  storageReadOnly: '只读', storageScanning: '正在读取文件信息…', storageCancel: '取消扫描',
+  storageRefreshWorkspaces: '刷新工作区列表',
+  storageReasonBusy: '上一次扫描仍在结束，请稍候再扫描。', storageReasonClosed: '插件正在停止，请重新加载后再扫描。',
+  storageReasonWorkspaceChanged: '扫描期间工作区发生变化，请刷新工作区列表，重新选择后再扫描。', storageReasonWorkspaceMissing: '此工作区已不再登记，请刷新工作区列表后重新选择。',
+  storageReasonUnsafeWorkspace: '请选择受保护的 DSH 存储以外的项目目录；用户主目录、磁盘根目录和重定向路径不能作为工作区扫描。',
+  storageCancelled: '已取消扫描，需要时可以重新开始。', storageFailed: '无法读取存储信息，请重新扫描。', storageUnavailable: '当前宿主暂不支持存储概览。',
+  storageEmpty: '开始扫描后查看存储分布', storageEmptyHint: '打开此页签不会自动扫描文件。',
+  storageMeasured: '已统计文件大小', storageMetric: '统计逻辑文件大小，已验证的重复路径与硬链接仅计一次。此数值不代表可释放的磁盘空间。',
+  storageComplete: '扫描完成', storagePartial: '部分扫描', storagePartialHint: '部分条目被跳过或已达到扫描上限，显示的大小仅包含已统计文件。',
+  storageObserved: '统计于 {time} · 用时 {duration} 毫秒', storageWindow: '扫描开始于 {time}', storageFiles: '{unique} 个独立文件 · {paths} 个文件路径', storageDirectoryFiles: '{n} 个文件路径',
+  storageUnknown: '未知', storageMissing: '未找到', storageCategoryUnavailable: '不可用', storageCategoryComplete: '完整', storageCategoryPartial: '部分',
+  storageBreakdown: '存储分类', storageOverlap: '部分分类存在重叠，大小不能直接相加；上方总计已移除能够验证的重复项。', storageIdentity: '有 {n} 个路径无法验证文件标识，可能无法完整识别重复项。', storageDeduplicated: '已合并计数：重复硬链接 {links} 个，重复路径 {paths} 个。',
+  storageDetails: '文件、目录与扫描详情', storageLargest: '已统计的大文件', storageDirectories: '一级目录', storageRootFiles: '根目录下的文件',
+  storageDirectoryMetric: '目录大小按文件路径统计，包含硬链接别名，也可能与其他分类重叠。',
+  storageNoFiles: '此分类尚未统计到文件。', storageNoDirectories: '暂无目录统计。', storageSource: '来源未知', storageProvenance: '尚未判断文件来源，不能据此认定文件由 AI 生成、不再需要或可以安全删除。',
+  storageNotSnapshot: '扫描期间文件可能变化，结果反映本次观察时段，并非固定快照。', storageIssues: '扫描说明', storageOtherIssue: '部分条目无法统计（{code}）。',
+  storageIssueTime: '已达到时间上限', storageIssueEntries: '已达到条目数量上限', storageIssueDepth: '已达到目录深度上限', storageIssueCancelled: '扫描已取消', storageIssueLink: '已跳过符号链接', storageIssueDevice: '已跳过其他卷', storageIssueSpecial: '已跳过特殊文件', storageIssueChanged: '扫描期间文件或目录发生变化', storageIssueUnreadable: '无法读取文件或目录', storageIssueRoot: '存储位置不可用', storageIssueSize: '无法精确表示文件大小', storageIssueMemory: '此索引存于内存，没有可统计的磁盘文件。',
+  storageSkipped: '跳过或无法确认的条目', storageCounterSymlinks: '符号链接 {n}', storageCounterUnreadable: '无法读取 {n}', storageCounterChanged: '发生变化 {n}', storageCounterUnsupported: '不支持 {n}', storageCounterCrossDevice: '其他卷 {n}', storageCounterDepth: '深度限制 {n}', storageCounterHardlinks: '重复硬链接 {n}', storageCounterPaths: '重复路径 {n}', storageCounterExcluded: '已单独分类的路径 {n}',
+  storageCategorySessions: '会话日志', storageCategoryTrash: '回收站', storageCategoryStaging: '操作暂存', storageCategoryReceipts: '操作回执', storageCategoryOperations: '操作记录', storageCategoryAttachments: '附件', storageCategoryCache: 'DSH 缓存', storageCategoryAttachmentCache: '附件缓存', storageCategorySpill: '溢出文件', storageCategorySettings: 'DSH 设置', storageCategoryWorkspace: '工作区文件', storageCategoryProfiles: '插件环境', storageCategorySearch: '搜索索引', storageCategoryOther: '其他 DSH 文件',
 };
 
 export function translator(language: 'en' | 'zh'): Translate {
@@ -197,8 +244,101 @@ function ArchiveIcon({ trash = false }: { trash?: boolean }) {
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{trash ? <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5" /></> : <><path d="M4 5h16v4H4zM6 9v11h12V9M10 13h4" /></>}</svg>;
 }
 
-function EmptyState({ tab, t }: { tab: ArchiveTab; t: Translate }) {
+function EmptyState({ tab, t }: { tab: Exclude<ArchiveTab, 'storage'>; t: Translate }) {
   return <div className="dad-empty"><span className="dad-empty-icon"><ArchiveIcon trash={tab === 'trash'} /></span><strong>{t(tab === 'archived' ? 'noArchives' : 'noTrash')}</strong><p>{t(tab === 'archived' ? 'emptyArchivesHint' : 'emptyTrashHint')}</p></div>;
+}
+
+function storageCategoryTitle(category: UsageCategory, t: Translate): string {
+  const names: Record<string, TextKey> = {
+    sessions: 'storageCategorySessions', 'session-logs': 'storageCategorySessions',
+    trash: 'storageCategoryTrash', staging: 'storageCategoryStaging', receipts: 'storageCategoryReceipts', operations: 'storageCategoryOperations',
+    attachments: 'storageCategoryAttachments', cache: 'storageCategoryCache', 'attachment-cache': 'storageCategoryAttachmentCache',
+    spill: 'storageCategorySpill', settings: 'storageCategorySettings', workspace: 'storageCategoryWorkspace', profiles: 'storageCategoryProfiles', search: 'storageCategorySearch', other: 'storageCategoryOther',
+  };
+  const key = names[category.kind];
+  return category.kind === 'workspace' && category.label ? category.label : t(key ?? 'storageCategoryOther');
+}
+
+function storageIssue(code: string, t: Translate): string {
+  const keys: Record<string, TextKey> = {
+    'time-budget': 'storageIssueTime', 'entry-budget': 'storageIssueEntries', 'depth-limit': 'storageIssueDepth',
+    cancelled: 'storageIssueCancelled', 'link-skipped': 'storageIssueLink', 'cross-device-skipped': 'storageIssueDevice', 'special-file-skipped': 'storageIssueSpecial',
+    'entry-changed': 'storageIssueChanged', 'entry-disappeared': 'storageIssueChanged', 'directory-changed': 'storageIssueChanged', 'path-redirected': 'storageIssueChanged', 'root-changed': 'storageIssueChanged',
+    'entry-unreadable': 'storageIssueUnreadable', 'directory-unreadable': 'storageIssueUnreadable',
+    'root-unresolved': 'storageIssueRoot', 'unsafe-root': 'storageIssueRoot', ENOENT: 'storageIssueRoot',
+    'size-unrepresentable': 'storageIssueSize', 'aggregate-size-limit': 'storageIssueSize',
+    'in-memory': 'storageIssueMemory',
+  };
+  return keys[code] ? t(keys[code]) : t('storageOtherIssue', { code });
+}
+
+const counterLabels: Partial<Record<keyof UsageCounters, TextKey>> = {
+  symlinks: 'storageCounterSymlinks', unreadable: 'storageCounterUnreadable', changed: 'storageCounterChanged', unsupported: 'storageCounterUnsupported',
+  crossDevice: 'storageCounterCrossDevice', depthLimit: 'storageCounterDepth', duplicateHardlinks: 'storageCounterHardlinks', duplicatePaths: 'storageCounterPaths',
+  excluded: 'storageCounterExcluded',
+};
+
+export function StorageResultContent({ result, t }: { result: StorageOverview; t: Translate }) {
+  const categories = result.categories.toSorted((a, b) => (b.fileBytes ?? -1) - (a.fileBytes ?? -1));
+  const maxBytes = Math.max(1, ...categories.map(category => category.fileBytes ?? 0));
+  const measured = result.categories.some(category => category.fileBytes !== null);
+  const workspace = result.workspaces.find(item => item.id === result.workspaceId);
+  const statusKeys: Record<UsageCategory['status'], TextKey> = { complete: 'storageCategoryComplete', partial: 'storageCategoryPartial', missing: 'storageMissing', unavailable: 'storageCategoryUnavailable' };
+  return <div className="dad-storage-result">
+    <section className="dad-storage-total" aria-label={t('storageMeasured')}>
+      <div className="dad-storage-total-heading"><span>{result.scope === 'host' ? t('storageHost') : workspace?.title || t('storageWorkspace')}</span><span className="dad-badge">{t(result.complete ? 'storageComplete' : 'storagePartial')}</span></div>
+      <span className="dad-muted">{t('storageMeasured')}</span><strong className="dad-storage-size">{measured ? formatBytes(result.fileBytes) : t('storageUnknown')}</strong>
+      {measured && <p>{t('storageFiles', { unique: result.uniqueFileCount, paths: result.fileCount })}</p>}
+      <p className="dad-hint">{t('storageMetric')}</p>
+      <time dateTime={isoTime(result.finishedAt)} className="dad-hint">{t('storageObserved', { time: formatTime(result.finishedAt), duration: Math.round(result.durationMs) })}</time>
+      {!result.complete && <p className="dad-storage-partial" role="status">{t('storagePartialHint')}</p>}
+    </section>
+    <section aria-label={t('storageBreakdown')} className="dad-storage-categories">
+      <h3>{t('storageBreakdown')}</h3>
+      {categories.map(category => <article className="dad-storage-category" key={category.id}>
+        <div className="dad-storage-category-heading"><strong>{storageCategoryTitle(category, t)}</strong><span className="dad-storage-category-size">{category.fileBytes === null ? t('storageUnknown') : formatBytes(category.fileBytes)}</span><span className="dad-badge">{t(statusKeys[category.status])}</span></div>
+        {category.fileBytes !== null && <div className="dad-storage-bar" aria-hidden="true"><span style={{ width: `${Math.min(100, category.fileBytes / maxBytes * 100)}%` }} /></div>}
+        {category.fileBytes !== null && <p className="dad-hint">{t('storageFiles', { unique: category.uniqueFileCount, paths: category.fileCount })}</p>}
+        <details className="dad-storage-details"><summary>{t('storageDetails')}</summary>
+          <h4>{t('storageLargest')}</h4>
+          {category.largestFiles.length === 0 ? <p className="dad-hint">{t('storageNoFiles')}</p> : <ul className="dad-storage-paths">{category.largestFiles.map((file, index) => <li key={`${file.relativePath}-${index}`}><code>{file.relativePath}</code><span>{formatBytes(file.sizeBytes)}</span><small>{t('storageSource')}</small></li>)}</ul>}
+          <h4>{t('storageDirectories')}</h4>
+          {category.directories.length === 0 ? <p className="dad-hint">{t('storageNoDirectories')}</p> : <ul className="dad-storage-paths">{category.directories.map((directory, index) => <li key={`${directory.relativePath}-${index}`}><code>{directory.relativePath === '.' ? t('storageRootFiles') : directory.relativePath}</code><span>{formatBytes(directory.fileBytes)}</span><small>{t('storageDirectoryFiles', { n: directory.fileCount })}</small></li>)}</ul>}
+          <p className="dad-hint">{t('storageDirectoryMetric')}</p>
+          {Object.entries(counterLabels).some(([key]) => category.counters[key as keyof UsageCounters] > 0) && <><h4>{t('storageSkipped')}</h4><ul className="dad-storage-notes">{Object.entries(counterLabels).filter(([key]) => category.counters[key as keyof UsageCounters] > 0).map(([key, label]) => <li key={key}>{t(label, { n: category.counters[key as keyof UsageCounters] })}</li>)}</ul></>}
+          {category.issues.length > 0 && <><h4>{t('storageIssues')}</h4><ul className="dad-storage-notes">{category.issues.map((issue, index) => <li key={index}>{storageIssue(issue.code, t)}{issue.relativePath && <> · <code>{issue.relativePath}</code></>}</li>)}</ul></>}
+        </details>
+      </article>)}
+    </section>
+    {result.categories.some(category => category.overlaps.length > 0) && <p className="dad-hint">{t('storageOverlap')}</p>}
+    {(result.duplicateHardlinks > 0 || result.duplicatePaths > 0) && <p className="dad-hint">{t('storageDeduplicated', { links: result.duplicateHardlinks, paths: result.duplicatePaths })}</p>}
+    {result.identityUnknown > 0 && <p className="dad-hint">{t('storageIdentity', { n: result.identityUnknown })}</p>}
+    <p className="dad-hint">{t('storageProvenance')}</p><p className="dad-hint">{t('storageNotSnapshot')}</p><p className="dad-hint">{t('storageWindow', { time: formatTime(result.startedAt) })}</p>
+  </div>;
+}
+
+export function StorageContent({ state, workspaces, controller, supported, t, Button }: {
+  state: StorageClientState; workspaces: readonly { id: string; title: string }[]; controller: ArchiveClientController;
+  supported: boolean; t: Translate; Button: NativePrimitives['Button'];
+}) {
+  const workspaceId = useId();
+  const available = supported && controller.storageAvailable;
+  const errorKeys: Record<string, TextKey> = { 'scan-busy': 'storageReasonBusy', 'scan-closed': 'storageReasonClosed',
+    'workspace-changed': 'storageReasonWorkspaceChanged', 'workspace-not-found': 'storageReasonWorkspaceMissing',
+    'unsafe-workspace': 'storageReasonUnsafeWorkspace', 'scan-cancelled': 'storageCancelled', 'unsupported-host': 'storageUnavailable' };
+  return <div className="dad-storage">
+    <div className="dad-storage-intro"><p>{t('storageIntro')}</p><span className="dad-badge">{t('storageReadOnly')}</span></div>
+    {!available && <p className="dad-alert" role="status">{t('storageUnavailable')}</p>}
+    <div className="dad-storage-controls">
+      <Button variant="outline" disabled={!available || state.scanning} onClick={() => { void controller.scanStorage('host'); }}>{t('storageHostScan')}</Button>
+      <div className="dad-storage-workspace"><label htmlFor={workspaceId}>{t('storageWorkspace')}</label><select id={workspaceId} value={state.workspaceId} disabled={!available} onChange={event => controller.setStorageWorkspace(event.target.value)}><option value="">{t('storageWorkspaceChoose')}</option>{workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.title}</option>)}</select><Button variant="outline" disabled={!available || state.scanning || !workspaces.some(workspace => workspace.id === state.workspaceId)} onClick={() => { void controller.scanStorage('workspace'); }}>{t('storageWorkspaceScan')}</Button></div>
+    </div>
+    <p className="dad-hint">{t('storageWorkspaceHint')}</p>
+    {state.scanning && <div className="dad-storage-scanning" role="status"><span>{t('storageScanning')}</span><Button size="sm" variant="ghost" onClick={controller.cancelStorage}>{t('storageCancel')}</Button></div>}
+    {state.cancelled && <p className="dad-hint" role="status">{t('storageCancelled')}</p>}
+    {state.error && <section className="dad-alert dad-error" role="alert"><p>{t('storageFailed')}</p>{errorKeys[state.error.code] && <p>{t(errorKeys[state.error.code]!)}</p>}<details><summary>{t('errorDetails')}</summary><code>{state.error.code}</code></details></section>}
+    {state.result ? <StorageResultContent result={state.result} t={t} /> : !state.scanning && !state.error && <div className="dad-empty dad-storage-empty"><strong>{t('storageEmpty')}</strong><p>{t('storageEmptyHint')}</p></div>}
+  </div>;
 }
 
 export function PreviewContent({ preview, t }: { preview: Preview; t: Translate }) {
@@ -242,6 +382,7 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
 }) {
   const { Button, Checkbox, Modal } = primitives;
   const tabsId = useId();
+  const tabs: readonly ArchiveTab[] = ['archived', 'trash', 'storage'];
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const backAnchor = useRef<HTMLSpanElement>(null);
   const selected = visibleSelection(state);
@@ -253,6 +394,8 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
   const locked = state.busy || state.loading || uncertain;
   const preview = state.preview;
   const previewId = preview?.id;
+  const archivedItems = sortedItems(state.overview?.archived ?? [], state.sort);
+  const trashItems = sortedItems(state.overview?.trash ?? [], state.sort);
   const result = state.result ?? state.overview?.recentResults[0] ?? null;
   const actionTitle: Record<Action, TextKey> = { trash: 'moveTitle', restore: 'restoreTitle', purge: 'purgeTitle' };
   const actionDescription: Record<Action, TextKey> = { trash: 'moveDescription', restore: 'restoreDescription', purge: 'purgeDescription' };
@@ -260,17 +403,17 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
   useEffect(() => {
     if (!state.open) return;
     if (previewId) backAnchor.current?.querySelector('button')?.focus();
-    else tabRefs.current[state.tab === 'archived' ? 0 : 1]?.focus();
+    else tabRefs.current[['archived', 'trash', 'storage'].indexOf(state.tab)]?.focus();
   }, [state.open, previewId, state.tab]);
 
   const changeTab = (tab: ArchiveTab, focus = false) => {
     controller.setTab(tab);
-    if (focus) tabRefs.current[tab === 'archived' ? 0 : 1]?.focus();
+    if (focus) tabRefs.current[tabs.indexOf(tab)]?.focus();
   };
   const footer = preview ? <>
     <span ref={backAnchor}><Button variant="outline" disabled={state.busy || uncertain} onClick={controller.dismissPreview} data-modal-autofocus="">{t('back')}</Button></span>
     <Button variant={preview.action === 'purge' ? 'outline' : 'primary'} className={preview.action === 'purge' ? 'dad-danger' : undefined} disabled={locked || !supported || !canExecutePreview(preview)} onClick={() => { void controller.confirm(); }}>{t(actionConfirm[preview.action])}</Button>
-  </> : <>
+  </> : state.tab === 'storage' ? <Button variant="outline" onClick={controller.close}>{t('close')}</Button> : <>
     <span className="dad-selection" aria-live="polite">{t('selected', { n: selected.length })}</span>
     <Button variant="outline" onClick={controller.close}>{t('close')}</Button>
     {state.tab === 'archived'
@@ -278,7 +421,7 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
       : <><Button variant="outline" disabled={locked || !supported || selected.length === 0} onClick={() => { void controller.preview('restore'); }}>{t('restoreSelected')}</Button><Button variant="outline" className="dad-danger" disabled={locked || !supported || selected.length === 0} onClick={() => { void controller.preview('purge'); }}>{t('purgeSelected')}</Button></>}
   </>;
 
-  return <Modal open={state.open} onClose={controller.close} title={preview ? t(actionTitle[preview.action]) : t('title')} description={preview ? t(actionDescription[preview.action]) : t('intro')} closeLabel={t('close')} className="dad-dialog" contentClassName="dad-content" footer={footer}>
+  return <Modal open={state.open} onClose={controller.close} title={preview ? t(actionTitle[preview.action]) : t('title')} description={preview ? t(actionDescription[preview.action]) : state.tab === 'storage' ? t('storageIntro') : t('intro')} closeLabel={t('close')} className="dad-dialog" contentClassName="dad-content" footer={footer}>
     <div className="dad-shell">
       {state.error && <ErrorNotice error={uncertain ? { ...state.error, uncertain: true } : state.error} t={t} onRefresh={() => { void controller.refresh(); }} onRetry={() => { void controller.retryUncertain(); }} disabled={state.busy || state.loading} Button={Button} />}
       {state.overview && !supported && <section className="dad-alert" role="status"><strong>{t('unsupported')}</strong><p>{supportReason(state.overview.support, t)}</p><small>{t('supportDetails', { version: state.overview.support.version, platform: state.overview.support.platform })}</small></section>}
@@ -289,25 +432,28 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
             if (locked) return;
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
             event.preventDefault();
-            changeTab(event.key === 'Home' ? 'archived' : event.key === 'End' ? 'trash' : state.tab === 'archived' ? 'trash' : 'archived', true);
+            const index = tabs.indexOf(state.tab);
+            changeTab(event.key === 'Home' ? 'archived' : event.key === 'End' ? 'storage' : tabs[(index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]!, true);
           }}>
-            {(['archived', 'trash'] as const).map((tab, index) => <button key={tab} ref={(element) => { tabRefs.current[index] = element; }} type="button" role="tab" id={`${tabsId}-${tab}`} aria-controls={`${tabsId}-panel`} aria-selected={state.tab === tab} tabIndex={state.tab === tab ? 0 : -1} disabled={locked} data-modal-autofocus={state.tab === tab ? '' : undefined} onClick={() => changeTab(tab)}>{t(tab)}<span className="dad-count">{state.overview?.[tab].length ?? 0}</span></button>)}
+            {tabs.map((tab, index) => <button key={tab} ref={(element) => { tabRefs.current[index] = element; }} type="button" role="tab" id={`${tabsId}-${tab}`} aria-controls={`${tabsId}-panel`} aria-selected={state.tab === tab} tabIndex={state.tab === tab ? 0 : -1} disabled={locked} data-modal-autofocus={state.tab === tab ? '' : undefined} onClick={() => changeTab(tab)}>{t(tab)}{tab !== 'storage' && <span className="dad-count">{state.overview?.[tab].length ?? 0}</span>}</button>)}
           </div>
-          <Button size="sm" variant="outline" disabled={state.loading || state.busy} onClick={() => { void controller.refresh(); }}>{t('refresh')}</Button>
+          <Button size="sm" variant="outline" disabled={state.loading || state.busy} onClick={() => { void controller.refresh(); }}>{t(state.tab === 'storage' ? 'storageRefreshWorkspaces' : 'refresh')}</Button>
         </div>
-        <div className="dad-list-heading"><Checkbox checked={eligibleIds.length > 0 && selected.length === eligibleIds.length} disabled={locked || !supported || eligibleIds.length === 0} onChange={controller.selectAll} label={t('selectAll', { n: eligibleIds.length })} /><span className="dad-retention"><span aria-hidden="true">◷</span>{t('retention')}</span></div>
+        {state.tab === 'storage' ? <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-storage`} aria-busy={state.storage.scanning}><StorageContent state={state.storage} workspaces={state.overview?.storageWorkspaces ?? []} controller={controller} supported={supported} t={t} Button={Button} /></div> : <>
+        <div className="dad-list-heading"><Checkbox checked={eligibleIds.length > 0 && selected.length === eligibleIds.length} disabled={locked || !supported || eligibleIds.length === 0} onChange={controller.selectAll} label={t('selectAll', { n: eligibleIds.length })} /><label className="dad-sort"><span>{t('sort')}</span><select value={state.sort} disabled={locked} onChange={event => controller.setSort(event.target.value as ArchiveSort)}><option value="default">{t('sortDefault')}</option><option value="size-desc">{t('sortSize')}</option></select></label><span className="dad-retention"><span aria-hidden="true">◷</span>{t('retention')}</span></div>
         <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${state.tab}`} aria-busy={state.loading} className="dad-list">
           {state.loading && <p role="status">{t('loading')}</p>}
           {!state.loading && state.overview && state.overview[state.tab].length === 0 && <EmptyState tab={state.tab} t={t} />}
-          {state.tab === 'archived' ? pageItems(state.overview?.archived ?? [], state.page).map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)} data-pending={item.pending === true}>
+          {state.tab === 'archived' ? pageItems(archivedItems, state.page).map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)} data-pending={item.pending === true}>
             <div className="dad-row-main"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported || item.pending === true} onChange={() => controller.toggle(item.id)} label={item.title || item.id} /><div className="dad-meta"><span className="dad-workspace">{item.workspace || t('ungrouped')}</span><span>{formatBytes(item.sizeBytes)}</span>{item.descendantCount > 0 && <span className="dad-badge">{t('childCount', { n: item.descendantCount })}</span>}{item.pending && <span className="dad-badge dad-badge-pending">{t('pending')}</span>}</div>{item.pending && <p className="dad-pending">{t('pendingHint')}</p>}</div>
             {item.pending && <div className="dad-row-actions"><Button size="sm" variant="outline" disabled={locked || !supported} onClick={() => { void controller.reviewPending(item.id); }}>{t('reviewPending')}</Button><Button size="sm" variant="ghost" disabled={locked || !supported} onClick={() => { void controller.cancelPending([item.id]); }}>{t('cancelPending')}</Button></div>}
-          </div>) : pageItems(state.overview?.trash ?? [], state.page).map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)}>
+          </div>) : pageItems(trashItems, state.page).map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)}>
             <div className="dad-row-main"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported} onChange={() => controller.toggle(item.id)} label={item.title || item.sessionId} /><div className="dad-meta"><time dateTime={isoTime(item.trashedAt)}>{formatTime(item.trashedAt)}</time><span>{formatBytes(item.sizeBytes)}</span><span className="dad-badge">{t('memberCount', { n: item.memberCount })}</span></div></div>
           </div>)}
         </div>
         <div className="dad-list-foot"><p className="dad-hint">{t(state.tab === 'archived' ? 'archivedHint' : 'trashHint')}</p>{pages > 1 && <nav className="dad-pagination" aria-label={t('pages')}><Button size="sm" variant="ghost" disabled={locked || state.page === 0} onClick={() => controller.setPage(state.page - 1)}>{t('previousPage')}</Button><span>{t('pageNumber', { page: state.page + 1, pages })}</span><Button size="sm" variant="ghost" disabled={locked || state.page + 1 >= pages} onClick={() => controller.setPage(state.page + 1)}>{t('nextPage')}</Button></nav>}</div>
         {result && <ResultContent result={result} t={t} retry={(id) => { void controller.retryItem(id); }} disabled={locked || !supported} Button={Button} />}
+        </>}
       </>}
       {(state.busy || uncertain) && <p className="dad-muted">{t('operationContinues')}</p>}
     </div>
@@ -343,7 +489,12 @@ export const CLIENT_CSS = `
 .dad-pill{flex-shrink:0;font-size:10px;white-space:nowrap;border:1px solid var(--dad-border);border-radius:6px;padding:2px 7px;color:var(--dad-muted)}.dad-pill-ready{background:color-mix(in srgb,var(--dad-primary) 5%,transparent)}.dad-pill-blocked,.dad-result-attention{color:var(--dsw-alias-status-error,#bd3d3d)}.dad-item-reason{font-size:11px;line-height:1.5;margin-top:7px!important;color:var(--dad-muted);overflow-wrap:anywhere}
 .dad-boundary{display:flex;align-items:flex-start;gap:10px;margin:13px 2px 10px;padding:11px 12px;border:1px solid var(--dad-border);border-radius:10px;font-size:11px;line-height:1.6;color:var(--dad-muted)}.dad-boundary-icon{display:flex;flex-shrink:0;margin-top:1px}.dad-boundary strong{display:block;margin-bottom:3px;font-size:11px;font-weight:600;color:var(--dad-primary)}.dad-boundary-danger{border-color:color-mix(in srgb,var(--dsw-alias-status-error,#bd3d3d) 30%,transparent)}.dad-boundary-danger .dad-boundary-icon{color:var(--dsw-alias-status-error,#bd3d3d)}.dad-expiry{padding:0 3px}
 .dad-danger{color:var(--dsw-alias-status-error,#bd3d3d)!important}.dad-results{border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#88805);font-size:11px}.dad-results summary{display:flex;align-items:center;gap:10px;list-style:none;padding:10px 12px;cursor:pointer}.dad-results summary::-webkit-details-marker{display:none}.dad-results summary:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px;border-radius:9px}.dad-result-label{font-weight:500;white-space:nowrap}.dad-result-summary{flex:1;color:var(--dad-muted);font-variant-numeric:tabular-nums}.dad-result-disclosure{font-size:16px;line-height:1;color:var(--dad-muted);transition:transform .15s}.dad-results[open] .dad-result-disclosure{transform:rotate(180deg)}.dad-results[open] summary{border-bottom:1px solid var(--dad-border)}.dad-results ul{padding:0 12px;max-height:190px;overflow:auto}.dad-results li{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--dad-border)}.dad-results li:last-child{border-bottom:0}.dad-results li>div{min-width:0}.dad-results li strong{font-weight:500;overflow-wrap:anywhere}.dad-result-status{display:inline-block;margin-left:8px;font-size:10px;color:var(--dad-muted)}.dad-result-failed{color:var(--dsw-alias-status-error,#bd3d3d)}.dad-results li p{font-size:11px;line-height:1.5;margin-top:4px;overflow-wrap:anywhere}
+.dad-sort{display:flex;align-items:center;gap:6px;margin-left:auto}.dad-shell select{max-width:100%;min-height:30px;padding:4px 26px 4px 8px;border:1px solid var(--dad-border);border-radius:7px;background:var(--dsw-alias-bg-base,Canvas);color:var(--dad-primary);font:inherit}.dad-shell select:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px}.dad-shell select:disabled{opacity:.55}
+.dad-storage,.dad-storage-result,.dad-storage-categories{display:flex;flex-direction:column;gap:12px}.dad-storage-intro{display:flex;align-items:flex-start;gap:12px;justify-content:space-between;font-size:12px;color:var(--dad-muted)}.dad-storage-intro>.dad-badge{flex-shrink:0}.dad-storage-controls{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#88805)}.dad-storage-workspace{display:flex;align-items:center;gap:8px;width:100%;min-width:0;flex-wrap:wrap}.dad-storage-workspace label{font-size:12px;color:var(--dad-muted)}.dad-storage-workspace select{flex:1;min-width:120px;max-width:330px}.dad-storage-workspace button{flex-shrink:0}.dad-storage-scanning{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--dad-muted)}.dad-storage-empty{min-height:100px}
+.dad-storage-total{display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding:15px 16px;border:1px solid var(--dad-border);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#88805);font-size:12px}.dad-storage-total-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin-bottom:7px;font-weight:500}.dad-storage-total-heading>span:first-child{min-width:0;overflow-wrap:anywhere}.dad-storage-size{font-size:28px;font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums}.dad-storage-partial{border-left:2px solid var(--dsw-alias-status-warning,#b48228);padding-left:8px;font-size:11px;color:var(--dad-muted)}.dad-storage-categories h3{font-size:12px;font-weight:600}.dad-storage-category{padding:12px;border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#88805)}.dad-storage-category-heading{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px}.dad-storage-category-heading>strong{flex:1;font-size:12px;font-weight:500;overflow-wrap:anywhere}.dad-storage-category-size{font-size:12px;font-variant-numeric:tabular-nums}.dad-storage-bar{height:5px;overflow:hidden;border-radius:4px;background:color-mix(in srgb,var(--dad-primary) 7%,transparent);margin-bottom:7px}.dad-storage-bar>span{display:block;height:100%;min-width:0;border-radius:inherit;background:var(--dsw-alias-button-primary-bg,#2878e0);opacity:.6}
+.dad-storage-details{margin-top:9px;font-size:11px}.dad-storage-details summary{color:var(--dad-muted);cursor:pointer}.dad-storage-details summary:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px;border-radius:3px}.dad-storage-details h4{margin:12px 0 5px;font-size:11px;font-weight:600}.dad-storage-paths,.dad-storage-notes{list-style:none;margin:0;padding:0}.dad-storage-paths li{display:flex;align-items:baseline;gap:5px 10px;flex-wrap:wrap;border-bottom:1px solid var(--dad-border);padding:6px 0}.dad-storage-paths li:last-child{border-bottom:0}.dad-storage-paths code{flex:1;min-width:100px;overflow-wrap:anywhere;font-size:11px}.dad-storage-paths small{width:100%;color:var(--dad-muted);font-size:10px}.dad-storage-paths li>span{font-variant-numeric:tabular-nums}.dad-storage-notes{color:var(--dad-muted)}.dad-storage-notes li{padding:2px 0;overflow-wrap:anywhere}.dad-storage-notes code{font-size:10px}
 @media(prefers-reduced-motion:reduce){.dad-row,.dad-result-disclosure{transition:none}}
 @media(max-width:560px){.dad-dialog{width:calc(100vw - 20px);max-width:calc(100vw - 20px)}.dad-content{max-height:65vh}.dad-toolbar{gap:8px}.dad-tabs button{padding:6px 9px}.dad-row{padding:10px;gap:8px}.dad-row-title{flex-wrap:wrap;gap:6px}.dad-list-foot{flex-direction:column;gap:6px}.dad-retention{font-size:10px}.dad-results summary{flex-wrap:wrap;gap:4px 9px}.dad-result-summary{flex-basis:75%}.dad-result-disclosure{margin-left:auto}.dad-workspace{max-width:100%}}
 @media(max-width:560px){.dad-row[data-pending=true]{flex-wrap:wrap}.dad-row-actions{width:100%;flex-direction:row;flex-wrap:wrap;justify-content:flex-end}.dad-row-actions>button{max-width:100%}}
+@media(max-width:560px){.dad-toolbar{flex-wrap:wrap}.dad-tabs{max-width:100%;flex:1}.dad-tabs button{justify-content:center;gap:5px;padding:6px 8px;flex:1;font-size:12px}.dad-list-heading{flex-wrap:wrap}.dad-sort{font-size:11px}.dad-retention{width:100%;justify-content:flex-end}.dad-storage-workspace{align-items:stretch}.dad-storage-workspace label{width:100%}.dad-storage-workspace select{min-width:0;max-width:none;width:100%;flex-basis:100%}.dad-storage-workspace button{width:100%}.dad-storage-total-heading{align-items:flex-start}.dad-storage-category-heading>.dad-badge{font-size:9px}}
 `;
