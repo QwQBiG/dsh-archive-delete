@@ -70,7 +70,7 @@ pnpm verify
 pnpm pack --pack-destination artifacts
 node scripts/release-artifacts.mjs artifacts
 node --import tsx scripts/check-update-package.mjs artifacts
-node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.1.5.tgz
+node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.1.6.tgz
 ```
 
 `verify` 包含构建／类型检查、单元测试、原生集成、文档及打包校验。使用 Node 24 或更新版本；记录中的本地运行通过 `PATH` 使用 Desktop 自带的 Node／pnpm。包生命周期命令在 `pack` 后独立执行。

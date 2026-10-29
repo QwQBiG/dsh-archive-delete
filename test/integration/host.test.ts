@@ -401,6 +401,18 @@ function managedAgents(f: Awaited<ReturnType<typeof fixture>>) {
   new AgentLoop(f.ctx, { agents: [], maxParallelToolCalls: 10 });
   const handles: any[] = [];
   return {
+    async create(id: string, title: string, parent?: any) {
+      const owner = parent?.ctx ?? f.ctx;
+      const handle = await owner.agents.create({ sessionId: id, agentOptions: {},
+        meta: { cwd: f.project, ...(parent ? { parentSession: parent.id, origin: 'subagent', delegationDepth: 1 } : {}) },
+        ...(parent ? { parentAgent: parent } : {}) });
+      handles.push(handle);
+      handle.agent.session.append('session/title', { title, messageSeqs: [], source: { kind: 'user' } });
+      await f.ctx.sessions.flush(handle.agent.session);
+      await f.registry.indexHeader(handle.agent.session.header); await f.workspace.attachSession(id);
+      if (!parent) await f.registry.archiveSession(id);
+      return handle;
+    },
     async resume(id: string, parent?: any) {
       const owner = parent?.ctx ?? f.ctx;
       const handle = await owner.agents.resume({ resumeSessionId: id, agentOptions: {}, ...(parent ? { parentAgent: parent } : {}) });
@@ -444,6 +456,52 @@ test('stock rc.3: managed idle parent and child move and purge in the same proce
     assert.equal((await f.api.list()).trash.length, 0);
     assert.deepEqual(await readFile(forkFile), forkBytes);
     assert.ok(f.registry.archivedSessionIds.includes('hot-independent-fork'));
+  } finally { await managed.close(); }
+});
+
+test('stock rc.3: newly created live sessions normalize the persisted default depth, then move and purge without restart', async t => {
+  const f = await fixture(t); const managed = managedAgents(f);
+  try {
+    const parent = await managed.create('factory-new-parent', 'Factory new parent');
+    const child = await managed.create('factory-new-child', 'Factory new child', parent.agent);
+    const group = await f.adapter.inspect(parent.agent.id);
+    assert.equal(Object.hasOwn(parent.agent.session.header, 'delegationDepth'), false);
+    assert.equal(group.members[0]!.header.delegationDepth, 0);
+    assert.equal(child.agent.session.header.delegationDepth, 1);
+    assert.equal(f.ctx.sessions.get(parent.agent.id), parent.agent.session);
+    assert.notEqual(JSON.stringify(parent.agent.session.header), JSON.stringify(group.members[0]!.header));
+    await createIndependentFork(f, parent.agent.id, 'factory-new-independent-fork');
+    const fork = (await f.adapter.inspect('factory-new-independent-fork')).members[0]!;
+    const forkFile = join(fork.directory, 'session.v4.jsonl'); const forkBytes = await readFile(forkFile);
+    const preview = await f.api.preview('trash', [parent.agent.id]);
+    assert.deepEqual(preview.items[0]!.memberIds, ['factory-new-parent', 'factory-new-child']);
+    const moved = await f.api.execute(preview.id, randomUUID());
+    assert.equal(moved.items[0]!.status, 'moved', JSON.stringify(moved));
+    assert.equal(f.ctx.agents.get(parent.agent.id), undefined); assert.equal(f.ctx.sessions.get(parent.agent.id), undefined);
+    assert.equal(f.ctx.agents.get(child.agent.id), undefined); assert.equal(f.ctx.sessions.get(child.agent.id), undefined);
+    const entry = (await f.api.list()).trash[0]!;
+    assert.equal((await f.execute('purge', [entry.id])).items[0]!.status, 'purged');
+    assert.equal((await f.api.list()).trash.length, 0);
+    assert.deepEqual(await readFile(forkFile), forkBytes);
+    assert.ok(f.registry.archivedSessionIds.includes('factory-new-independent-fork'));
+  } finally { await managed.close(); }
+});
+
+test('stock rc.3: default-depth normalization does not accept a changed actual depth or other header metadata', async t => {
+  const f = await fixture(t); const managed = managedAgents(f);
+  try {
+    const parent = await managed.create('factory-new-protected', 'Factory protected');
+    for (const field of ['delegationDepth', 'cwd', 'createdAt', 'isSeeded'] as const) {
+      const group = await f.adapter.inspect(parent.agent.id); const header = group.members[0]!.header;
+      if (field === 'delegationDepth') header.delegationDepth = 1;
+      else if (field === 'cwd') header.cwd = join(f.home, 'different-project');
+      else if (field === 'createdAt') header.createdAt = Number(header.createdAt) + 1;
+      else header.isSeeded = true;
+      await assert.rejects(f.adapter.releaseIdle!(group), { code: 'source-changed' });
+      assert.equal(f.ctx.agents.get(parent.agent.id), parent.agent);
+      assert.equal(f.ctx.sessions.get(parent.agent.id), parent.agent.session);
+    }
+    assert.ok(await f.persistence.stat(parent.agent.id));
   } finally { await managed.close(); }
 });
 

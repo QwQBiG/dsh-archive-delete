@@ -13,7 +13,7 @@
 打开 **插件 → 添加插件**，粘贴固定版本的 Release 安装包地址：
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz
 ```
 
 1. **添加并启用。** 原生管理器会在当前 profile 安装依赖并注册 bundle；提示重启时，完全退出 DSH 再打开。
@@ -22,17 +22,17 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh
 
 Release `.tgz` 资产仅包含包声明的可安装文件及预编译 `lib/` 产物。`codeload` 仓库归档还包含源码、测试、锁文件和 CI 配置，不是推荐安装包。安装无需源码构建、依赖 `prepare` 或安装钩子。这些版本暂不发布到 npm。
 
-下载后，请保留配套的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz.sha256)。两个文件位于同一目录时，macOS 可运行：
+下载后，请保留配套的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz.sha256)。两个文件位于同一目录时，macOS 可运行：
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.5.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.6.tgz.sha256
 ```
 
 Windows PowerShell 中，将输出的哈希与校验文件比较：
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.1.5.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.1.5.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.1.6.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.1.6.tgz.sha256
 ```
 
 固定版本 URL 标识所选发行版，校验文件用于核对下载内容；不同版本不承诺固定字节大小。
@@ -92,7 +92,7 @@ CLI 适用于能自行核对 profile 并重启宿主的受管理或无人值守�
 支持 Desktop profile 的 DSH CLI 可使用：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz
 ```
 
 包管理器成功退出本身不代表已启用。经过管理器的 CLI 可自动注册 bundle，仅安装依赖的路径则可能遗漏。若独立 CLI 拒绝保留的 `desktop` profile，请使用 Desktop 管理器，不要改选其他 profile。
@@ -240,7 +240,7 @@ node --import tsx scripts/check-update-package.mjs artifacts
 
 ```sh
 DSH_ARCHIVE_DELETE_TEST_HOME="$(mktemp -d)"
-DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/artifacts/qwqbig-dsh-archive-delete-0.1.5.tgz"
+DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/artifacts/qwqbig-dsh-archive-delete-0.1.6.tgz"
 ```
 
 按上文核对隔离 profile 的注册和启用。Windows 使用 [参与贡献](../CONTRIBUTING.zh-CN.md) 中的自动隔离包生命周期检查；手动启动该宿主时保留临时 home 路径。打包产物可避免开发依赖进入运行时，主历史不能作为测试材料。

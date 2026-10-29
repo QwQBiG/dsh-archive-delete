@@ -4,6 +4,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createArchiveApi, startClient } from '../src/client.js';
 import { ArchiveClientController, ClientTransportError, type ClientState } from '../src/client-state.js';
+import { UpdateClientController } from '../src/update-client.js';
 import { ArchiveDialogView, PreviewContent, ResultContent, StorageResultContent, en, zh, translator, localizeReason, type NativePrimitives } from '../src/client-ui.js';
 import { ArchiveError, PACKAGE_NAME, type ArchiveApi, type BatchResult, type Overview, type Preview, type StorageOverview } from '../src/contracts.js';
 
@@ -15,6 +16,23 @@ const preview: Preview = { id: 'preview-1', action: 'trash', expiresAt: Date.now
 const result: BatchResult = { operationId: 'request-1', action: 'trash', items: [{ id: 'session-1', title: '<script>not html</script>', status: 'failed', message: 'Target is occupied.' }], counts: { succeeded: 0, pending: 0, skipped: 0, failed: 1 } };
 const api: ArchiveApi = { list: async () => overview, preview: async () => preview, execute: async () => result, cancelPending: async () => result };
 const viewDefaults = () => ({ sort: 'default' as const, storage: { workspaceId: '', scanning: false, result: null, error: null, cancelled: false } });
+
+test('archive confirmation focuses on the selected data and does not expose plugin update controls', async () => {
+  const controller = new ArchiveClientController(api);
+  const updates = new UpdateClientController({ ...api, updates: async () => ({ currentVersion: '0.1.6', installedVersion: '0.1.6', hostVersion: '0.2.1-rc.3', availability: 'current', canInstall: true }),
+    installUpdate: async () => { throw new Error('Confirmation must not install updates'); } }, controller);
+  await controller.open(); await updates.check();
+  for (const language of ['en', 'zh'] as const) {
+    const props = { controller, updates, primitives, t: translator(language) };
+    const ordinary = renderToStaticMarkup(<ArchiveDialogView {...props} state={controller.getSnapshot()} />);
+    assert.ok(ordinary.includes('dad-update'), 'normal management retains compact update access');
+    const confirmation = renderToStaticMarkup(<ArchiveDialogView {...props} state={{ ...controller.getSnapshot(), preview }} />);
+    assert.ok(!confirmation.includes('dad-update'));
+    assert.ok(confirmation.includes('A sample conversation'));
+    assert.ok(confirmation.includes(translator(language)('confirmTrash')));
+  }
+  updates.dispose(); controller.dispose();
+});
 function storageResult(): StorageOverview {
   const counters = { entries: 3, files: 2, directories: 1, symlinks: 1, unreadable: 0, changed: 0, unsupported: 0, crossDevice: 0, depthLimit: 0, duplicateHardlinks: 0, duplicatePaths: 0, identityUnknown: 1, excluded: 0 };
   return { metric: 'logical-file-bytes', scope: 'workspace', workspaceId: 'project-1', workspaces: [{ id: 'project-1', title: 'A sample project' }], startedAt: 100, finishedAt: 120, durationMs: 20,

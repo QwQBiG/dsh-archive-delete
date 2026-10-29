@@ -25,7 +25,7 @@
 在 DSH 桌面端使用 **插件 → 添加插件**，输入固定版本的 Release 安装包地址：
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz
 ```
 
 1. **安装：** 输入上方地址并启用插件。需要重启时，请完全退出 DSH 再打开：macOS 使用 **⌘Q／退出**，Windows 使用应用的 **退出** 命令；仅关闭窗口可能仍保留进程。
@@ -34,7 +34,7 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh
 
 **待重启处理** 表示日志仍在原位置，尚未释放空间。选择 **取消等待并重新核对** 会结束旧排队请求，并打开新的移动预览；选择 **取消待处理** 只撤回请求。只有再次确认后才尝试立即移动。成功移入后，在 **回收站 → 永久清除** 操作，无需重启。活动工作、待处理输入、外部写占用或缺少安全释放能力时，仍会保护数据。每页／每批最多 100 个目标，全选只作用于当前页；换页、切换页签或排序会清空选择；已归档与回收站支持默认顺序或按大小降序排列。
 
-Release 安装包包含声明的可安装文件和预编译宿主／浏览器产物，不包含源码、测试、锁文件或 CI 配置，并提供对应的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz.sha256)。用户无需 Git 或源码构建。
+Release 安装包包含声明的可安装文件和预编译宿主／浏览器产物，不包含源码、测试、锁文件或 CI 配置，并提供对应的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz.sha256)。用户无需 Git 或源码构建。
 
 插件管理器会在当前 profile 安装包并注册 bundle。CLI 适用于受管理或无人值守的环境，需要核对注册状态。`0.1.5` 之前的版本需先添加一次 `0.1.5` Release 地址，才能获得插件内更新入口；`pnpm update` 不会跟踪新的 Release 资产。[安装使用指南](docs/installation.zh-CN.md) 包含升级、CLI 卸载后的 bundle 清理、profile 范围、完整重启、排错，以及核对配置和访问权限的只读 Doctor。
 
