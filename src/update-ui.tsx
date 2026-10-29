@@ -15,6 +15,7 @@ export const updateEn = {
   updateUnknownOutcome: 'The installation outcome is uncertain. Check its status or retry the same request. If it remains uncertain, fully quit DSH and reopen it to reconcile.', updateReconcile: 'Check installation status', updateRetry: 'Retry the same request',
   updateUnavailable: 'The native update manager is unavailable in this profile.', updateBusy: 'Finish the current operation before upgrading.',
   updateErrorNetwork: 'GitHub could not be reached. Your installed version is unchanged; try checking again later.',
+  updateErrorService: 'The plugin service could not be reached. Check that the plugin is loaded, then try again.',
   updateErrorRate: 'GitHub has limited update requests. Try checking again later.', updateErrorChanged: 'The release changed. Check again and review the new details.',
   updateErrorIntegrity: 'The release package or metadata could not be verified. Nothing will be installed from this confirmation.',
   updateErrorState: 'Update records or the cached package need attention. Check host diagnostics before retrying.',
@@ -35,6 +36,7 @@ export const updateZh: Record<keyof typeof updateEn, string> = {
   updateUnknownOutcome: '安装结果尚无法确认，请核对状态或重试同一次请求；若仍无法确认，请完整退出 DSH 并重新打开以核对记录。', updateReconcile: '核对安装状态', updateRetry: '重试同一次请求',
   updateUnavailable: '当前 profile 的原生更新管理器不可用。', updateBusy: '请先完成当前操作，再升级插件。',
   updateErrorNetwork: '无法连接 GitHub，已安装版本保持不变，请稍后重新检查。',
+  updateErrorService: '无法连接插件服务，请确认插件已加载后再试。',
   updateErrorRate: 'GitHub 限制了更新请求，请稍后重新检查。', updateErrorChanged: '发行内容已变化，请重新检查并核对新版说明。',
   updateErrorIntegrity: '发行包或元数据未通过校验，本次确认不会安装它。',
   updateErrorState: '更新记录或缓存安装包需要处理，请查看宿主诊断后再试。',
@@ -45,6 +47,7 @@ export const updateZh: Record<keyof typeof updateEn, string> = {
 type Key = keyof typeof updateEn;
 type T = (key: Key, values?: Record<string, string | number>) => string;
 function reason(code: string, t: T): string {
+  if (code === 'update-service-unavailable') return t('updateErrorService');
   if (/rate/.test(code)) return t('updateErrorRate');
   if (/network|timeout|unreachable/.test(code)) return t('updateErrorNetwork');
   if (/changed|stale/.test(code)) return t('updateErrorChanged');
@@ -63,7 +66,7 @@ export function UpdateCard({ controller, Button, t, archiveBusy = false }: {
   const data = state.data; const installation = data?.installation;
   const restart = data && data.currentVersion !== data.installedVersion || installation?.status === 'restart-required';
   const busy = archiveBusy || state.checking || state.installing || state.uncertain;
-  const canReview = data?.availability === 'available' && data.canInstall && !restart && installation?.status !== 'unknown' && installation?.status !== 'installing';
+  const canReview = data?.availability === 'available' && data.canInstall && !state.error && !restart && installation?.status !== 'unknown' && installation?.status !== 'installing';
   const status = state.installing || installation?.status === 'installing' ? t('updateInstalling') : restart ? t('updateRestart')
     : state.uncertain || installation?.status === 'unknown' ? t('updateUnknownOutcome') : installation?.status === 'failed' ? t('updateFailed')
     : installation?.status === 'interrupted' ? t('updateInterrupted') : installation?.status === 'installed' ? t('updateDone')

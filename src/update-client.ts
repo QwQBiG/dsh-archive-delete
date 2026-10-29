@@ -63,7 +63,7 @@ export class UpdateClientController {
         this.accept(data);
       } catch (error) {
         if (generation !== this.checkGeneration || this.disposed) return;
-        this.update({ error: error instanceof ArchiveError ? error.code : 'update-network' });
+        this.update({ error: error instanceof ArchiveError ? error.code : 'update-service-unavailable' });
       } finally { if (generation === this.checkGeneration) { this.update({ checking: false }); this.scheduleStatus(); } }
     })();
     this.checking = task;
@@ -72,7 +72,7 @@ export class UpdateClientController {
   }
   review = (): void => {
     const data = this.state.data; const archive = this.archive.getSnapshot();
-    if (!data?.candidate || data.availability !== 'available' || !data.canInstall || this.state.checking || this.state.installing || this.state.uncertain
+    if (!data?.candidate || data.availability !== 'available' || !data.canInstall || this.state.error || this.state.checking || this.state.installing || this.state.uncertain
       || archive.busy || archive.loading || archive.uncertainRequest || archive.maintenance) return;
     this.update({ reviewId: data.candidate.id, error: null });
   };
@@ -80,7 +80,7 @@ export class UpdateClientController {
   async confirm(): Promise<void> {
     const data = this.state.data; const archive = this.archive.getSnapshot();
     if (!this.api.installUpdate || !data?.candidate || this.state.reviewId !== data.candidate.id || data.availability !== 'available'
-      || !data.canInstall || this.state.installing || this.state.checking || this.state.uncertain || archive.busy || archive.loading || archive.uncertainRequest || archive.maintenance) return;
+      || !data.canInstall || this.state.error || this.state.installing || this.state.checking || this.state.uncertain || archive.busy || archive.loading || archive.uncertainRequest || archive.maintenance) return;
     this.confirmation = { candidateId: data.candidate.id, requestId: this.createId() };
     await this.install();
   }

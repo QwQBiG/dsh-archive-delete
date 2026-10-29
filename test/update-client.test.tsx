@@ -88,6 +88,16 @@ test('native update refusals retain actionable error state without starting a se
   assert.equal(f.archive.getSnapshot().maintenance, false); f.updates.dispose(); f.archive.dispose();
 });
 
+test('an unavailable plugin route is distinguished from GitHub failure and cannot reuse stale review', async () => {
+  let broken = false;
+  const f = fixture({ updates: async () => { if (broken) throw new ClientTransportError('local service route unavailable'); return available; } });
+  await f.updates.check(); f.updates.review(); broken = true; await f.updates.check(true);
+  assert.equal(f.updates.getSnapshot().error, 'update-service-unavailable');
+  f.updates.cancelReview(); f.updates.review(); assert.equal(f.updates.getSnapshot().reviewId, null);
+  broken = false; await f.updates.check(true); f.updates.review(); assert.equal(f.updates.getSnapshot().reviewId, candidate.id);
+  f.updates.dispose(); f.archive.dispose();
+});
+
 test('update transport submits IDs only and refuses untrusted release URLs or malformed status', async () => {
   const bodies: unknown[] = [];
   const transport: typeof fetch = async (_url, init) => { bodies.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify({ ok: true, value: available })); };
