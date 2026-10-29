@@ -77,12 +77,31 @@ node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-
 
 ## Verification status — 0.1.5
 
-Status: implementation verification in progress; this version is not yet released. Full final-suite totals, isolated native-update outcomes and new macOS/Windows CI evidence are not yet recorded here. Earlier completed runs below describe their original versions, not this updater.
+Status: unreleased. Automated verification passed on both platforms; the Desktop graphical confirmation/install and restart outcome remain incomplete.
 
-- Targeted GitHub-source verification passed nine suites covering stable/compatible selection, bounded metadata-only checks, fixed URLs/CDN redirects, changed confirmations, SHA-256, malicious tar/manifest content, dependency/hook refusal, size limits, cancellation, timeouts, rate limiting and offline errors. These tests use synthetic HTTP responses, not public-network performance measurements.
-- An actual `npm pack --ignore-scripts` archive passed the source's strict packed-package validator and the release metadata generator in a disposable directory. The matching metadata and checksum were generated without installing a package into a user profile or downloading DSH.
-- A separate read-only check against the public fixed GitHub release endpoint returned `current`. It did not download an app or install a package. CI now requires `check-update-package.mjs` after metadata generation and before the installation lifecycle, exercising discovery, pin revalidation, checksum and package admission against the actual generated assets through local response fixtures.
-- Final built artifacts, complete local suites, native same-profile update/rollback/retention, both platform CI results and package lifecycle evidence remain required for release approval. No new Desktop graphical updater run, real-history operation or public-network installation timing is claimed.
+### Completed CI and local verification
+
+Date: 2026-10-29. Both jobs in run `40853917318` passed on runtime/client commit `2c3e281aaa3cc55e8be59bbfdd23bace0e78bbd9`, using official DSH `0.2.1-rc.3`, Node `24.21.0`, pnpm `11.28.5`, isolated runtimes and synthetic profiles.
+
+| Platform | Completed CI evidence | Unit/client/service/scanner/updater | Native integration |
+| --- | --- | --- | --- |
+| macOS (macos-14) | [Run 40853917318, job 123379996983](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40853917318/job/123379996983) | 193 passed, 3 Windows-only skipped; 196 total | 17 passed, 1 Windows-only skipped; 18 total |
+| Windows (windows-latest) | [Run 40853917318, job 123379996635](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40853917318/job/123379996635) | 193 passed, 3 POSIX-only skipped; 196 total | 18 passed, 0 skipped; 18 total |
+
+- Both jobs passed type/build checks, the committed `lib` comparison, documentation checks (7 pairs, 62 relative links), package validation, packing, SHA-256 and update-metadata generation, strict updater admission, and the isolated package lifecycle: installation, loopback-URL upgrade, reinstall and uninstall.
+- GitHub-source tests cover stable/compatible selection, bounded metadata-only discovery, fixed URLs/CDN redirects, changed confirmations, SHA-256, malicious tar/manifest content, dependency/hook refusal, size limits, cancellation, timeouts, rate limiting and offline errors. Source tests use synthetic HTTP responses. `check-update-package.mjs` also exercises discovery, pin revalidation, checksum and package admission against the actual generated assets through local response fixtures.
+- Update service/client checks cover daily/manual/error cache timing, per-profile journal isolation, confirmation and request identity, maintenance-gate draining, loaded-versus-installed versions, uncertain outcomes and disposal during replacement. A failed check does not become an up-to-date result, and opening/checking does not install a package.
+- Real native SDK manager integration replaced a persistent verified package only in its isolated profile and reported `restart-required` without HMR. A rejected bundle restored that profile's manifest and lockfile. These tests do not prove complete rollback after arbitrary new-code activation or successful graphical self-replacement.
+- Local macOS full verification passed 192 checks with 3 Windows-only skips out of 195 before the final UI error-message regression was added. A subsequent targeted UI run passed all 26 checks, including that regression; the final CI totals above include all 196. Local packing, metadata/updater admission and the isolated package lifecycle also passed, reusing the installed DSH runtime without downloading another app.
+- A separate read-only check against the public fixed GitHub release endpoint returned `current`. It downloaded no app or package and is not public-network installation timing evidence.
+
+### macOS Desktop graphical evidence and remaining checks
+
+The installed app was reused through an APFS clone, with separate home/profile/userData and synthetic conversations/project files. Shell changes were limited to QA isolation/hooks; the live host used its native UI and HMR. No real profile/history was used and no second app was downloaded.
+
+The native **Plugin updates** card visibly showed **Running 0.1.5**, a synthetic available `0.1.6`, its Release link, and **Review update**. Expanding review displayed English/Chinese synthetic notes as plain text, the installation scope, and **Cancel / Confirm upgrade** controls. Clicking **Cancel** left the installed version at `0.1.5`; no installation journal or `.tgz` download appeared. Synthetic session/project hash baselines were recorded for subsequent retention checks.
+
+The Mac then locked during the continuing GUI run. Computer use requires the user to unlock it manually; the unlock request is pending. The final **Confirm upgrade** click, actual graphical installation, installed/running-version or restart display, and post-install hash comparison have not completed and are not recorded as passed. Automated native-manager success/rollback above is separate evidence. Windows Desktop GUI has not been visually tested. Earlier completed release records remain below.
 
 ## Historical CI verification — 0.1.4
 
@@ -175,3 +194,5 @@ An isolated copy of the installed Electron app, using a separate synthetic home/
 ## Verification limits
 
 Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been visually exercised; its native integration and package checks above passed. The historical macOS GUI checks were not rerun for `0.1.1`, `0.1.2` or `0.1.3`. No new Desktop graphical storage-overview run was performed for `0.1.4`. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.
+
+For `0.1.5`, the macOS graphical updater evidence currently covers review and cancellation only. Final graphical installation/restart and post-install retention checks remain incomplete pending manual unlock; automated native SDK success and package-admission rollback do not substitute for those clicks.
