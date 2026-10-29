@@ -56,19 +56,56 @@ The scenario table defines the acceptance targets. The verification record below
 | Current trash size | File changes after move or journaled partial purge, including a fully removed member | List/preview remaining bytes from the checked fingerprint observation, not historical manifest totals; drift invalidates old consent |
 | Sorting | Default/largest-first changes across a page boundary | Stable visible ordering, reset to page one and clear old selection/preview; pending controls retain their protections |
 | Read-only retention | Scan attachments, cache, spill, profiles, project files and receipts | No cleanup or automatic receipt expiry; all contents remain unchanged |
+| GitHub discovery | Stable/newer releases, exact host/OS compatibility, release/candidate bounds, failed network/rate checks | Metadata-only checks; daily success cache, one-minute manual throttle and one-hour failure retry; never treat failure as current or install automatically |
+| Update integrity | Changed IDs/SHA/metadata, untrusted redirects, oversized gzip/tar, traversal/links/duplicates, hooks/dependencies/peers | Reject before native installation; require a fresh matching server pin and verified package identity/prebuilt files |
+| Update admission | Profile-owned same-package target, double confirmation, request replay, archive work already accepted | Only current profile through the native manager; drain/pause archive mutations, one installation, stable request identity |
+| Update recovery | Cached/loaded version difference, response lost, unload/reload, activation failure | Independent per-profile check/install journals; reconcile installed state, retain verified file cache, protect uncertain/restart state; no full activation rollback guarantee |
+| Update UI | Details/dialog cards, notes, review/confirm/cancel, stale responses | Show running/installed versions, render notes as text and never install from check/open alone |
 | Documentation | Links, commands, and version references | Existing relative targets and consistent documented commands/versions |
 
 ## Commands
 
 ```sh
 pnpm verify
-pnpm pack
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.4.tgz
+pnpm pack --pack-destination artifacts
+node scripts/release-artifacts.mjs artifacts
+node --import tsx scripts/check-update-package.mjs artifacts
+node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.1.5.tgz
 ```
 
 `verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
-## CI verification — 0.1.4
+## Verification status — 0.1.5
+
+Status: release verification completed. Automated verification passed on both platforms, and the isolated macOS Desktop confirmation, activation and restart checks below completed.
+
+### Completed CI and local verification
+
+Date: 2026-10-29. Both jobs in run `40856818666` passed on runtime/client commit `d1398658f3e040f11533aef4f0a210b36c45d0b5`, using official DSH `0.2.1-rc.3`, Node `24.21.0`, pnpm `11.28.5`, isolated runtimes and synthetic profiles.
+
+| Platform | Completed CI evidence | Unit/client/service/scanner/updater | Native integration |
+| --- | --- | --- | --- |
+| macOS (macos-14) | [Run 40856818666, job 123389738323](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40856818666/job/123389738323) | 193 passed, 3 Windows-only skipped; 196 total | 17 passed, 1 Windows-only skipped; 18 total |
+| Windows (windows-latest) | [Run 40856818666, job 123389737770](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40856818666/job/123389737770) | 193 passed, 3 POSIX-only skipped; 196 total | 18 passed, 0 skipped; 18 total |
+
+- Both jobs passed type/build checks, the committed `lib` comparison, documentation checks (7 pairs, 62 relative links), package validation, packing, SHA-256 and update-metadata generation, strict updater admission, and the isolated package lifecycle: installation, loopback-URL upgrade, reinstall and uninstall.
+- GitHub-source tests cover stable/compatible selection, bounded metadata-only discovery, fixed URLs/CDN redirects, changed confirmations, SHA-256, malicious tar/manifest content, dependency/hook refusal, size limits, cancellation, timeouts, rate limiting and offline errors. Source tests use synthetic HTTP responses. `check-update-package.mjs` also exercises discovery, pin revalidation, checksum and package admission against the actual generated assets through local response fixtures.
+- Update service/client checks cover daily/manual/error cache timing, per-profile journal isolation, confirmation and request identity, maintenance-gate draining, loaded-versus-installed versions, uncertain outcomes and disposal during replacement. A failed check does not become an up-to-date result, and opening/checking does not install a package.
+- Real native SDK manager integration replaced a persistent verified package only in its isolated profile and reported `restart-required` without HMR. A rejected bundle restored that profile's manifest and lockfile. These tests do not prove complete rollback after arbitrary new-code activation or successful graphical self-replacement.
+- Local macOS full verification passed 192 checks with 3 Windows-only skips out of 195 before the final UI error-message regression was added. A subsequent targeted UI run passed all 26 checks, including that regression; the final CI totals above include all 196. Local packing, metadata/updater admission and the isolated package lifecycle also passed, reusing the installed DSH runtime without downloading another app.
+- A separate read-only check against the public fixed GitHub release endpoint returned `current`. It downloaded no app or package and is not public-network installation timing evidence.
+
+### macOS Desktop graphical evidence and limits
+
+The installed app was reused through an APFS clone, with separate home/profile/userData and synthetic conversations/project files. The test shell inherited local changes and added isolation/diagnostic hooks and synthetic GitHub responses; this is not a pristine-shell or public-network upgrade claim. The host used its native UI, profile manager and HMR. No real profile/history was used and no second app was downloaded.
+
+The native **Plugin updates** card showed **Running 0.1.5**, a synthetic available `0.1.6`, its Release link, and **Review update**. Review displayed English/Chinese synthetic notes as plain text, the installation scope, and **Cancel / Confirm upgrade** controls. Cancellation left `0.1.5` installed, without an installation journal or `.tgz` download. After **Confirm upgrade**, the native manager saved the verified package in the private cache and registered that file as the profile dependency. The durable receipt reported `installed`.
+
+Reopening the details panel showed **v0.1.6**, **Running 0.1.6**, **The new version is installed and active**, and one running component. The management dialog opened with the one synthetic archived session. A full menu quit, process exit and reopen retained that active version and successful receipt. Synthetic session-log and project-file SHA-256 values matched their pre-upgrade baselines. The primary Desktop profile was not changed.
+
+The graphical fixture was built from `e408281f55dd4ee43099e9381b1ada3d1d9c3e8a`; the later unavailable-service message, Windows fixture invocation and resolved-uncertainty diagnostic fixes are covered by the final CI above. The synthetic `0.1.6` was never published. This one HMR success does not guarantee every future upgrade activates without restart or fully rolls back arbitrary activation failures. Windows Desktop GUI has not been visually tested. Earlier completed release records remain below.
+
+## Historical CI verification — 0.1.4
 
 Date: 2026-10-29. Both jobs in run 40845896781 passed on runtime commit f8a409a1967f2f252438128390e4307cca4f70ad, using official DSH 0.2.1-rc.3, Node 24.21.0, pnpm 11.28.5, isolated runtimes and synthetic profiles.
 
@@ -159,3 +196,5 @@ An isolated copy of the installed Electron app, using a separate synthetic home/
 ## Verification limits
 
 Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been visually exercised; its native integration and package checks above passed. The historical macOS GUI checks were not rerun for `0.1.1`, `0.1.2` or `0.1.3`. No new Desktop graphical storage-overview run was performed for `0.1.4`. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.
+
+For `0.1.5`, the macOS graphical updater evidence currently covers review and cancellation only. Final graphical installation/restart and post-install retention checks remain incomplete pending manual unlock; automated native SDK success and package-admission rollback do not substitute for those clicks.

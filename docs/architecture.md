@@ -6,7 +6,7 @@
 
 The mutation lifecycle remains: **archived → trash → archived again, or explicit permanent purge**. It targets official DSH Desktop `0.2.1-rc.3` with the JSONL persistence backend. Both macOS and Windows are supported, with native host and package lifecycle checks on each platform.
 
-DSH remains the authority for live sessions, workspaces, activity, and session history. Original log bytes remain the authority for a conversation. The plugin owns only its operation records, trash manifests, and native UI contributions. It also offers bounded, read-only inspection of host-configured storage and a manually selected registered workspace. It does not install a replacement workspace registry, session backend, projection cache, or sidebar.
+DSH remains the authority for live sessions, workspaces, activity, and session history. Original log bytes remain the authority for a conversation. The plugin owns its operation records, trash manifests, update records/packages, and native UI contributions. It also offers bounded, read-only inspection of host-configured storage and a manually selected registered workspace. Confirmed GitHub updates are installed by DSH's native manager in the current profile. It does not install a replacement workspace registry, session backend, projection cache, sidebar, or package manager.
 
 ## Four modules
 
@@ -19,6 +19,8 @@ DSH remains the authority for live sessions, workspaces, activity, and session h
 
 Shared types live in the contracts module. The service depends on the adapter contract rather than importing the entire DSH runtime. Tests can therefore exercise the real storage transitions with synthetic adapters, while separate integration tests exercise the actual host boundary.
 
+Updating has separate source, service, host-adapter and client contracts: `update-source` discovers and verifies fixed GitHub release assets, `update-service` owns check caching and installation intent, `update-host` admits the current native manager/profile, and the update client renders status and confirmation. These components do not join session recovery receipts or replace the host's installation machinery.
+
 ## UI and transport
 
 An archived session's native row menu receives **Move to trash**. The plugin details page receives **Manage archives, trash and storage**, opening an Archived / Trash / Storage overview native dialog. This surface uses DSH components and module loading; React and DSH are provided by the host.
@@ -30,10 +32,14 @@ The browser sends requests to `/api/dsh-archive-delete` through DSH's authentica
 - `execute`: an opaque preview ID and request ID.
 - `cancelPending`: selected session IDs and request ID.
 - `storage`: no workspace ID for configured DSH storage, or one currently registered workspace ID. No client-selected path or scan limit is accepted.
+- `updates`: a `force` boolean requests cached status or a rate-limited manual check.
+- `installUpdate`: a server-issued candidate ID and request ID, following explicit update review and confirmation.
 
 The browser never supplies source or destination paths. Preview data describes the target, group members, size, and ready/pending/blocked disposition. The service rechecks authoritative state when executing; a preview does not grant permission to act on changed data.
 
 Results distinguish `moved`, `pending`, `restored`, `purged`, `cancelled`, `skipped`, and `failed`. Batch counts are derived from per-item results. A pending request is not a successfully moved conversation.
+
+The update card shows running/installed versions, the last check and release status. Release notes are bounded plain text, escaped by the renderer; they are not rendered as executable HTML. The browser never supplies an update URL, checksum, archive bytes, package path, package name, profile path, or command. It submits only the candidate/request identifiers. An uncertain response retains the same request ID for status reconciliation or retry rather than authorizing a second upgrade.
 
 ## Persistence and host consistency
 
@@ -89,9 +95,33 @@ Cordis, app boot, home paths, native system bindings, and React come from the ho
 
 Every access to an internal DSH shape belongs in the adapter. A future host change should require one explicit adapter update and real compatibility evidence, not a widened version range alone.
 
+## GitHub discovery and package verification
+
+The update source is fixed to `QwQBiG/dsh-archive-delete` GitHub Releases with stable `vX.Y.Z` tags. It considers at most 20 releases and checks metadata for at most five newer stable semantic versions, in descending version order. Drafts, prereleases and downgrades are excluded. Each candidate needs the release's matching `.update.json` asset, exact `requiredDshVersion` equality and support for the current macOS/Windows platform. Automatic discovery downloads metadata only, never the `.tgz`.
+
+Production HTTP limits are 1 MiB for the release response, 32 KiB for update metadata, a 15-second timeout per request and at most three redirects. Initial API and download URLs belong to the fixed repository/tag/assets. API redirects are refused; asset redirects may use only the admitted HTTPS GitHub download/CDN hosts, without URL credentials. Network, timeout, rate-limit, malformed metadata and redirect failures remain explicit errors, not an up-to-date result.
+
+A server-owned pin binds the release and asset identities, metadata identity, version, byte count, host/platform declaration and SHA-256. The browser receives only the public candidate. Confirmation performs a new check and fresh metadata revalidation before download; changed pins cannot inherit old consent. The downloaded bytes must match the declared length and SHA-256. SHA-256 checks consistency with the selected release; it is not a separate publisher signature or a code audit.
+
+Verification decompresses and parses the archive in memory without extraction or execution: at most 16 MiB compressed, 64 MiB expanded and 4,096 tar entries. It rejects unsafe paths, links, duplicate/case-conflicting entries, special entries and malformed headers/checksums. The packed manifest is bounded to 64 KiB and must match the package name, confirmed version, exact DSH requirement, bundle patch and prebuilt host/browser artifacts. Installation/prepare hooks, runtime dependencies, optional dependencies and bundled dependencies are refused. Peer dependencies are limited to the five known optional host-provided packages, preserving the host's Cordis/React instances.
+
+## Update admission, persistence and activation
+
+The updater starts only after archive initialization and authenticated route admission on supported DSH Desktop `0.2.1-rc.3`, and only when its native manager identifies one unambiguous profile-owned installation of this package. It does not update a built-in, shared or other-profile package. If that capability is absent, admitted archive functionality remains available and the updater is not started. An unsupported future host still meets the original disabled UI/version gate; the updater cannot be promised as a way to self-upgrade past that gate.
+
+The server hashes its canonical profile directory (`UpdateHost.profileId`) with SHA-256 to isolate update state per profile. `updates/<profile-hash>.check.json` caches discovery separately from session state. Successful/current/incompatible observations remain valid for 24 hours; automatic failures retry after one hour. Manual checks can bypass the normal cache after a minimum interval of 60 seconds. Hourly server wakeups and client status polling share this cache, so they do not each trigger a GitHub request. Failed discovery may retain the previous candidate for context but marks the observation as an error; installation still requires a newly verified available pin.
+
+Only explicit confirmation downloads a package. Verified bytes are atomically retained in the private `<DSH_HOME>/archive-delete/updates/packages/<version>-<sha256>.tgz` location and validated again immediately before native installation. The manager installs this exact local archive as the current profile's same-named bundle and retains its `file:` source in profile metadata/lockfiles. Package files must remain available for reproducible reinstalls; there is no automatic cleanup of referenced archives. Distribution remains on GitHub, without an npm release or a custom package runner.
+
+After verification, the archive service drains already admitted operations and closes its mutation gate before calling the manager. The installation is not placed inside the archive queue: the native manager may wait for this plugin to unload during hot replacement. `updates/<profile-hash>.installation.json` durably records the independent request, candidate, target version and outcome for that profile; retained package bytes can be shared without sharing its install outcome. Concurrent confirmations cannot start two manager operations, and repeated requests with the same ID return the same operation/status. New upgrades remain blocked while an installation is in progress, uncertain or waiting for a restart.
+
+Plugin disposal aborts and waits for discovery checks, but does not cancel or await an installation already delegated to the native manager; doing so could deadlock self-replacement. Running and installed versions are reported separately. Startup reconciles the installation record with the actual installed package and loaded code. A changed installed version, pending restart or uncertain outcome keeps archive mutations protected; users may need to fully quit and reopen DSH. The updater does not promise activation without a restart.
+
+Native integration verifies same-profile replacement with retained packages and manifest/lockfile restoration after a rejected package. Arbitrary activation or hot-reload failures can occur after installation state changes; complete automatic rollback is not guaranteed. Uncertain outcomes stay visible for status checks or the same request, with diagnostics and restart guidance rather than a second implicit install. Conversations, trash and session-recovery records are outside the update operation.
+
 ## Distribution and diagnostics
 
-The primary installation source is a versioned GitHub Release `.tgz` built from the package file allowlist, with a matching SHA-256 file. Users explicitly add a new release URL to upgrade the same package name; the plugin does not add an updater, postinstall registration hook, or automatic profile editor. The native manager is preferred. Installation-only CLI paths require manifest registration checks, and removal requires cleaning this bundle's exact stale entry if the host leaves it behind.
+The primary installation source is a versioned GitHub Release `.tgz` built from the package file allowlist, with matching `.tgz.sha256` and `.update.json` assets. The update card can discover a compatible release and request a confirmed upgrade through the native manager; explicitly adding the new release URL remains the manual upgrade path. The plugin adds no postinstall registration hook or direct profile editor. Installation-only CLI paths require manifest registration checks, and removal requires cleaning this bundle's exact stale entry if the host leaves it behind.
 
 A successful startup reports the plugin version, supported/current host versions, and resolved trash directory only after recovery and authenticated API registration. Disabled or failed startup retains its diagnostic instead of a false loaded line. This signal belongs to the current process; old directories and configuration dumps are insufficient activation evidence.
 
@@ -102,7 +132,7 @@ The separate packaged doctor is an offline read-only diagnostic boundary. It ins
 - No automatic trash expiry, background cleanup timer, or agent deletion tool.
 - No forced interruption of active or unmanaged sessions, and no write-lock stealing. Wholly idle, managed lifecycle release requires fresh manual confirmation.
 - No attachment garbage collection, spill cleanup, old third-party cache cleanup, project deletion, OCR, full-text search, or cross-agent migration.
-- No custom plugin updater; installation/update remains with DSH's plugin manager.
+- No silent update installation, arbitrary update sources, npm publication, package-runner replacement, or promise of activation without a restart. Installation remains with the current profile's native DSH plugin manager.
 - Opening the management list or preview does not mutate native session storage.
 - Storage inspection is manual and read-only; it does not classify AI output or delete host/workspace files.
 

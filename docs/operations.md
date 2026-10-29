@@ -64,6 +64,29 @@ Archived and Trash can be sorted in default order or largest first. Changing sor
 
 The result measures logical file bytes. Verified path/hard-link identities are globally counted once; folder totals count aliases and overlapping subtotals are not additive. Missing/unavailable categories remain unknown. Metadata can change during scanning, so partial sizes and observation timestamps are retained. A result never represents reclaimed physical space, proves AI origin or authorizes deleting a file. There is no storage-category purge, project cleanup, automatic scan or receipt expiry; permanent mutation still requires the existing Trash preview and confirmation.
 
+## Plugin update state and recovery
+
+Update discovery and installation have separate state. The automatic daily check runs only on supported DSH Desktop `0.2.1-rc.3` with an eligible profile-owned native manager; a manual request can refresh after at least one minute. An unsupported future host remains behind the original compatibility gate, rather than gaining a self-upgrade path. A failed observation is `error`, not `current`, and is retried automatically after one hour. `available` identifies a compatible stable GitHub release; it never means that installation has started. The update card shows the running and installed versions, renders notes as plain text, and requires review followed by confirmation.
+
+Before replacement, refetch and compare the server-owned release pin, download the exact package, verify its SHA-256 and bounded tar/manifest, then persist the private verified archive at `updates/packages/<version>-<sha256>.tgz`. DSH's native manager receives that file for this same package and current profile. The retained `file:` dependency source is expected; keep the package for reinstall/reproduction. Packages have no automatic expiry or cleanup action.
+
+Update journals are independent of conversation operation records and receipts: `updates/<sha256(profileId)>.check.json` caches discovery, while `updates/<sha256(profileId)>.installation.json` records one confirmed install request. The server derives the identity from the canonical profile directory. Different profiles can share the same package cache but do not share check/installation state.
+
+| Installation state | Meaning and recovery |
+| --- | --- |
+| `installing` | One confirmed request entered native installation; do not start a second replacement |
+| `installed` | The installed package was verified; a different running version still needs a full quit/reopen |
+| `restart-required` | The native manager or version difference requires DSH to reload the installed package |
+| `failed` | Failure is established; inspect the reason and installed version before a new confirmation |
+| `interrupted` | A saved request did not finish and the expected new version is not installed; check again before retrying |
+| `unknown` | The outcome cannot be established; reconcile installed state or reuse the same request identity |
+
+The maintenance gate stops accepting new archive mutations and drains accepted work before the native manager replaces the plugin. It preserves protection if replacement/restart state is unresolved. Conversation histories, trash, recovery metadata and their identifiers are retained; upgrading does not confirm a move or purge.
+
+Disposal aborts update checks but does not cancel or await a native installation already delegated to the host. Self-replacement can unload the old plugin while the native job is running; awaiting that job from its disposer would deadlock the reload. The host job settles its own result, and startup reconciles the saved request with the installed package. Lost responses are not success proof; use status reconciliation or the same request ID rather than launching another install. If the result remains unknown, fully quit and reopen DSH to reconcile before proceeding.
+
+Native package-manager failure tests cover manifest and lockfile rollback. Activation of new code is a later boundary and cannot guarantee complete runtime rollback. Keep the journals and verified package, inspect diagnostics, and follow restart guidance when running/installed versions differ. An old installation before `0.1.5` must first use the manual Release URL to obtain this updater; distribution remains GitHub-only.
+
 ## Recovery expectations
 
 | Interrupted boundary | Required observation and outcome |

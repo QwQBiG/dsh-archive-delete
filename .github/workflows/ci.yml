@@ -29,5 +29,7 @@ jobs:
       - run: pnpm pack --pack-destination artifacts
       - name: Hash the release package / 生成发行包校验值
         run: node scripts/release-artifacts.mjs artifacts
+      - name: Verify updater can accept the release / 验证更新器可接受发行包
+        run: node --import tsx scripts/check-update-package.mjs artifacts
       - name: Verify native package lifecycle / 验证原生安装与卸载
         run: node scripts/verify-package-lifecycle.mjs artifacts

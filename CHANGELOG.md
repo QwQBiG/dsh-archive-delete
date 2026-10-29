@@ -2,6 +2,15 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
+## 0.1.5 — 2026-10-29
+
+- Add daily compatible stable-release checks from this package's GitHub repository and a manually requested check with a one-minute minimum interval; failed checks remain errors and retry after one hour.
+- Add update cards in plugin details and the management dialog, with running/installed versions, plain-text release notes and an explicit confirmation before installation.
+- Verify pinned release metadata, SHA-256, bounded archive paths and packed package identity, compatibility and prebuilt files; refuse install hooks, runtime dependencies and unapproved/nonoptional peers.
+- Keep verified GitHub packages in a private persistent cache and delegate replacement of this same package to the current profile's native DSH manager. Retain conversations and trash; record check and installation state separately.
+- Pause and drain archive changes before replacement, preserve pending native installations through plugin disposal, and distinguish a newer on-disk version, restart requirements and uncertain outcomes.
+- Keep first-time upgrades from older versions available through the versioned Release URL. GitHub remains the only distribution source; no automatic installation or cache cleanup is added.
+
 ## 0.1.4 — 2026-10-29
 
 - Add a read-only **Storage overview** tab with manual scans of configured DSH storage or one registered workspace, category sizes, largest measured files and top-level folder totals.

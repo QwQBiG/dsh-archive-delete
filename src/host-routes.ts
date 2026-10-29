@@ -16,6 +16,12 @@ function ids(value: unknown): value is string[] {
 export function parseApiRequest(value: unknown): ApiRequest {
   if (record(value)) {
     if (value.action === 'list' && exactKeys(value, ['action'])) return { action: 'list' };
+    if (value.action === 'updates' && exactKeys(value, ['action', 'force']) && typeof value.force === 'boolean')
+      return { action: 'updates', force: value.force };
+    if (value.action === 'installUpdate' && exactKeys(value, ['action', 'candidateId', 'requestId'])
+      && typeof value.candidateId === 'string' && value.candidateId.length > 0 && value.candidateId.length <= 512 && !value.candidateId.includes('\0')
+      && typeof value.requestId === 'string' && value.requestId.length <= 100)
+      return { action: 'installUpdate', candidateId: value.candidateId, requestId: value.requestId };
     if (value.action === 'storage') {
       if (exactKeys(value, ['action'])) return { action: 'storage' };
       if (exactKeys(value, ['action', 'workspaceId']) && typeof value.workspaceId === 'string' && value.workspaceId.length > 0
@@ -77,6 +83,12 @@ export function createRequestHandler(api: ArchiveApi): (request: Request) => Pro
         case 'storage':
           if (!api.storage) throw new ArchiveError('unsupported-host', 'Storage inspection is unavailable in this host.');
           value = await api.storage(input.workspaceId, request.signal); break;
+        case 'updates':
+          if (!api.updates) throw new ArchiveError('update-unavailable', 'Update checking is unavailable on this host.');
+          value = await api.updates(input.force); break;
+        case 'installUpdate':
+          if (!api.installUpdate) throw new ArchiveError('update-unavailable', 'Plugin updates are unavailable on this host.');
+          value = await api.installUpdate(input.candidateId, input.requestId); break;
       }
       return response({ ok: true, value });
     } catch (error) {

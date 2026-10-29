@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { access, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { createRequire, registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 import test, { type TestContext } from 'node:test';
 import { acquirePluginLease, createDshAdapter, getNativeLockExclusive, getNativeWindowsLock, getStorageSources, getStorageWorkspaces, type HostContext } from '../../src/dsh-adapter.js';
 import { ArchiveService } from '../../src/service.js';
@@ -14,6 +15,8 @@ import { registerHostRoutes } from '../../src/host-routes.js';
 import { apply as applyPlugin } from '../../src/index.js';
 import { PLUGIN_VERSION } from '../../src/version.js';
 import type { JsonObject, StorageOverview } from '../../src/contracts.js';
+import { PACKAGE_NAME, SUPPORTED_DSH_VERSION } from '../../src/contracts.js';
+import { createUpdateHost } from '../../src/update-host.js';
 
 const runtimeRoot = process.env.DSH_RUNTIME_ROOT ?? '/Applications/DeepSeek Harness.app/Contents/Resources/app/dsh';
 const hostRequire = createRequire(join(runtimeRoot, 'package.json'));
@@ -484,4 +487,71 @@ test('stock rc.3: runtime child outside the confirmed group and duplicate owner 
     await assert.rejects(f.adapter.releaseIdle!((await f.adapter.inspect('hot-owner'))), { code: 'ambiguous-lifecycle' });
     assert.equal(f.ctx.agents.get('hot-owner'), root.agent);
   } finally { await duplicate?.(); await managed.close(); }
+});
+
+async function updateManagerFixture(t: TestContext) {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'archive-native-update-')));
+  const home = join(root, 'home'); const dir = join(home, 'profiles', 'updater-qa');
+  const packages = join(home, 'archive-delete', 'updates', 'packages'); await mkdir(packages, { recursive: true }); await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'synthetic-updater-profile', private: true, dependencies: {}, dsh: { profile: { bundles: [] } } }));
+  await writeFile(join(dir, 'cordis.patch.yml'), '[]\n');
+  const candidates = [process.env.DSH_PNPM_CLI, process.env.npm_execpath,
+    '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/primary-runtime/dependencies/pnpm/bin/pnpm.cjs'];
+  let cli: string | undefined;
+  for (const path of candidates) if (path && /\.[cm]?js$/i.test(path)) {
+    try { await access(path); cli = path; break; } catch { /* Try the next explicit JavaScript entry. */ }
+  }
+  if (!cli) throw new Error('Set DSH_PNPM_CLI to the pnpm JavaScript entry for native tests.');
+  // Windows .cmd launchers cannot be invoked through execFile without a shell.
+  const command = process.execPath; const args = [cli];
+  const env = { ...process.env, npm_config_offline: 'true', npm_config_registry: 'http://127.0.0.1:9',
+    npm_config_manage_package_manager_versions: 'false', PNPM_OFFLINE: 'true' };
+  const profile = { name: 'updater-qa', home, dir, patchPath: join(dir, 'cordis.patch.yml'), cwd: root,
+    installAnchor: join(runtimeRoot, 'node_modules/@deepseek-ai/dsh/package.json'), startedBundles: [] as string[], overlays: [],
+    packageManager: { command, args, env } };
+  const ctx = new Context(); ctx.provide('profileContext', profile);
+  const { default: Loader } = await host('@deepseek-ai/cordis-plugin-loader'); await ctx.plugin(Loader);
+  const { PluginManager } = await host('@deepseek-ai/dsh-plugin-manager');
+  const manager = new PluginManager(ctx, PluginManager.Config({ fallbackRegistries: [], inspectTimeoutMs: 1000, idleTimeoutMs: 15_000, lockWaitMs: 5000 }));
+  t.after(async () => { await ctx.fiber.dispose(); await rm(root, { recursive: true, force: true }); });
+  async function pack(version: string, bundle = true) {
+    const source = join(root, `source-${version}`); await mkdir(join(source, 'lib'), { recursive: true });
+    await writeFile(join(source, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version, type: 'module', main: './lib/index.js', license: 'Apache-2.0',
+      engines: { node: '>=24', dsh: SUPPORTED_DSH_VERSION }, ...(bundle ? { dsh: { manifestVersion: 1, bundle: { patch: './cordis.patch.yml' } } } : {}) }));
+    await writeFile(join(source, 'cordis.patch.yml'), '[]\n');
+    await writeFile(join(source, 'lib', 'index.js'), `export const name = 'synthetic-updater'; export const version = '${version}';`);
+    await writeFile(join(source, 'lib', 'client.js'), '/* synthetic updater fixture */');
+    await promisify(execFile)(command, [...args, 'pack', '--pack-destination', source], { cwd: source, env });
+    const filename = (await readdir(source)).find(name => name.endsWith('.tgz')); assert.ok(filename);
+    const bytes = await readFile(join(source, filename));
+    const path = join(packages, `${version}-${createHash('sha256').update(bytes).digest('hex')}.tgz`); await writeFile(path, bytes, { mode: 0o600 });
+    return path;
+  }
+  return { root, home, dir, profile, ctx, manager, pack };
+}
+
+test('stock rc.3 native manager: a persistent packed update replaces only the isolated profile and requires restart without HMR', async t => {
+  const f = await updateManagerFixture(t); const old = await f.pack('0.0.1'); const next = await f.pack('0.0.2');
+  const first = await f.manager.installBundle(old, { requestId: randomUUID(), enabled: true, saveExact: true });
+  assert.equal(first.error, undefined, JSON.stringify(first)); assert.equal(first.application, 'restart-required');
+  const adapter = await createUpdateHost(f.ctx as HostContext);
+  assert.equal((await adapter.installed()).version, '0.0.1'); assert.equal(adapter.canInstall, true);
+  assert.equal(adapter.loadedVersion, PLUGIN_VERSION);
+  const outcome = await adapter.install(next, '0.0.2', randomUUID());
+  assert.deepEqual(outcome, { status: 'restart-required' });
+  const after = await adapter.installed(); assert.equal(after.version, '0.0.2'); assert.ok(after.source.includes('0.0.2-'));
+  const saved = JSON.parse(await readFile(join(f.dir, 'package.json'), 'utf8'));
+  assert.deepEqual(saved.dsh.profile.bundles, [PACKAGE_NAME]);
+  assert.equal(JSON.parse(await readFile(join(f.dir, 'node_modules', PACKAGE_NAME, 'package.json'), 'utf8')).version, '0.0.2');
+});
+
+test('stock rc.3 native manager: failed package admission restores the isolated profile manifest and lockfile', async t => {
+  const f = await updateManagerFixture(t); const old = await f.pack('0.0.3');
+  const first = await f.manager.installBundle(old, { requestId: randomUUID(), enabled: true, saveExact: true });
+  assert.equal(first.error, undefined, JSON.stringify(first));
+  const manifest = await readFile(join(f.dir, 'package.json')); const lock = await readFile(join(f.dir, 'pnpm-lock.yaml'));
+  const malformed = await f.pack('0.0.4', false);
+  const result = await f.manager.installBundle(malformed, { requestId: randomUUID(), enabled: true, saveExact: true });
+  assert.equal(result.application, 'failed'); assert.equal(result.error?.code, 'not-bundle');
+  assert.deepEqual(await readFile(join(f.dir, 'package.json')), manifest); assert.deepEqual(await readFile(join(f.dir, 'pnpm-lock.yaml')), lock);
 });

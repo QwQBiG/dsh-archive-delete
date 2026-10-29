@@ -6,6 +6,9 @@ import { ArchiveService } from './service.js';
 import { TrashStore } from './storage.js';
 import { StorageInspector, wrapArchiveApi } from './storage-inspector.js';
 import { PLUGIN_VERSION } from './version.js';
+import { UpdateService } from './update-service.js';
+import { createUpdateHost } from './update-host.js';
+import { createGithubUpdateSource } from './update-source.js';
 
 export const name = 'dsh-archive-delete';
 export const inject = ['connection', 'workspaceRegistry', 'sessionPersistence', 'sessions', 'sessionProjectionCache', 'sessionProjections', 'profileContext', 'dshHomePath'];
@@ -20,6 +23,7 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
   let lease: Lease | undefined;
   let archive: ArchiveService | undefined;
   let inspector: StorageInspector | undefined;
+  let updater: UpdateService | undefined;
   let loaded: { version: string; trash: string } | undefined;
   try {
     const adapter: DshAdapter = await createDshAdapter(ctx);
@@ -37,9 +41,24 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
       await archive.initialize();
       inspector = new StorageInspector({ workspaces: () => getStorageWorkspaces(ctx), sources: workspaceId => getStorageSources(ctx, workspaceId) });
       api = wrapArchiveApi(archive, inspector);
+      // Missing profile-management capability must not disable archive cleanup.
+      try {
+        const host = await createUpdateHost(ctx);
+        if (host.canInstall) {
+          updater = new UpdateService({ root: paths.root, host,
+            source: createGithubUpdateSource({ currentVersion: PLUGIN_VERSION, hostVersion: host.hostVersion, platform: process.platform }),
+            beginUpdate: () => archive!.beginUpdate() });
+          await updater.initialize();
+          api = { ...api, updates: force => updater!.info(force), installUpdate: (id, requestId) => updater!.install(id, requestId) };
+        }
+      } catch (error) {
+        await updater?.close(); updater = undefined;
+        ctx.logger?.warn(`[archive-delete] Update checking is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      }
       loaded = { version: support.version, trash: join(paths.root, 'trash') };
     }
   } catch (error) {
+    await updater?.close();
     await inspector?.close();
     await archive?.close();
     await lease?.release();
@@ -50,13 +69,15 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
   }
   try {
     const unmount = registerHostRoutes(ctx, api);
+    updater?.start();
     // A diagnostic exporter failure must not tear down an admitted API route.
     try {
       if (loaded) ctx.logger?.info?.(`[archive-delete] v${PLUGIN_VERSION} loaded · target DSH ${SUPPORTED_DSH_VERSION} (host ${loaded.version}) · trash ${JSON.stringify(loaded.trash)}`);
     } catch { /* The host owns its logging transport. */ }
-    return async () => { unmount(); await inspector?.close(); await archive?.close(); await lease?.release(); };
+    return async () => { unmount(); await updater?.close(); await inspector?.close(); await archive?.close(); await lease?.release(); };
   }
   catch (error) {
+    await updater?.close();
     await inspector?.close();
     await archive?.close();
     await lease?.release();
