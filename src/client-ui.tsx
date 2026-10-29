@@ -428,7 +428,7 @@ export function ArchiveDialogView({ state, controller, primitives, t, updates }:
 
   return <Modal open={state.open} onClose={controller.close} title={preview ? t(actionTitle[preview.action]) : t('title')} description={preview ? t(actionDescription[preview.action]) : state.tab === 'storage' ? t('storageIntro') : t('intro')} closeLabel={t('close')} className="dad-dialog" contentClassName="dad-content" footer={footer}>
     <div className="dad-shell">
-      {updates && <UpdateCard controller={updates} Button={Button} t={t} archiveBusy={state.busy || state.loading || uncertain} />}
+      {updates && !preview && <UpdateCard controller={updates} Button={Button} t={t} archiveBusy={state.busy || state.loading || uncertain} />}
       {state.maintenance && <p className="dad-muted" role="status">{t('updateWaiting')}</p>}
       {state.error && <ErrorNotice error={uncertain ? { ...state.error, uncertain: true } : state.error} t={t} onRefresh={() => { void controller.refresh(); }} onRetry={() => { void controller.retryUncertain(); }} disabled={state.busy || state.loading} Button={Button} />}
       {state.overview && !supported && <section className="dad-alert" role="status"><strong>{t('unsupported')}</strong><p>{supportReason(state.overview.support, t)}</p><small>{t('supportDetails', { version: state.overview.support.version, platform: state.overview.support.platform })}</small></section>}

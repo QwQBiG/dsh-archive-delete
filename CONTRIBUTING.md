@@ -42,7 +42,7 @@ pnpm test:integration
 After packing, use Node 24 or newer to exercise the package manager lifecycle in another new temporary home:
 
 ```sh
-node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.1.5.tgz
+node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.1.6.tgz
 ```
 
 This reuses the selected official runtime and available package manager. Package install/reinstall/remove checks use offline cache; a separate fixed-URL upgrade fixture serves tarballs on local HTTP without contacting GitHub or a public registry. It loads the packed host through normal module resolution and checks synthetic trash retention. The manager registers bundles; CLI activation behavior depends on the host build and invocation mode. An installation-only invocation can leave bundle registration absent; verify the manifest instead of treating dependency presence as activation. Keep these installation paths separate in tests and reports, and follow the [CLI registration instructions](docs/installation.md) for manual CLI use. Read the reported installation mode and diagnostics when evaluating the result. It does not install into the current Desktop profile.

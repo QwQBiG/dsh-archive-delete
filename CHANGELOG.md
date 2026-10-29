@@ -2,6 +2,12 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
+## 0.1.6 — 2026-10-29
+
+- Fix moving newly created idle sessions to trash: compare the host’s omitted delegation depth as the JSONL default `0`, while retaining strict session identity, real metadata-change, activity and write-lock checks.
+- Keep normal plugin version/update status on one compact row, with details available on demand. Hide update controls while reviewing a move, restore or permanent deletion.
+- Add native regressions using genuinely new factory-created parent/subagent sessions, preserving independent forks and refusing actual header changes.
+
 ## 0.1.5 — 2026-10-29
 
 - Add daily compatible stable-release checks from this package's GitHub repository and a manually requested check with a one-minute minimum interval; failed checks remain errors and retry after one hour.

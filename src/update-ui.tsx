@@ -22,6 +22,10 @@ export const updateEn = {
   updateErrorHost: 'The native manager could not complete this upgrade. Check host diagnostics and the installed version.',
   updateErrorGeneric: 'The update could not be completed. Check again or inspect the host diagnostics.',
   updateDetails: 'Diagnostic code', updateNoNotes: 'This release has no notes.', updateWaiting: 'Archive changes are paused for this plugin update.',
+  updateCheckCompact: 'Check', updateCheckingCompact: 'Checking…', updateCurrentCompact: 'Up to date', updateUnknownCompact: 'Not checked',
+  updateIncompatibleCompact: 'No compatible update', updateInstallingCompact: 'Installing…', updateRestartCompact: 'Restart required',
+  updateUncertainCompact: 'Outcome uncertain', updateFailedCompact: 'Update failed', updateInterruptedCompact: 'Update interrupted',
+  updateDoneCompact: 'Installed', updateErrorCompact: 'Check failed', updateMore: 'Details',
 } as const;
 export const updateZh: Record<keyof typeof updateEn, string> = {
   updateTitle: '插件更新', updateCurrent: '正在运行 {version}', updateInstalled: '已安装 {version}', updateCheck: '检查更新', updateChecking: '正在检查 GitHub…',
@@ -43,6 +47,10 @@ export const updateZh: Record<keyof typeof updateEn, string> = {
   updateErrorHost: '原生管理器未完成此次升级，请核对宿主诊断与已安装版本。',
   updateErrorGeneric: '更新未能完成，请重新检查或查看宿主诊断。',
   updateDetails: '诊断代码', updateNoNotes: '此版本未提供更新说明。', updateWaiting: '插件升级期间暂停归档变更。',
+  updateCheckCompact: '检查更新', updateCheckingCompact: '检查中…', updateCurrentCompact: '已是最新', updateUnknownCompact: '尚未检查',
+  updateIncompatibleCompact: '暂无兼容更新', updateInstallingCompact: '安装中…', updateRestartCompact: '需要重启',
+  updateUncertainCompact: '结果待核对', updateFailedCompact: '升级失败', updateInterruptedCompact: '升级中断',
+  updateDoneCompact: '已安装', updateErrorCompact: '检查失败', updateMore: '详情',
 };
 type Key = keyof typeof updateEn;
 type T = (key: Key, values?: Record<string, string | number>) => string;
@@ -64,27 +72,45 @@ export function UpdateCard({ controller, Button, t, archiveBusy = false }: {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   if (!controller.available) return null;
   const data = state.data; const installation = data?.installation;
-  const restart = data && data.currentVersion !== data.installedVersion || installation?.status === 'restart-required';
+  const restart = Boolean(data && data.currentVersion !== data.installedVersion) || installation?.status === 'restart-required';
+  const installing = state.installing || installation?.status === 'installing';
+  const uncertain = state.uncertain || installation?.status === 'unknown';
   const busy = archiveBusy || state.checking || state.installing || state.uncertain;
   const canReview = data?.availability === 'available' && data.canInstall && !state.error && !restart && installation?.status !== 'unknown' && installation?.status !== 'installing';
-  const status = state.installing || installation?.status === 'installing' ? t('updateInstalling') : restart ? t('updateRestart')
-    : state.uncertain || installation?.status === 'unknown' ? t('updateUnknownOutcome') : installation?.status === 'failed' ? t('updateFailed')
+  const code = state.error ?? (data?.availability === 'error' ? data.code : installation?.code);
+  const status = installing ? t('updateInstalling') : restart ? t('updateRestart')
+    : uncertain ? t('updateUnknownOutcome') : installation?.status === 'failed' ? t('updateFailed')
     : installation?.status === 'interrupted' ? t('updateInterrupted') : installation?.status === 'installed' ? t('updateDone')
+    : code ? reason(code, t)
     : data?.availability === 'available' ? t('updateAvailable', { version: data.candidate!.version })
     : data?.availability === 'current' ? t('updateCurrentStatus') : data?.availability === 'incompatible' ? t('updateIncompatible') : t('updateUnknownStatus');
-  const code = state.error ?? (data?.availability === 'error' ? data.code : installation?.code);
+  const compactStatus = state.checking ? t('updateCheckingCompact') : installing ? t('updateInstallingCompact') : restart ? t('updateRestartCompact')
+    : uncertain ? t('updateUncertainCompact') : installation?.status === 'failed' ? t('updateFailedCompact')
+    : installation?.status === 'interrupted' ? t('updateInterruptedCompact') : installation?.status === 'installed' ? t('updateDoneCompact')
+    : code ? t('updateErrorCompact') : data?.availability === 'available' ? t('updateAvailable', { version: data.candidate!.version })
+    : data?.availability === 'current' ? t('updateCurrentCompact') : data?.availability === 'incompatible' ? t('updateIncompatibleCompact') : t('updateUnknownCompact');
+  const releaseLink = data?.candidate && <a href={data.candidate.releaseUrl} target="_blank" rel="noreferrer">{t('updateRelease')}</a>;
   return <section className="dad-update" aria-label={t('updateTitle')} aria-busy={state.installing || state.checking}>
-    <div className="dad-update-heading"><div><strong>{t('updateTitle')}</strong>{data && <small>{t('updateCurrent', { version: data.currentVersion })}{data.currentVersion !== data.installedVersion && <> · {t('updateInstalled', { version: data.installedVersion })}</>}</small>}</div>
-      <Button size="sm" variant="outline" disabled={state.installing || state.checking} onClick={() => { void controller.check(true); }}>{t(state.checking ? 'updateChecking' : state.uncertain ? 'updateReconcile' : 'updateCheck')}</Button></div>
-    <p role="status" className={restart || state.uncertain ? 'dad-update-attention' : ''}>{status}</p>
-    {code && <div role="alert"><p>{reason(code, t)}</p><details><summary>{t('updateDetails')}</summary><code>{code}</code></details></div>}
-    {data?.candidate && <div className="dad-update-actions"><a href={data.candidate.releaseUrl} target="_blank" rel="noreferrer">{t('updateRelease')}</a>{canReview && !state.reviewId && <Button size="sm" variant="primary" disabled={busy} onClick={controller.review}>{t('updateReview')}</Button>}</div>}
-    {state.reviewId && data?.candidate && <div className="dad-update-review"><strong>{t('updateConfirmTitle', { version: data.candidate.version })}</strong><details open><summary>{t('updateNotes')}</summary><pre>{data.candidate.notes || t('updateNoNotes')}</pre></details><p>{t('updateScope')}</p><div className="dad-update-actions"><Button size="sm" variant="outline" disabled={state.installing} onClick={controller.cancelReview}>{t('updateCancel')}</Button><Button size="sm" variant="primary" disabled={busy} onClick={() => { void controller.confirm(); }}>{t('updateConfirm')}</Button></div></div>}
-    {state.uncertain && <Button size="sm" variant="outline" disabled={state.installing || state.checking} onClick={() => { void controller.retry(); }}>{t('updateRetry')}</Button>}
-    <p className="dad-hint">{t('updateAutomatic')}{data?.checkedAt !== undefined && <> {t('updateChecked', { time: new Date(data.checkedAt).toLocaleString() })}</>}</p>
+    <div className="dad-update-summary">
+      <span className="dad-update-version" aria-label={data ? t('updateCurrent', { version: data.currentVersion }) : undefined}>{data ? `v${data.currentVersion}` : t('updateTitle')}</span>
+      {data && data.currentVersion !== data.installedVersion && <><span aria-hidden="true">→</span><span className="dad-update-version" aria-label={t('updateInstalled', { version: data.installedVersion })}>v{data.installedVersion}</span></>}
+      <span aria-hidden="true">·</span><span role="status" title={status} className={`dad-update-status${restart || uncertain ? ' dad-update-attention' : ''}`}>{compactStatus}</span>
+    </div>
+    <div className="dad-update-controls">
+      <Button size="sm" variant="outline" aria-label={t(state.uncertain ? 'updateReconcile' : 'updateCheck')} title={t(state.uncertain ? 'updateReconcile' : 'updateCheck')} disabled={state.installing || state.checking} onClick={() => { void controller.check(true); }}>{t(state.checking ? 'updateCheckingCompact' : state.uncertain ? 'updateReconcile' : 'updateCheckCompact')}</Button>
+      {canReview && !state.reviewId && <Button size="sm" variant="outline" disabled={busy} onClick={controller.review}>{t('updateReview')}</Button>}
+      {state.uncertain && <Button size="sm" variant="outline" disabled={state.installing || state.checking} onClick={() => { void controller.retry(); }}>{t('updateRetry')}</Button>}
+    </div>
+    <details className="dad-update-info"><summary>{t('updateMore')}</summary><div className="dad-update-info-content">
+      {data && <p>{t('updateCurrent', { version: data.currentVersion })}{data.currentVersion !== data.installedVersion && <> · {t('updateInstalled', { version: data.installedVersion })}</>}</p>}
+      <p>{status}</p>{!state.reviewId && releaseLink}
+      <p className="dad-hint">{t('updateAutomatic')}{data?.checkedAt !== undefined && <> {t('updateChecked', { time: new Date(data.checkedAt).toLocaleString() })}</>}</p>
+    </div></details>
+    {code && <div className="dad-update-error" role="alert"><p>{reason(code, t)}</p><details><summary>{t('updateDetails')}</summary><code>{code}</code></details></div>}
+    {state.reviewId && data?.candidate && <div className="dad-update-review"><strong>{t('updateConfirmTitle', { version: data.candidate.version })}</strong>{releaseLink}<details open><summary>{t('updateNotes')}</summary><pre>{data.candidate.notes || t('updateNoNotes')}</pre></details><p>{t('updateScope')}</p><div className="dad-update-actions"><Button size="sm" variant="outline" disabled={state.installing} onClick={controller.cancelReview}>{t('updateCancel')}</Button><Button size="sm" variant="primary" disabled={busy || !canReview} onClick={() => { void controller.confirm(); }}>{t('updateConfirm')}</Button></div></div>}
   </section>;
 }
 export const UPDATE_CSS = `
-.dad-update{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--dsw-alias-border-l1,#8883);border-radius:10px;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-primary,CanvasText);min-width:0}
-.dad-update p{margin:0}.dad-update-heading,.dad-update-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.dad-update-heading>div{display:flex;flex-direction:column;min-width:0}.dad-update-heading small{color:var(--dsw-alias-label-secondary,GrayText);overflow-wrap:anywhere}.dad-update a{color:var(--dsw-alias-button-primary-bg,#2878e0)}.dad-update a:focus-visible{outline:2px solid currentColor;outline-offset:2px}.dad-update-review{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l1,#8883);border-radius:8px}.dad-update pre{max-height:200px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;margin:6px 0}.dad-update details{min-width:0}.dad-update summary{cursor:pointer}.dad-update code{overflow-wrap:anywhere}.dad-update-attention{color:var(--dsw-alias-status-warning,#a57420)}
+.dad-update{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:6px 0;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary,GrayText);min-width:0}
+.dad-update p{margin:0}.dad-update-summary{display:flex;align-items:center;gap:6px;flex:1;min-width:100px;overflow:hidden}.dad-update-version{flex-shrink:0;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary,CanvasText)}.dad-update-status{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dad-update-controls,.dad-update-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}.dad-update-actions{justify-content:flex-end;flex-wrap:wrap}.dad-update-controls button{min-height:24px;padding:2px 7px;font-size:11px;white-space:nowrap}.dad-update a{color:var(--dsw-alias-button-primary-bg,#2878e0)}.dad-update a:focus-visible,.dad-update summary:focus-visible{outline:2px solid currentColor;outline-offset:2px}.dad-update-info{flex-shrink:0}.dad-update-info[open]{flex-basis:100%}.dad-update-info-content{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:8px 0}.dad-update-info-content>.dad-hint{padding:0}.dad-update-review{display:flex;flex-direction:column;gap:8px;flex-basis:100%;min-width:0;padding:10px;border:1px solid var(--dsw-alias-border-l1,#8883);border-radius:8px;font-size:12px;color:var(--dsw-alias-label-primary,CanvasText)}.dad-update pre{max-height:200px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;margin:6px 0}.dad-update details{min-width:0}.dad-update summary{cursor:pointer}.dad-update code{overflow-wrap:anywhere}.dad-update-error{flex-basis:100%;min-width:0;color:var(--dsw-alias-label-primary,CanvasText)}.dad-update-attention{color:var(--dsw-alias-status-warning,#a57420)}
 `;

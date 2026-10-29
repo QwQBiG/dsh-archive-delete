@@ -122,3 +122,72 @@ test('native update card provides explicit EN/ZH confirmation and escapes releas
   }
   f.updates.dispose(); f.archive.dispose();
 });
+
+test('normal update summary keeps version and actions compact, with policy and timing inside a closed disclosure', async t => {
+  const current: UpdateOverview = { currentVersion: '0.1.5', installedVersion: '0.1.5', hostVersion: '0.2.1-rc.3', availability: 'current', canInstall: true, checkedAt: 100 };
+  const f = fixture({ updates: async () => current }); t.after(() => { f.updates.dispose(); f.archive.dispose(); }); await f.updates.check();
+  for (const language of ['en', 'zh'] as const) {
+    const translate = translator(language); const html = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />);
+    const disclosure = html.match(/<details class="dad-update-info">[\s\S]*?<\/details>/)?.[0]; assert.ok(disclosure);
+    assert.ok(disclosure.includes(translate('updateAutomatic'))); assert.ok(disclosure.includes(translate('updateChecked', { time: new Date(100).toLocaleString() })));
+    assert.ok(!disclosure.startsWith('<details open'));
+    const summary = html.replace(disclosure, '').replace(/<[^>]+>/g, '');
+    assert.ok(summary.includes('v0.1.5')); assert.ok(summary.includes(translate('updateCurrentCompact'))); assert.ok(summary.includes(translate('updateCheckCompact')));
+    assert.ok(!summary.includes(translate('updateAutomatic'))); assert.ok(!summary.includes(translate('updateCurrentStatus')));
+    assert.ok(!html.includes(translate('updateConfirm'))); assert.match(html, /role="status"/);
+    assert.ok(html.includes(`aria-label="${translate('updateCheck')}"`));
+  }
+});
+
+test('available update exposes review without showing release notes or confirmation until review is requested', async t => {
+  const f = fixture(); t.after(() => { f.updates.dispose(); f.archive.dispose(); }); await f.updates.check();
+  const translate = translator('en');
+  const initial = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />);
+  assert.ok(initial.includes(translate('updateReview'))); assert.ok(initial.includes(translate('updateAvailable', { version: candidate.version })));
+  assert.ok(!initial.includes('&lt;script&gt;')); assert.ok(!initial.includes(translate('updateConfirm'))); assert.ok(!initial.includes(translate('updateScope')));
+  f.updates.review();
+  const reviewed = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />);
+  assert.ok(reviewed.includes('&lt;script&gt;')); assert.ok(reviewed.includes(translate('updateConfirm'))); assert.ok(reviewed.includes(translate('updateScope')));
+  f.updates.cancelReview();
+  assert.ok(!renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />).includes(translate('updateConfirm')));
+});
+
+test('compact error state remains actionable outside collapsed update details and never says up to date', async t => {
+  const f = fixture({ updates: async () => ({ ...available, availability: 'error', code: 'update-network' }) });
+  t.after(() => { f.updates.dispose(); f.archive.dispose(); }); await f.updates.check();
+  for (const language of ['en', 'zh'] as const) {
+    const translate = translator(language); const html = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />);
+    const visible = html.replace(/<details class="dad-update-info">[\s\S]*?<\/details>/, '');
+    assert.match(visible, /role="alert"/); assert.ok(visible.includes(translate('updateErrorNetwork')));
+    assert.ok(visible.includes(translate('updateErrorCompact'))); assert.ok(!visible.includes(translate('updateCurrentCompact')));
+    assert.ok(!visible.includes(translate('updateReview')));
+  }
+});
+
+test('compact restart state distinguishes running and installed versions while preserving archive protection', async t => {
+  const f = fixture({ updates: async () => ({ ...available, installedVersion: '0.1.6', installation: { requestId: randomUUID(), version: '0.1.6', status: 'restart-required' } }) });
+  t.after(() => { f.updates.dispose(); f.archive.dispose(); }); await f.updates.check();
+  const translate = translator('en'); const html = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />);
+  const summary = html.replace(/<details class="dad-update-info">[\s\S]*?<\/details>/, '').replace(/<[^>]+>/g, '');
+  assert.ok(summary.includes('v0.1.5')); assert.ok(summary.includes('v0.1.6')); assert.ok(summary.includes(translate('updateRestartCompact')));
+  assert.ok(html.includes(translate('updateCurrent', { version: '0.1.5' }))); assert.ok(html.includes(translate('updateInstalled', { version: '0.1.6' })));
+  assert.ok(html.includes(translate('updateRestart'))); assert.ok(!html.includes(translate('updateReview')));
+  assert.equal(f.archive.getSnapshot().maintenance, true);
+});
+
+test('expanded update review keeps confirmation disabled during archive work and cancellation available', async t => {
+  const f = fixture(); t.after(() => { f.updates.dispose(); f.archive.dispose(); }); await f.updates.check(); f.updates.review();
+  const translate = translator('en'); const html = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} archiveBusy />);
+  const buttons = [...html.matchAll(/<button([^>]*)>(.*?)<\/button>/g)];
+  assert.ok(buttons.find(button => button[2] === translate('updateConfirm'))?.[1]?.includes('disabled'));
+  assert.ok(!buttons.find(button => button[2] === translate('updateCancel'))?.[1]?.includes('disabled'));
+});
+
+test('a failed check disables an already open review confirmation while keeping the failure visible', async t => {
+  let fail = false;
+  const f = fixture({ updates: async () => { if (fail) throw new ClientTransportError('synthetic unavailable service'); return available; } });
+  t.after(() => { f.updates.dispose(); f.archive.dispose(); }); await f.updates.check(); f.updates.review(); fail = true; await f.updates.check(true);
+  const translate = translator('en'); const html = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />);
+  const confirmation = [...html.matchAll(/<button([^>]*)>(.*?)<\/button>/g)].find(button => button[2] === translate('updateConfirm'));
+  assert.ok(confirmation?.[1]?.includes('disabled')); assert.ok(html.includes(translate('updateErrorService')));
+});

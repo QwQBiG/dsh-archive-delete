@@ -25,7 +25,7 @@ Trash never expires automatically. Removing the plugin keeps the trash.
 In DSH Desktop, use **Plugins → Add plugin** with the versioned Release package:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz
 ```
 
 1. **Install:** enter the address above and enable the plugin. When asked to restart, fully quit DSH and open it again: **⌘Q / Quit** on macOS, or the app's **Exit/Quit** command on Windows. Closing a window alone can leave the process running.
@@ -34,7 +34,7 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh
 
 **Pending restart** means the original logs are still in place; no space has been freed yet. Use **Cancel waiting and review** to retire the old queued request and open a fresh move preview, or **Cancel pending move** to withdraw it. Only the new confirmation attempts an immediate move. After a successful move, use **Trash → Delete permanently** without restarting. Active work, pending input, external writers, and an unavailable safe-release capability remain protected. Each page/batch holds up to 100 targets; select-all applies to that page. Changing pages, tabs or sort order clears selection. Archived and Trash lists offer default order or largest first.
 
-The Release package contains the declared installable files and precompiled host/browser artifacts; it excludes source, tests, lockfiles, and CI configuration. Its [SHA-256 checksum](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz.sha256) is provided alongside it. Users do not need Git or a source build.
+The Release package contains the declared installable files and precompiled host/browser artifacts; it excludes source, tests, lockfiles, and CI configuration. Its [SHA-256 checksum](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz.sha256) is provided alongside it. Users do not need Git or a source build.
 
 The plugin manager installs the package and registers its bundle in the active profile. CLI installation is an alternative for managed or unattended setups and requires checking registration. For versions before `0.1.5`, add the `0.1.5` Release URL once to obtain the in-app updater; `pnpm update` does not track new Release assets. [Installation and usage](docs/installation.md) covers upgrades, CLI bundle cleanup on uninstall, profile scope, full restart, troubleshooting, and the read-only Doctor for configuration and access checks.
 

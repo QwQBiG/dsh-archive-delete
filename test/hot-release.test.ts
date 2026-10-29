@@ -96,3 +96,24 @@ test('hot release rechecks activity and identity after awaited flushes before cl
   await assert.rejects(failure.adapter.releaseIdle(failure.group), /synthetic flush failed/);
   assert.deepEqual(failure.disposed, []); assert.equal(failure.sessions.size, 1);
 });
+
+test('hot release compares JSONL default depth semantically and ignores header key order', async () => {
+  const f = await fixture();
+  const live = f.group.members[0]!.header;
+  f.group.members[0]!.header = { createdAt: live.createdAt!, version: live.version!, id: live.id!, delegationDepth: 0 };
+  assert.equal(await f.adapter.releaseIdle(f.group), true);
+  assert.deepEqual(f.disposed, ['parent']);
+});
+
+test('hot release preserves identity checks and rejects explicit invalid or changed header values', async () => {
+  for (const change of [
+    (f: Awaited<ReturnType<typeof fixture>>) => { f.group.members[0]!.header = { ...f.group.members[0]!.header, delegationDepth: null }; },
+    (f: Awaited<ReturnType<typeof fixture>>) => { f.group.members[0]!.header = { ...f.group.members[0]!.header, delegationDepth: 1 }; },
+    (f: Awaited<ReturnType<typeof fixture>>) => { f.group.members[0]!.header = { ...f.group.members[0]!.header, unexpected: true }; },
+    (f: Awaited<ReturnType<typeof fixture>>) => { f.agents.get('parent').session = { header: { ...f.group.members[0]!.header } }; },
+  ]) {
+    const f = await fixture(); change(f);
+    await assert.rejects(f.adapter.releaseIdle(f.group), { code: 'source-changed' });
+    assert.deepEqual(f.disposed, []); assert.deepEqual(f.flushed, []);
+  }
+});

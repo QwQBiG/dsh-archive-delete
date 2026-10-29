@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { lstat, mkdir, open, readFile, readdir, realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep, win32 } from 'node:path';
 import {
@@ -102,6 +103,11 @@ function encodeId(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]/g, (character) => `~${character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`);
 }
 function cloneHeader(header: Header): JsonObject { return JSON.parse(JSON.stringify(header)) as JsonObject; }
+/** rc.3 writes an omitted live delegation depth as zero in its JSONL header. */
+function sameSessionHeader(live: JsonObject, persisted: JsonObject): boolean {
+  return isDeepStrictEqual({ ...live, delegationDepth: live.delegationDepth === undefined ? 0 : live.delegationDepth },
+    { ...persisted, delegationDepth: persisted.delegationDepth === undefined ? 0 : persisted.delegationDepth });
+}
 /** Resolve primitives from the live installation: stock profiles do not auto-install peers. */
 export function getNativeLockExclusive(ctx: HostContext): (fd: number) => Promise<void> {
   let implementation: Promise<(fd: number) => Promise<void>> | undefined;
@@ -470,7 +476,7 @@ class NativeAdapter implements DshAdapter {
           continue;
         }
         if (!agent || !object(agent.phase) || !object(agent.inbox)) return undefined;
-        if (agent.session !== session || agent.id !== member.id || JSON.stringify(agent.session.header) !== JSON.stringify(member.header))
+        if (agent.session !== session || agent.id !== member.id || !sameSessionHeader(agent.session.header, member.header))
           throw new ArchiveError('source-changed', 'The loaded session identity changed. Review a new preview.');
         // The public status also calls maintenance idle. The actual phase and
         // durable inbox are both required before a teardown that cancels input.

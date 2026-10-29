@@ -13,7 +13,7 @@ Move archived conversations to trash, restore them, or permanently clear selecte
 Open **Plugins → Add plugin** and paste the versioned Release package URL:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz
 ```
 
 1. **Add and enable.** The native manager installs the dependency and registers its bundle in the current profile. Fully quit and reopen DSH when it requests a restart.
@@ -22,17 +22,17 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh
 
 Release `.tgz` assets contain only the package's declared installable files, including precompiled `lib/` artifacts. Repository archives from `codeload` contain source, tests, lockfiles, and CI configuration as well; they are not the recommended install package. No source build, dependency `prepare`, or installation hook is needed. These versions are not published to npm.
 
-For a downloaded package, retain its matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz.sha256). With both files in the same directory, check on macOS:
+For a downloaded package, retain its matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz.sha256). With both files in the same directory, check on macOS:
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.5.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.6.tgz.sha256
 ```
 
 In Windows PowerShell, compare the reported hash with the checksum file:
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.1.5.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.1.5.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.1.6.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.1.6.tgz.sha256
 ```
 
 A fixed version URL identifies the chosen release; the checksum checks the downloaded file. No fixed byte-size claim is made across releases.
@@ -92,7 +92,7 @@ CLI installation is intended for managed or unattended setups where the caller c
 With a Desktop-enabled DSH CLI:
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz
 ```
 
 A successful package-manager exit alone does not prove activation. A manager-enabled CLI can register bundles automatically, while an installation-only path can leave them absent. If the standalone CLI rejects the reserved `desktop` profile, use Desktop's manager rather than selecting a different profile.
@@ -240,7 +240,7 @@ With DSH's CLI installed, create a fresh test home and install into its isolated
 
 ```sh
 DSH_ARCHIVE_DELETE_TEST_HOME="$(mktemp -d)"
-DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/artifacts/qwqbig-dsh-archive-delete-0.1.5.tgz"
+DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/artifacts/qwqbig-dsh-archive-delete-0.1.6.tgz"
 ```
 
 Verify the isolated profile's registration and activation as above. On Windows, use the automated isolated package lifecycle check in [Contributing](../CONTRIBUTING.md). Keep the temporary home path if launching that host manually. A packed artifact keeps development dependencies out of the runtime; primary history is not a fixture.
