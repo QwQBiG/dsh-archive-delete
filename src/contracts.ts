@@ -1,3 +1,4 @@
+import type { UsageScanResult } from './storage-usage.js';
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 export const PACKAGE_NAME = '@qwqbig/dsh-archive-delete';
@@ -41,18 +42,26 @@ export interface PreviewItem {
   disposition: 'ready' | 'pending' | 'blocked'; code?: string; message?: string;
 }
 export interface Preview { id: string; action: Action; items: PreviewItem[]; expiresAt: number }
-export interface Overview { support: SupportStatus; archived: ArchivedSession[]; trash: TrashEntry[]; recentResults: BatchResult[] }
+export interface Overview { support: SupportStatus; archived: ArchivedSession[]; trash: TrashEntry[]; recentResults: BatchResult[]; storageWorkspaces?: StorageWorkspace[] }
+export interface StorageWorkspace { id: string; title: string }
+export interface StorageOverview extends UsageScanResult {
+  scope: 'host' | 'workspace';
+  workspaces: StorageWorkspace[];
+  workspaceId?: string;
+}
 export type ApiRequest =
   | { action: 'list' }
   | { action: 'preview'; operation: Action; ids: string[] }
   | { action: 'execute'; previewId: string; requestId: string }
-  | { action: 'cancelPending'; ids: string[]; requestId: string };
-export type ApiResponse = { ok: true; value: Overview | Preview | BatchResult } | { ok: false; error: { code: string; message: string } };
+  | { action: 'cancelPending'; ids: string[]; requestId: string }
+  | { action: 'storage'; workspaceId?: string };
+export type ApiResponse = { ok: true; value: Overview | Preview | BatchResult | StorageOverview } | { ok: false; error: { code: string; message: string } };
 export interface ArchiveApi {
   list(): Promise<Overview>;
   preview(action: Action, ids: string[]): Promise<Preview>;
   execute(previewId: string, requestId: string): Promise<BatchResult>;
   cancelPending(ids: string[], requestId: string): Promise<BatchResult>;
+  storage?(workspaceId?: string, signal?: AbortSignal): Promise<StorageOverview>;
 }
 export interface Lease { release(): Promise<void> }
 export type LeaseResult = { kind: 'acquired'; lease: Lease } | { kind: 'loaded'; message: string } | { kind: 'busy'; message: string };

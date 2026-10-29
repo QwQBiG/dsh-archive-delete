@@ -4,9 +4,9 @@
 
 ## Intent and boundaries
 
-The plugin provides one lifecycle: **archived → trash → archived again, or explicit permanent purge**. It targets official DSH Desktop `0.2.1-rc.3` with the JSONL persistence backend. Both macOS and Windows are supported, with native host and package lifecycle checks on each platform.
+The mutation lifecycle remains: **archived → trash → archived again, or explicit permanent purge**. It targets official DSH Desktop `0.2.1-rc.3` with the JSONL persistence backend. Both macOS and Windows are supported, with native host and package lifecycle checks on each platform.
 
-DSH remains the authority for live sessions, workspaces, activity, and session history. Original log bytes remain the authority for a conversation. The plugin owns only its operation records, trash manifests, and native UI contributions. It does not install a replacement workspace registry, session backend, projection cache, or sidebar.
+DSH remains the authority for live sessions, workspaces, activity, and session history. Original log bytes remain the authority for a conversation. The plugin owns only its operation records, trash manifests, and native UI contributions. It also offers bounded, read-only inspection of host-configured storage and a manually selected registered workspace. It does not install a replacement workspace registry, session backend, projection cache, or sidebar.
 
 ## Four modules
 
@@ -14,21 +14,22 @@ DSH remains the authority for live sessions, workspaces, activity, and session h
 | --- | --- | --- |
 | `client` | Native menu item, management dialog, selection, preview, confirmation, localized results | Accept filesystem paths, guess a move succeeded, or mutate storage directly |
 | `service` | Validate requested actions, inspect complete groups, serialize transitions, revalidate before execution, report partial results | Know undocumented host field layouts or perform unjournaled filesystem mutation |
-| `dsh-adapter` | Exact-version capability admission, host lists/activity, explicit subagent relationships, canonical locations, compatible write leases, native idle-release admission, registration cleanup/restoration | Infer ownership merely from a supplied path or silently support unknown host generations |
-| `storage` | Plugin-local manifests, durable operation stages, same-volume moves, recovery, confined purge | Recursively delete arbitrary paths, overwrite a conflicting source, or clean shared attachments |
+| `dsh-adapter` | Exact-version capability admission, host lists/activity, explicit subagent relationships, canonical locations, compatible write leases, native idle-release admission, registration cleanup/restoration, trusted storage-source resolution | Infer ownership merely from a supplied path or silently support unknown host generations |
+| `storage` | Plugin-local manifests, durable operation stages, same-volume moves, recovery, confined purge, a separate metadata-only usage scanner | Recursively delete arbitrary paths, overwrite a conflicting source, or clean shared attachments |
 
 Shared types live in the contracts module. The service depends on the adapter contract rather than importing the entire DSH runtime. Tests can therefore exercise the real storage transitions with synthetic adapters, while separate integration tests exercise the actual host boundary.
 
 ## UI and transport
 
-An archived session's native row menu receives **Move to trash**. The plugin details page receives **Manage archives and trash**, opening a two-tab native dialog. This surface uses DSH components and module loading; React and DSH are provided by the host.
+An archived session's native row menu receives **Move to trash**. The plugin details page receives **Manage archives, trash and storage**, opening an Archived / Trash / Storage overview native dialog. This surface uses DSH components and module loading; React and DSH are provided by the host.
 
 The browser sends requests to `/api/dsh-archive-delete` through DSH's authenticated connection gateway. The request vocabulary is deliberately small:
 
-- `list`: support status, archived rows, trash rows, and recent operation results.
+- `list`: support status, archived rows, trash rows, recent operation results, and registered workspace IDs/titles.
 - `preview`: action (`trash`, `restore`, or `purge`) and selected IDs.
 - `execute`: an opaque preview ID and request ID.
 - `cancelPending`: selected session IDs and request ID.
+- `storage`: no workspace ID for configured DSH storage, or one currently registered workspace ID. No client-selected path or scan limit is accepted.
 
 The browser never supplies source or destination paths. Preview data describes the target, group members, size, and ready/pending/blocked disposition. The service rechecks authoritative state when executing; a preview does not grant permission to act on changed data.
 
@@ -45,6 +46,24 @@ Moving files and updating DSH bookkeeping are multiple operations, not one cross
 The plugin does not keep a second full-text or projection mirror. Recovery metadata is retained while recovery is possible and removed with a purged trash entry. It does not store an extra copy of the conversation's first message for sidebar titles. Separate idempotency receipts retain request/target identifiers and operation outcomes, with conversation titles removed; these are not conversation backups.
 
 Recovery JSON has the same 8 MiB read/write ceiling. Initial request intent is limited to 6 MiB, reserving room for up to 100 bounded per-target outcomes before any transition starts. Oversized metadata is rejected before a write/move and asks for a smaller batch; an admitted intent must remain writable as results accumulate.
+
+## Read-only storage inspection
+
+The adapter resolves storage sources from the running exact-version host: JSONL persistence, attachment and attachment-cache roots, spill root, JSON settings backend root, configured search-index file, and DSH-home paths for plugin state, cache, profiles and other host data. It does not assume every source lives below DSH home or initialize a missing provider. The SQLite source measures only the configured regular file, never its parent directory. Valid registered project paths are also excluded from a DSH scan, including projects below DSH home; inspecting those files requires a separate explicit workspace scan. Resolving these exclusions only enumerates registry metadata. Known descendant roots are excluded from their parents; overlapping roots and verified duplicate identities remain disclosed and globally deduplicated.
+
+Workspace enumeration reads only the registry. A scan re-resolves a single registered ID, rejects drive roots, the user home or its ancestors, unsafe redirects and internal protected host storage, and excludes known host-data descendants of an admitted project. Membership/path are re-read after scanning; stale registration cannot silently change the target. Server-owned paths stay behind the authenticated API. Listing workspaces and opening the UI do not traverse their directories.
+
+The storage-usage scanner streams directory entries and reads lstat/realpath metadata only; it never reads file contents, runs Git or executes project programs. Defaults are 50,000 entries, depth 32 and 3,000 ms; the inspector uses a fixed 5,000 ms scan budget with the same entry/depth bounds. The time budget bounds cooperative scan work, not an operating-system call that is already pending. The scanner yields between bounded entry batches, accepts cancellation, closes directory handles, and does not traverse symlinks, junctions, redirected ancestors, cross-device descendants or special files. Pre/post identity checks and a final metadata pass disclose changes rather than describing the window as an atomic snapshot. Permission failures, missing roots, unavailable providers, unknown identities and entry/time/depth limits remain explicit; unmeasured categories use null bytes rather than zero.
+
+The primary total is logical regular-file bytes, deduplicated by canonical path and verified dev + ino identity across all categories. Each category deduplicates internally; directory totals count file paths including hard-link aliases. Overlaps and unknown identities are reported, so these subtotals are not additive and no number claims exclusive physical allocation or reclaimable space. Large-file records use relative paths and source: unknown; no AI provenance or cleanup eligibility is inferred.
+
+StorageInspector owns one active scan at a time and its cancellation lifetime, independently of the service mutation queue. The client cancels on scope/tab/window changes and ignores stale responses; a scan cannot execute, confirm or resolve a mutation. The workspace-list refresh only updates choices; a scan button is required to obtain a new measurement. Known scan/workspace refusal codes have localized next-step guidance. Results live in client state, without a scan database, automated sweep or new cleanup authority. Existing receipts are not automatically garbage-collected.
+
+## Current trash measurements
+
+TrashStore.entrySnapshot derives the current remaining regular-file bytes and confirmation fingerprint in one checked observation. It validates the manifest, allowed member/file names and identities, ignores mutable lock files for the confirmation token, and checks measured entries again before returning. A journaled partial purge may have missing members/logs; unjournaled missing data is refused. Listing and restore/purge previews use the current snapshot rather than saved original member sizes. A remaining owned migration temporary counts toward the entry's current file bytes; recovery metadata and lock files do not, so this figure can differ from a whole-category storage scan.
+
+The service still compares the confirmed fingerprint after acquiring the native lease before restoration or purge. A changed size or identity invalidates the old confirmation. Measuring storage grants no additional deletion authority and promises no physical bytes reclaimed.
 
 ## Confirmed idle release
 
@@ -85,5 +104,6 @@ The separate packaged doctor is an offline read-only diagnostic boundary. It ins
 - No attachment garbage collection, spill cleanup, old third-party cache cleanup, project deletion, OCR, full-text search, or cross-agent migration.
 - No custom plugin updater; installation/update remains with DSH's plugin manager.
 - Opening the management list or preview does not mutate native session storage.
+- Storage inspection is manual and read-only; it does not classify AI output or delete host/workspace files.
 
 For the transition-by-transition rules, see [operations and recovery](operations.md).

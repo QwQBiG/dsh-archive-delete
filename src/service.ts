@@ -181,11 +181,12 @@ export class ArchiveService implements ArchiveApi {
             items.push({ id: key, sessionId: group.sessionId, title, memberIds: group.members.map(m => m.id),
               sizeBytes: group.members.reduce((n, m) => n + m.sizeBytes, 0), disposition: group.members.some(m => m.loaded) ? 'pending' : 'ready' });
           } else {
-            const manifest = await this.store.manifest(key); title = manifest.group.title;
+            const snapshot = await this.store.entrySnapshot(key);
+            const manifest = snapshot.manifest; title = manifest.group.title;
             if (action === 'restore') await this.store.checkRestore(key);
-            groups.set(key, manifest.group); fingerprints.set(key, await this.store.entryFingerprint(key));
+            groups.set(key, manifest.group); fingerprints.set(key, snapshot.fingerprint);
             items.push({ id: key, sessionId: manifest.group.sessionId, title, memberIds: manifest.group.members.map(m => m.id),
-              sizeBytes: manifest.group.members.reduce((n, m) => n + m.sizeBytes, 0), disposition: 'ready' });
+              sizeBytes: snapshot.sizeBytes, disposition: 'ready' });
           }
         } catch (e) { items.push({ id: key, title, sessionId: key, memberIds: [], sizeBytes: 0, disposition: 'blocked', ...safeError(e) }); }
       }

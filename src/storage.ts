@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
+import type { BigIntStats } from 'node:fs';
 import { open, mkdir, lstat, realpath, readdir, rename, unlink, rmdir } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { ArchiveError, type SessionGroup, type TrashEntry } from './contracts.js';
@@ -16,6 +17,7 @@ export interface Operation {
   requestId?: string; targetId?: string;
 }
 export interface Manifest { schema: 1; id: string; group: SessionGroup; trashedAt: number }
+export interface EntrySnapshot { manifest: Manifest; sizeBytes: number; logBytes: number; fileCount: number; fingerprint: string }
 export interface StoreOptions { root: string; sessionsRoot: string }
 
 async function exists(path: string): Promise<boolean> {
@@ -267,19 +269,69 @@ export class TrashStore {
       if (await exists(member.directory)) throw new ArchiveError('restore-conflict', 'The original session location is already occupied.');
     }
   }
-  async entryFingerprint(entryId: string): Promise<string> {
+  async entrySnapshot(entryId: string): Promise<EntrySnapshot> {
+    const entry = this.entry(entryId); const manifestPath = join(entry, 'manifest.json');
+    const signature = (st: BigIntStats) => `${st.dev}:${st.ino}:${st.mode}:${st.size}:${st.mtimeNs}:${st.ctimeNs}`;
+    const identity = (st: BigIntStats) => `${st.dev}:${st.ino}:${st.mode}`;
+    const changed = () => new ArchiveError('source-changed', 'Trash data changed while measuring it. Review the entry again.');
+    const entryBefore = await lstat(entry, { bigint: true });
+    const manifestBefore = await lstat(manifestPath, { bigint: true });
+    if (!manifestBefore.isFile() || manifestBefore.isSymbolicLink()) throw new ArchiveError('unsafe-path', 'The trash manifest is unsafe.');
     const manifest = await this.manifest(entryId);
+    const entryNames = (await readdir(entry)).sort(); const allowed = new Set(['manifest.json', ...manifest.group.members.map((_, i) => String(i))]);
+    if (entryNames.some(name => !allowed.has(name))) throw new ArchiveError('unknown-file', 'Unexpected data prevents measuring this entry.');
+    const partial = (await this.operations()).some(operation => operation.entryId === entryId
+      && ['purging', 'purged'].includes(operation.phase) && groupFingerprint(operation.group) === groupFingerprint(manifest.group));
     const hash = createHash('sha256').update(JSON.stringify(manifest));
+    const observed: { path: string; signature: string }[] = [];
+    const members: { path: string; identity?: string; names: string[] }[] = [];
+    let size = 0n; let logs = 0n;
     for (let i = 0; i < manifest.group.members.length; i++) {
-      const directory = join(this.entry(entryId), String(i));
-      if (!await exists(directory)) { hash.update(`missing:${i}`); continue; }
-      for (const name of (await readdir(directory)).sort()) {
-        if (name === 'session.lock') continue;
-        const st = await lstat(join(directory, name), { bigint: true });
-        hash.update(`${i}:${name}:${st.dev}:${st.ino}:${st.size}:${st.mtimeNs}`);
+      const directory = join(entry, String(i));
+      if (!await exists(directory)) {
+        if (!partial) throw new ArchiveError('corrupt-state', 'A trash member is missing without a permanent deletion journal.');
+        hash.update(`missing:${i}`); members.push({ path: directory, names: [] }); continue;
       }
+      const directoryBefore = await lstat(directory, { bigint: true });
+      if (!directoryBefore.isDirectory() || directoryBefore.isSymbolicLink()) throw new ArchiveError('unsafe-path', 'A trash member is unsafe.');
+      const names = (await readdir(directory)).sort(); let logCount = 0;
+      hash.update(`present:${i}`);
+      members.push({ path: directory, identity: identity(directoryBefore), names: names.filter(name => name !== 'session.lock') });
+      for (const name of names) {
+        if (!(LOG.test(name) || TEMP.test(name) || name === 'session.lock')) throw new ArchiveError('unknown-file', 'Unexpected data prevents measuring this entry.');
+        const path = join(directory, name); const st = await lstat(path, { bigint: true });
+        if (!st.isFile() || st.isSymbolicLink()) throw new ArchiveError('unsafe-path', 'A trash file is unsafe.');
+        if (name === 'session.lock') continue;
+        if (st.size < 0n) throw new ArchiveError('corrupt-state', 'A trash file has an invalid size.');
+        observed.push({ path, signature: signature(st) }); size += st.size;
+        if (LOG.test(name)) { logs += st.size; logCount++; }
+        hash.update(`${i}:${name}:${signature(st)}`);
+      }
+      if (!partial && !logCount) throw new ArchiveError('missing-log', 'The trash member log is missing.');
     }
-    return hash.digest('hex');
+    if (size > BigInt(Number.MAX_SAFE_INTEGER)) throw new ArchiveError('corrupt-state', 'Trash file sizes exceed the supported range.');
+    try {
+      const finalManifest = await this.manifest(entryId);
+      if (JSON.stringify(finalManifest) !== JSON.stringify(manifest)
+        || signature(await lstat(manifestPath, { bigint: true })) !== signature(manifestBefore)
+        || identity(await lstat(entry, { bigint: true })) !== identity(entryBefore)) throw changed();
+      for (const member of members) {
+        if (member.identity === undefined) { if (await exists(member.path)) throw changed(); continue; }
+        const st = await lstat(member.path, { bigint: true });
+        if (!st.isDirectory() || st.isSymbolicLink() || identity(st) !== member.identity
+          || JSON.stringify((await readdir(member.path)).filter(name => name !== 'session.lock').sort()) !== JSON.stringify(member.names)) throw changed();
+      }
+      for (const file of observed) {
+        const st = await lstat(file.path, { bigint: true });
+        if (!st.isFile() || st.isSymbolicLink() || signature(st) !== file.signature) throw changed();
+      }
+      if (signature(await lstat(manifestPath, { bigint: true })) !== signature(manifestBefore)
+        || JSON.stringify((await readdir(entry)).sort()) !== JSON.stringify(entryNames)) throw changed();
+    } catch { throw changed(); }
+    return { manifest, sizeBytes: Number(size), logBytes: Number(logs), fileCount: observed.length, fingerprint: hash.digest('hex') };
+  }
+  async entryFingerprint(entryId: string): Promise<string> {
+    return (await this.entrySnapshot(entryId)).fingerprint;
   }
   private async validateContainer(directory: string, group: SessionGroup, allowPartial = false): Promise<void> {
     await plainDirectory(directory);
@@ -308,9 +360,9 @@ export class TrashStore {
       const journals = (await this.operations()).filter(o => o.entryId === key);
       if (journals.some(o => o.phase === 'restored-metadata' || o.phase === 'restored')) continue;
       if (!await exists(join(this.entry(key), 'manifest.json')) && journals.some(o => o.phase === 'purging' || o.phase === 'purged')) continue;
-      const m = await this.manifest(key);
+      const { manifest: m, sizeBytes } = await this.entrySnapshot(key);
       entries.push({ id: key, sessionId: m.group.sessionId, title: m.group.title, trashedAt: m.trashedAt,
-        sizeBytes: m.group.members.reduce((n, s) => n + s.sizeBytes, 0), memberCount: m.group.members.length });
+        sizeBytes, memberCount: m.group.members.length });
     }
     return entries.sort((a, b) => b.trashedAt - a.trashedAt);
   }

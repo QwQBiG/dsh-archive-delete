@@ -4,7 +4,7 @@
 
 ## Scope
 
-Keep changes focused on archived-session trash, restoration, explicit permanent purge, and the native interface for those operations. Search, OCR, automatic expiry, attachment garbage collection, and third-party cloud deletion are outside the first release.
+Keep changes focused on archived-session trash, restoration, explicit permanent purge, the native interface, and read-only storage inspection. Search, OCR, automatic expiry, attachment garbage collection, project-file deletion, and third-party cloud deletion are outside this scope.
 
 Read [architecture](docs/architecture.md), [operation recovery](docs/operations.md), and [acceptance scenarios](docs/acceptance.md) before changing data mutation code.
 
@@ -40,7 +40,7 @@ pnpm test:integration
 After packing, use Node 24 or newer to exercise the package manager lifecycle in another new temporary home:
 
 ```sh
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.3.tgz
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.4.tgz
 ```
 
 This reuses the selected official runtime and available package manager. Package install/reinstall/remove checks use offline cache; a separate fixed-URL upgrade fixture serves tarballs on local HTTP without contacting GitHub or a public registry. It loads the packed host through normal module resolution and checks synthetic trash retention. The manager registers bundles; CLI activation behavior depends on the host build and invocation mode. An installation-only invocation can leave bundle registration absent; verify the manifest instead of treating dependency presence as activation. Keep these installation paths separate in tests and reports, and follow the [CLI registration instructions](docs/installation.md) for manual CLI use. Read the reported installation mode and diagnostics when evaluating the result. It does not install into the current Desktop profile.
@@ -56,6 +56,8 @@ Use the [doctor instructions](docs/installation.md) with the same isolated home/
 - Changes to an adapter require tests for the exact supported host and for unsupported capability refusal. Native idle-release changes must prove complete lifecycle teardown, empty-input/idle admission, outside-group runtime-child protection, and revalidation after teardown before any move. A scope-only disposal or manual registry deletion is not full writer ownership release.
 - Changes to a filesystem transition require a failure test at the affected boundary, plus recovery and idempotency checks.
 - Changes to relationship handling must prove that explicitly owned subagents are grouped and independent forks are preserved.
+- Storage scans must stay manual, bounded and metadata-only. Test configured roots outside the data home, exclusions, global path/hard-link deduplication, unknown locations, cancellation, file changes and partial results. Workspace tests must use registered IDs, recheck membership/path and preserve all fixture bytes; no scan result can become cleanup authority or an AI-origin classification.
+- Trash size/fingerprint changes need same-observation drift checks, current remaining sizes after a partial purge and held-lease confirmation checks. Do not infer freed physical space from logical bytes or automatically discard idempotency receipts.
 - UI changes must preserve selection clarity, keyboard access, explicit confirmations, and per-item partial-failure feedback. Pending retry must cancel the old request, require a fresh preview/confirmation, preserve uncertainty handling, and never reopen a dialog closed during cancellation.
 
 Tests must verify observable outcomes: original log bytes, directories, host registration, trash metadata, and user-visible results. A mocked successful `rename` or a resolved promise alone does not prove successful deletion.

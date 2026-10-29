@@ -1,5 +1,5 @@
 import React, { useCallback, useSyncExternalStore } from 'react';
-import { API_PATH, PACKAGE_NAME, ArchiveError, type Action, type ApiRequest, type ArchiveApi, type BatchResult, type Overview, type Preview } from './contracts.js';
+import { API_PATH, PACKAGE_NAME, ArchiveError, type Action, type ApiRequest, type ArchiveApi, type BatchResult, type Overview, type Preview, type StorageOverview } from './contracts.js';
 import { ArchiveClientController, ClientTransportError } from './client-state.js';
 import { ArchiveDialog, CLIENT_CSS, CLIENT_NAMESPACE, en, zh, type NativePrimitives, type Translate } from './client-ui.js';
 
@@ -26,13 +26,39 @@ function object(value: unknown): value is Record<string, unknown> {
 }
 function strings(value: unknown): value is string[] { return Array.isArray(value) && value.every((item) => typeof item === 'string'); }
 function finite(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
+function count(value: unknown): value is number { return Number.isSafeInteger(value) && Number(value) >= 0; }
+function workspaces(value: unknown): boolean {
+  return Array.isArray(value) && value.every(item => object(item) && typeof item.id === 'string' && typeof item.title === 'string');
+}
+function relativePath(value: unknown): boolean {
+  return typeof value === 'string' && value.length > 0 && !/^[/\\]|^[a-z]:/i.test(value) && !value.split(/[/\\]/).includes('..');
+}
 
 function isOverview(value: unknown): value is Overview {
   return object(value) && object(value.support) && typeof value.support.supported === 'boolean'
     && typeof value.support.version === 'string' && typeof value.support.platform === 'string'
     && Array.isArray(value.archived) && value.archived.every((item) => object(item) && typeof item.id === 'string' && typeof item.title === 'string' && typeof item.workspace === 'string' && finite(item.sizeBytes) && finite(item.descendantCount))
     && Array.isArray(value.trash) && value.trash.every((item) => object(item) && typeof item.id === 'string' && typeof item.sessionId === 'string' && typeof item.title === 'string' && finite(item.trashedAt) && finite(item.sizeBytes) && finite(item.memberCount))
-    && Array.isArray(value.recentResults) && value.recentResults.every(isBatchResult);
+    && Array.isArray(value.recentResults) && value.recentResults.every(isBatchResult)
+    && (value.storageWorkspaces === undefined || workspaces(value.storageWorkspaces));
+}
+function isStorageOverview(value: unknown): value is StorageOverview {
+  if (!object(value) || value.metric !== 'logical-file-bytes' || !['host', 'workspace'].includes(String(value.scope))
+    || !workspaces(value.workspaces) || (value.workspaceId !== undefined && typeof value.workspaceId !== 'string')
+    || (value.scope === 'workspace' ? !value.workspaceId : value.workspaceId !== undefined)
+    || typeof value.complete !== 'boolean' || !finite(value.durationMs) || value.durationMs < 0
+    || !['startedAt', 'finishedAt', 'fileBytes', 'referencedBytes', 'fileCount', 'uniqueFileCount', 'duplicateHardlinks', 'duplicatePaths', 'identityUnknown'].every(key => count(value[key]))
+    || !Array.isArray(value.categories)) return false;
+  return value.categories.every(category => object(category) && typeof category.id === 'string' && typeof category.kind === 'string'
+    && (category.label === undefined || typeof category.label === 'string') && category.readOnly === true
+    && ['complete', 'partial', 'missing', 'unavailable'].includes(String(category.status))
+    && (category.fileBytes === null || count(category.fileBytes)) && (category.referencedBytes === null || count(category.referencedBytes))
+    && count(category.fileCount) && count(category.uniqueFileCount) && object(category.counters)
+    && ['entries', 'files', 'directories', 'symlinks', 'unreadable', 'changed', 'unsupported', 'crossDevice', 'depthLimit', 'duplicateHardlinks', 'duplicatePaths', 'identityUnknown', 'excluded'].every(key => count((category.counters as Record<string, unknown>)[key]))
+    && strings(category.overlaps)
+    && Array.isArray(category.issues) && category.issues.every(issue => object(issue) && typeof issue.code === 'string' && (issue.relativePath === undefined || relativePath(issue.relativePath)))
+    && Array.isArray(category.largestFiles) && category.largestFiles.every(file => object(file) && relativePath(file.relativePath) && count(file.sizeBytes) && file.source === 'unknown')
+    && Array.isArray(category.directories) && category.directories.every(directory => object(directory) && relativePath(directory.relativePath) && count(directory.fileBytes) && count(directory.fileCount)));
 }
 function isPreview(value: unknown): value is Preview {
   return object(value) && typeof value.id === 'string' && ['trash', 'restore', 'purge'].includes(String(value.action)) && finite(value.expiresAt)
@@ -48,19 +74,21 @@ function isBatchResult(value: unknown): value is BatchResult {
 export function createArchiveApi(transport: typeof fetch = globalThis.fetch.bind(globalThis), baseUri?: string): ArchiveApi {
   const base = baseUri ?? document.baseURI;
   const endpoint = new URL(API_PATH.replace(/^\//, ''), base).href;
-  const request = async <T,>(body: ApiRequest, accepts: (value: unknown) => value is T): Promise<T> => {
+  const request = async <T,>(body: ApiRequest, accepts: (value: unknown) => value is T, signal?: AbortSignal): Promise<T> => {
     let response: Response;
     try {
       response = await transport(endpoint, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body),
+        ...(signal ? { signal } : {}),
       });
-    } catch {
+    } catch (error) {
+      if (signal?.aborted) throw error;
       throw new ClientTransportError('The connection to DSH was interrupted.');
     }
     let envelope: unknown;
     try { envelope = await response.json(); }
-    catch { throw new ClientTransportError('DSH returned an unreadable response.'); }
+    catch (error) { if (signal?.aborted) throw error; throw new ClientTransportError('DSH returned an unreadable response.'); }
     if (object(envelope) && envelope.ok === false && object(envelope.error) && typeof envelope.error.code === 'string' && typeof envelope.error.message === 'string') {
       throw new ArchiveError(envelope.error.code, envelope.error.message);
     }
@@ -74,6 +102,7 @@ export function createArchiveApi(transport: typeof fetch = globalThis.fetch.bind
     preview: (operation: Action, ids: string[]) => request({ action: 'preview', operation, ids }, isPreview),
     execute: (previewId, requestId) => request({ action: 'execute', previewId, requestId }, isBatchResult),
     cancelPending: (ids, requestId) => request({ action: 'cancelPending', ids, requestId }, isBatchResult),
+    storage: (workspaceId, signal) => request({ action: 'storage', ...(workspaceId ? { workspaceId } : {}) }, isStorageOverview, signal),
   };
 }
 

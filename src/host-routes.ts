@@ -16,6 +16,11 @@ function ids(value: unknown): value is string[] {
 export function parseApiRequest(value: unknown): ApiRequest {
   if (record(value)) {
     if (value.action === 'list' && exactKeys(value, ['action'])) return { action: 'list' };
+    if (value.action === 'storage') {
+      if (exactKeys(value, ['action'])) return { action: 'storage' };
+      if (exactKeys(value, ['action', 'workspaceId']) && typeof value.workspaceId === 'string' && value.workspaceId.length > 0
+        && value.workspaceId.length <= 512 && !value.workspaceId.includes('\0')) return { action: 'storage', workspaceId: value.workspaceId };
+    }
     if (value.action === 'preview' && exactKeys(value, ['action', 'operation', 'ids'])
       && ['trash', 'restore', 'purge'].includes(String(value.operation)) && ids(value.ids)) {
       return { action: 'preview', operation: value.operation as 'trash' | 'restore' | 'purge', ids: value.ids };
@@ -63,12 +68,15 @@ export function createRequestHandler(api: ArchiveApi): (request: Request) => Pro
     if (contentType !== 'application/json') return response({ ok: false, error: { code: 'invalid-request', message: 'Content-Type must be application/json.' } }, 415);
     try {
       const input = parseApiRequest(await readRequest(request));
-      let value: Awaited<ReturnType<ArchiveApi['list']>> | Awaited<ReturnType<ArchiveApi['preview']>> | Awaited<ReturnType<ArchiveApi['execute']>>;
+      let value: Extract<ApiResponse, { ok: true }>['value'];
       switch (input.action) {
         case 'list': value = await api.list(); break;
         case 'preview': value = await api.preview(input.operation, input.ids); break;
         case 'execute': value = await api.execute(input.previewId, input.requestId); break;
         case 'cancelPending': value = await api.cancelPending(input.ids, input.requestId); break;
+        case 'storage':
+          if (!api.storage) throw new ArchiveError('unsupported-host', 'Storage inspection is unavailable in this host.');
+          value = await api.storage(input.workspaceId, request.signal); break;
       }
       return response({ ok: true, value });
     } catch (error) {

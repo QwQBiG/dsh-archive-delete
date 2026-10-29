@@ -46,6 +46,16 @@ The scenario table defines the acceptance targets. The verification record below
 | Upgrade and removal | Replace dependency with a new fixed URL, check bundle, clean stale selection after removal | No duplicate registration; preserve other profile fields, trash and recovery records |
 | Doctor | Check registration, artifacts, host version and existing directory access | Read-only; do not create/repair directories or treat offline checks as a live-loaded signal |
 | Loaded signal | Recovery/API registration succeeds, or startup refuses/fails | Emit plugin/host versions and trash location only on successful startup |
+| Storage start/cancel | Open dialog/tab, choose a workspace, start/cancel, change tab or close during a scan | No automatic traversal; only an explicit start scans, cancelled/late results do not replace the current view |
+| Storage source resolution | Configured roots outside DSH home, nested categories, missing providers and an in-memory search index | Resolve actual owners, exclude known child roots, measure only the configured index file; unknown/unavailable is not zero |
+| Storage metrics | Hard links, repeated/overlapping roots and unknown file identities | Global logical-byte total counts verified duplicates once; category/folder aliases and incomplete identity checks are disclosed |
+| Storage bounds | Entry/time/depth limits, unreadable entries, concurrent writes/removals | Bounded streaming metadata scan, explicit partial state and observation time; no file-content/Git/program reads |
+| Storage path safety | Symlink/junction, ancestor redirection, cross-device descendant or special file | Do not follow the redirect or measure its outside target; preserve fixture bytes |
+| Workspace scope | Registered ID, stale membership/path, drive root, user home/ancestor or protected host data | Scan one current admitted project only, reject unsafe roots and exclude known host-data descendants |
+| Workspace provenance | Large project files or file names suggesting generated output | Show unknown origin; no AI classification, deletion action or cleanup authority |
+| Current trash size | File changes after move or journaled partial purge, including a fully removed member | List/preview remaining bytes from the checked fingerprint observation, not historical manifest totals; drift invalidates old consent |
+| Sorting | Default/largest-first changes across a page boundary | Stable visible ordering, reset to page one and clear old selection/preview; pending controls retain their protections |
+| Read-only retention | Scan attachments, cache, spill, profiles, project files and receipts | No cleanup or automatic receipt expiry; all contents remain unchanged |
 | Documentation | Links, commands, and version references | Existing relative targets and consistent documented commands/versions |
 
 ## Commands
@@ -53,12 +63,29 @@ The scenario table defines the acceptance targets. The verification record below
 ```sh
 pnpm verify
 pnpm pack
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.3.tgz
+node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.4.tgz
 ```
 
 `verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
-## CI verification — 0.1.3
+## CI verification — 0.1.4
+
+Date: 2026-10-29. Both jobs in run 40845896781 passed on runtime commit f8a409a1967f2f252438128390e4307cca4f70ad, using official DSH 0.2.1-rc.3, Node 24.21.0, pnpm 11.28.5, isolated runtimes and synthetic profiles.
+
+| Platform | Completed CI evidence | Unit/client/service/scanner | Native integration |
+| --- | --- | --- | --- |
+| macOS (macos-14) | [Run 40845896781, job 123353173851](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40845896781/job/123353173851) | 152 passed, 3 Windows-only skipped; 155 total | 15 passed, 1 Windows-only skipped; 16 total |
+| Windows (windows-latest) | [Run 40845896781, job 123353173398](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40845896781/job/123353173398) | 152 passed, 3 POSIX-only skipped; 155 total | 16 passed, 0 skipped; 16 total |
+
+- Both jobs passed type/build checks, the committed lib comparison, documentation checks (7 pairs, 60 relative links), package validation, packing, SHA-256 verification and the isolated native package lifecycle: installation, local loopback-URL upgrade, reinstall and uninstall. The three Windows unit skips were Doctor's POSIX permission check, the scanner's POSIX unreadable-directory check and its POSIX canonical-alias exclusion check.
+- A new native integration check used actual LocalAttachmentStore, LocalSpillStore, the JSON backend, WorkspaceRegistry and SqliteSessionQueryEngine configured never to open its database. It loaded the plugin through applyPlugin and requested scans through the authenticated owner gateway; the in-memory search category remained unavailable and no query database was opened.
+- That native check counted three attachment hard-link paths once, separated attachment cache from other cache, excluded registered project directories from the DSH scan, and measured only the explicitly selected workspace: 35 bytes across two files. All reported file origins stayed unknown. Cancellation was followed by a successful rescan; a supplied path field returned 400 and a tool principal returned 403. Registry state, original session/attachment/spill bytes and unselected project data remained intact.
+- Scanner/provider regressions covered configured locations, exclusions, path/hard-link overlap, unknown and missing roots, entry/time/depth limits, cancellation, metadata changes and unsafe path refusal. Client checks covered explicit scan start, stale-response protection, localized refusal guidance, workspace-list refresh and sort-selection behavior. These are programmatic and rendered-markup checks, not a new Desktop graphical run.
+- Current-trash size and consent checks covered remaining log/temporary bytes, partial purges, missing-member journal admission, same-observation drift and restore/purge preview fingerprints. Native lifecycle and held-lease confirmation regressions continued to pass; no measured logical-byte value was treated as reclaimed physical space or broader deletion authority.
+- Local macOS verification also passed: 152 unit/client/service/scanner checks with 3 Windows-only skips, and 15 native checks with 1 Windows-only skip, plus packing and the isolated package lifecycle. It reused the installed official runtime without downloading another copy.
+- No new Desktop graphical evidence, public-network download timing or real-history data operation is claimed. Earlier completed release records remain below.
+
+## Historical CI verification — 0.1.3
 
 Date: 2026-10-29. Both jobs in run `40841619020` passed on runtime commit `b5c15ce87ae3b1b4a7c050646113d4dc56336378`, using official DSH `0.2.1-rc.3` JSONL persistence, Node `24.21.0`, pnpm `11.28.5`, isolated runtimes and synthetic profiles.
 
@@ -131,4 +158,4 @@ An isolated copy of the installed Electron app, using a separate synthetic home/
 
 ## Verification limits
 
-Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been visually exercised; its native integration and package checks above passed. The historical macOS GUI checks were not rerun for `0.1.1`, `0.1.2` or `0.1.3`. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.
+Physical cross-volume movement and machine power-loss tests were not performed. The implementation checks device identity and refuses cross-volume moves; synthetic/process-level crash states and boundary failures exercise recovery. Native programmatic permanent purge and pending cancellation passed; the final graphical purge and cancel-pending clicks were not verified. The isolated Electron copy inherited pre-existing local shell modifications; it was not a pristine-shell comparison. The official rc.3 runtime was tested independently. Windows Desktop GUI has not been visually exercised; its native integration and package checks above passed. The historical macOS GUI checks were not rerun for `0.1.1`, `0.1.2` or `0.1.3`. No new Desktop graphical storage-overview run was performed for `0.1.4`. The exact target does not imply compatibility with future DSH releases or other operating systems. Mutation targets were known synthetic sessions.
