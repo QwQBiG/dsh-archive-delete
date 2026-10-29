@@ -83,6 +83,8 @@ The retained runtime/client implementation at `e7c5d2ff41c815fef7066f21bbf110ed3
 
 The initial-release packaging uses that implementation with a new package version and consolidated documentation. Its package identity, updater metadata and installation lifecycle are verified separately; a version-only change does not imply a new graphical run.
 
+For the `0.0.1` package, local full verification passed 202 of 205 checks with 3 Windows-only skips, and 19 of 20 native checks with 1 Windows-only skip. Build, docs, package identity, SHA-256/update metadata and updater admission passed. An isolated explicit replacement from a higher-numbered synthetic package to this package verified the installed version/source, one bundle registration, retained profile fields, unchanged trash/log bytes, responding owner API, Doctor and uninstall/reinstall. This is a manual replacement check, not a relaxation of forward-only automatic updates.
+
 ### Runtime coverage
 
 - True JSONL/registry move, archived restore and permanent deletion preserve native bookkeeping and original log bytes where recovery applies. Parent/subagent groups move together; independent forks, shared attachments and project files remain intact.
