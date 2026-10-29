@@ -2,7 +2,7 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
-## 0.1.4 — Unreleased
+## 0.1.4 — 2026-10-29
 
 - Add a read-only **Storage overview** tab with manual scans of configured DSH storage or one registered workspace, category sizes, largest measured files and top-level folder totals.
 - Bound metadata-only scans, support cancellation and disclose partial results, unavailable locations, overlaps and duplicate identities; do not classify project files as AI output or offer broader file cleanup.
