@@ -20,19 +20,21 @@
 
 ## 三步安装使用
 
-使用以下 GitHub 地址安装：
+在 DSH 桌面端使用 **插件 → 添加插件**，输入固定版本的 Release 安装包地址：
 
 ```text
-github:QwQBiG/dsh-archive-delete#v0.1.1
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh-archive-delete-0.1.2.tgz
 ```
 
-1. **安装：** 在 DSH 桌面端打开 **插件 → 添加插件**，输入地址并启用，按 DSH 提示重启。
+1. **安装：** 输入上方地址并启用插件。需要重启时，请完全退出 DSH 再打开：macOS 使用 **⌘Q／退出**，Windows 使用应用的 **退出** 命令；仅关闭窗口可能仍保留进程。
 2. **选择：** 使用 DSH 归档会话，再从原生菜单选择 **移入回收站**。批量处理时，打开插件详情中的 **管理归档与回收站**。
 3. **核对：** 检查目标和子代理后确认；在 **回收站** 恢复所选会话组，或核对后 **永久清除**。
 
 **待重启处理** 表示日志仍在原位置，尚未释放空间，可以在“已归档”选择 **取消待处理**。每页／每批最多 100 个目标，全选只作用于当前页；换页或切换页签会清空选择。
 
-插件管理器会同时安装包并注册 bundle。命令行安装后，重启 DSH 前应按 [安装使用指南](docs/installation.zh-CN.md) 检查 bundle 登记，缺失时再添加。安装包已包含宿主与浏览器产物，用户无需自行构建。
+Release 安装包包含声明的可安装文件和预编译宿主／浏览器产物，不包含源码、测试、锁文件或 CI 配置，并提供对应的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh-archive-delete-0.1.2.tgz.sha256)。用户无需 Git 或源码构建。
+
+插件管理器会在当前 profile 安装包并注册 bundle。CLI 适用于受管理或无人值守的环境，需要核对注册状态。固定 URL 升级时，重新添加新版本的 Release 地址；`pnpm update` 不会跟踪新的 Release 资产。[安装使用指南](docs/installation.zh-CN.md) 包含升级、CLI 卸载后的 bundle 清理、profile 范围、完整重启及排错。
 
 ## 磁盘上的处理范围
 

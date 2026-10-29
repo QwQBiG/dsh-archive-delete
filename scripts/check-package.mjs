@@ -9,7 +9,9 @@ for (const name of Object.keys(pkg.peerDependencies ?? {})) {
   if (pkg.peerDependenciesMeta?.[name]?.optional !== true) throw new Error(`Host-provided peer ${name} must be optional.`);
 }
 if (pkg.scripts?.postinstall) throw new Error('Installation must not require a lifecycle build or automatic profile modification.');
-for (const path of ['lib/index.js', 'lib/client.js', 'cordis.patch.yml', 'LICENSE', 'README.md', 'README.zh-CN.md']) await access(join(root, path));
+if (pkg.bin?.['dsh-archive-delete-doctor'] !== './lib/doctor.js') throw new Error('The read-only doctor command is missing.');
+for (const path of ['lib/index.js', 'lib/client.js', 'lib/doctor.js', 'cordis.patch.yml', 'LICENSE', 'README.md', 'README.zh-CN.md']) await access(join(root, path));
+if (!(await readFile(join(root, 'lib/doctor.js'), 'utf8')).startsWith('#!/usr/bin/env node')) throw new Error('Doctor must retain its executable entry point.');
 const host = await import(new URL('../lib/index.js', import.meta.url));
 if (typeof host.apply !== 'function' || !host.inject) throw new Error('Host plugin export contract is invalid.');
 const client = await readFile(join(root, 'lib/client.js'), 'utf8');

@@ -11,6 +11,8 @@ import { acquirePluginLease, createDshAdapter, getNativeLockExclusive, getNative
 import { ArchiveService } from '../../src/service.js';
 import { TrashStore } from '../../src/storage.js';
 import { registerHostRoutes } from '../../src/host-routes.js';
+import { apply as applyPlugin } from '../../src/index.js';
+import { PLUGIN_VERSION } from '../../src/version.js';
 import type { JsonObject } from '../../src/contracts.js';
 
 const runtimeRoot = process.env.DSH_RUNTIME_ROOT ?? '/Applications/DeepSeek Harness.app/Contents/Resources/app/dsh';
@@ -222,6 +224,33 @@ test('runtime version comes from the live profile installation, independent of p
   const absent = await createDshAdapter({ get: name => name === 'profileContext' ? undefined : f.ctx.get(name) }, { home: f.home });
   assert.equal((await absent.capabilities()).version, 'unknown');
   assert.equal((await absent.capabilities()).supported, false);
+});
+
+test('successful startup logs its installed version and active API only after route admission; a failed mount never logs loaded', async t => {
+  const f = await fixture(t);
+  const info: string[] = []; const warnings: string[] = [];
+  const connection = new HostConnectionService(f.ctx, ['127.0.0.1'], { isAuthenticated: () => true, authenticateApi: () => undefined });
+  const common: HostContext = { get: name => f.ctx.get(name), dshHomePath: () => f.home,
+    waterfall: (event, request, next) => f.ctx.waterfall(event, request, next), emit: (event, ...args) => f.ctx.emit(event, ...args),
+    logger: { warn: message => warnings.push(message), info: message => info.push(message) },
+  };
+  const failed = await applyPlugin({ ...common, get: name => name === 'connection' ? { fetch: { register: () => { throw new Error('synthetic route mount failure'); } } } : f.ctx.get(name) });
+  await failed();
+  assert.equal(info.length, 0);
+  assert.ok(warnings.some(message => message.includes('could not be registered')));
+  // A new mount also proves the failed attempt released its exclusive store lease.
+  const close = await applyPlugin(common);
+  try {
+    assert.equal(info.length, 1);
+    assert.ok(info[0]!.startsWith(`[archive-delete] v${PLUGIN_VERSION} loaded`));
+    assert.match(info[0]!, /target DSH 0\.2\.1-rc\.3 \(host 0\.2\.1-rc\.3\)/);
+    assert.ok(info[0]!.includes(JSON.stringify(join(f.home, 'archive-delete', 'trash'))));
+    const response = await connection.createSharedFetchHandler('/api').fetch(new Request('http://127.0.0.1/api/dsh-archive-delete', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'list' }),
+    }), connection.browserPeer);
+    const result = await response.json() as { ok: boolean; value: { support: { supported: boolean } } };
+    assert.equal(result.ok, true); assert.equal(result.value.support.supported, true);
+  } finally { await close(); }
 });
 
 test('stock rc.3: explicit partial-purge retry locks the remaining member with preserved slot identity', async t => {

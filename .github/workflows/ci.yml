@@ -12,6 +12,7 @@ jobs:
       matrix:
         os: [macos-14, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -26,5 +27,7 @@ jobs:
       - name: Verify committed bundles / 核对已提交的构建产物
         run: git diff --exit-code -- lib
       - run: pnpm pack --pack-destination artifacts
+      - name: Hash the release package / 生成发行包校验值
+        run: node scripts/release-artifacts.mjs artifacts
       - name: Verify native package lifecycle / 验证原生安装与卸载
         run: node scripts/verify-package-lifecycle.mjs artifacts
