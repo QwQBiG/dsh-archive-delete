@@ -4,9 +4,9 @@
 
 Move archived DSH conversations to a recoverable trash, directly inside the desktop app. Restore them when needed; permanently clear selected trash only after confirmation. Inspect DSH storage and one selected workspace without changing their files.
 
-`@qwqbig/dsh-archive-delete` · [Apache-2.0](LICENSE) · **DSH Desktop `0.2.1-rc.3` · official JSONL storage**
+`@qwqbig/dsh-archive-delete` · **v0.0.1** · [Apache-2.0](LICENSE) · **DSH Desktop `0.2.1-rc.3` · official JSONL storage**
 
-Supports **macOS and Windows**. See the [acceptance record](docs/acceptance.md) for each version's verification status and Desktop GUI limits.
+Supports **macOS and Windows**. See the [acceptance record](docs/acceptance.md) for verification status and Desktop GUI limits.
 
 ## What you get
 
@@ -25,7 +25,7 @@ Trash never expires automatically. Removing the plugin keeps the trash.
 In DSH Desktop, use **Plugins → Add plugin** with the versioned Release package:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.1/qwqbig-dsh-archive-delete-0.0.1.tgz
 ```
 
 1. **Install:** enter the address above and enable the plugin. When asked to restart, fully quit DSH and open it again: **⌘Q / Quit** on macOS, or the app's **Exit/Quit** command on Windows. Closing a window alone can leave the process running.
@@ -34,13 +34,13 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh
 
 **Pending restart** means the original logs are still in place; no space has been freed yet. Use **Cancel waiting and review** to retire the old queued request and open a fresh move preview, or **Cancel pending move** to withdraw it. Only the new confirmation attempts an immediate move. After a successful move, use **Trash → Delete permanently** without restarting. Active work, pending input, external writers, and an unavailable safe-release capability remain protected. Each page/batch holds up to 100 targets; select-all applies to that page. Changing pages, tabs or sort order clears selection. Archived and Trash lists offer default order or largest first.
 
-The Release package contains the declared installable files and precompiled host/browser artifacts; it excludes source, tests, lockfiles, and CI configuration. Its [SHA-256 checksum](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz.sha256) is provided alongside it. Users do not need Git or a source build.
+The Release package contains the declared installable files and precompiled host/browser artifacts; it excludes source, tests, lockfiles, and CI configuration. Its [SHA-256 checksum](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.1/qwqbig-dsh-archive-delete-0.0.1.tgz.sha256) is provided alongside it. Users do not need Git or a source build.
 
-The plugin manager installs the package and registers its bundle in the active profile. CLI installation is an alternative for managed or unattended setups and requires checking registration. For versions before `0.1.5`, add the `0.1.5` Release URL once to obtain the in-app updater; `pnpm update` does not track new Release assets. [Installation and usage](docs/installation.md) covers upgrades, CLI bundle cleanup on uninstall, profile scope, full restart, troubleshooting, and the read-only Doctor for configuration and access checks.
+The plugin manager installs the package and registers its bundle in the active profile. CLI installation is an alternative for managed or unattended setups and requires checking registration. Use **Plugin updates** for future compatible releases; `pnpm update` does not track new Release assets. [Installation and usage](docs/installation.md) covers upgrades, CLI bundle cleanup on uninstall, profile scope, full restart, troubleshooting, and the read-only Doctor for configuration and access checks.
 
 ## Update from GitHub
 
-From `0.1.5`, **Plugin updates** appears in plugin details and the management dialog. It is enabled only on supported DSH Desktop `0.2.1-rc.3` with a verified profile-owned installation and native manager; it is not a self-upgrade path on an unsupported future DSH version. DSH checks GitHub daily while running; **Check for updates** permits another network check after at least one minute. A failed check is shown as an error, with an automatic retry after one hour. It never means that the installed version is current, and checking never installs a package.
+Plugin details and the management dialog show a compact version/update row. **Details** expands the checking policy and last-check information; update controls are hidden while confirming a move, restore or permanent deletion. Updating is enabled only on supported DSH Desktop `0.2.1-rc.3` with a verified profile-owned installation and native manager; it is not a self-upgrade path on an unsupported future DSH version. DSH checks GitHub daily while running; **Check** permits another network check after at least one minute. A failed check is shown as an error, with an automatic retry after one hour. It never means that the installed version is current, and checking never installs a package.
 
 Choose **Review update**, read the version and plain-text notes, then **Confirm upgrade**. Only compatible stable releases of this package are accepted. The plugin checks the release metadata, package checksum and archive contents, saves a private verified package, then delegates installation to DSH for this profile. Conversations and trash are retained; archive changes pause during replacement. Follow any full-quit-and-reopen prompt to load the installed version. If the result is uncertain, check its status or retry the same request; if it remains uncertain, fully quit and reopen DSH to reconcile before another upgrade.
 

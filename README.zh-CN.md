@@ -4,9 +4,9 @@
 
 直接在 DSH 桌面端，把已归档会话移入可恢复的回收站。需要时恢复；只有确认后，才永久清除选中的回收站记录。也可查看 DSH 存储与一个选定工作区的文件大小，不改动这些文件。
 
-`@qwqbig/dsh-archive-delete` · [Apache-2.0](LICENSE) · **DSH Desktop `0.2.1-rc.3` · 官方 JSONL 存储**
+`@qwqbig/dsh-archive-delete` · **v0.0.1** · [Apache-2.0](LICENSE) · **DSH Desktop `0.2.1-rc.3` · 官方 JSONL 存储**
 
-支持 **macOS 和 Windows**。各版本的验证状态与 Desktop 图形界面限制详见 [验收记录](docs/acceptance.zh-CN.md)。
+支持 **macOS 和 Windows**。验证状态与 Desktop 图形界面限制详见 [验收记录](docs/acceptance.zh-CN.md)。
 
 ## 功能
 
@@ -25,7 +25,7 @@
 在 DSH 桌面端使用 **插件 → 添加插件**，输入固定版本的 Release 安装包地址：
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.1/qwqbig-dsh-archive-delete-0.0.1.tgz
 ```
 
 1. **安装：** 输入上方地址并启用插件。需要重启时，请完全退出 DSH 再打开：macOS 使用 **⌘Q／退出**，Windows 使用应用的 **退出** 命令；仅关闭窗口可能仍保留进程。
@@ -34,13 +34,13 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh
 
 **待重启处理** 表示日志仍在原位置，尚未释放空间。选择 **取消等待并重新核对** 会结束旧排队请求，并打开新的移动预览；选择 **取消待处理** 只撤回请求。只有再次确认后才尝试立即移动。成功移入后，在 **回收站 → 永久清除** 操作，无需重启。活动工作、待处理输入、外部写占用或缺少安全释放能力时，仍会保护数据。每页／每批最多 100 个目标，全选只作用于当前页；换页、切换页签或排序会清空选择；已归档与回收站支持默认顺序或按大小降序排列。
 
-Release 安装包包含声明的可安装文件和预编译宿主／浏览器产物，不包含源码、测试、锁文件或 CI 配置，并提供对应的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.6/qwqbig-dsh-archive-delete-0.1.6.tgz.sha256)。用户无需 Git 或源码构建。
+Release 安装包包含声明的可安装文件和预编译宿主／浏览器产物，不包含源码、测试、锁文件或 CI 配置，并提供对应的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.1/qwqbig-dsh-archive-delete-0.0.1.tgz.sha256)。用户无需 Git 或源码构建。
 
-插件管理器会在当前 profile 安装包并注册 bundle。CLI 适用于受管理或无人值守的环境，需要核对注册状态。`0.1.5` 之前的版本需先添加一次 `0.1.5` Release 地址，才能获得插件内更新入口；`pnpm update` 不会跟踪新的 Release 资产。[安装使用指南](docs/installation.zh-CN.md) 包含升级、CLI 卸载后的 bundle 清理、profile 范围、完整重启、排错，以及核对配置和访问权限的只读 Doctor。
+插件管理器会在当前 profile 安装包并注册 bundle。CLI 适用于受管理或无人值守的环境，需要核对注册状态。后续兼容发行版可通过 **插件更新** 获取；`pnpm update` 不会跟踪新的 Release 资产。[安装使用指南](docs/installation.zh-CN.md) 包含升级、CLI 卸载后的 bundle 清理、profile 范围、完整重启、排错，以及核对配置和访问权限的只读 Doctor。
 
 ## 从 GitHub 更新
 
-从 `0.1.5` 开始，插件详情与管理弹窗提供 **插件更新**，仅在受支持的 DSH Desktop `0.2.1-rc.3`、可验证的 profile 安装归属与原生管理器下启用；它不是在不受支持的未来 DSH 版本上的自升级通道。DSH 运行期间每天检查一次 GitHub；**检查更新** 至少间隔一分钟才会再次发起网络请求。检查失败会显示错误，并在一小时后自动重试；失败不代表当前已是最新，也不会开始安装。
+插件详情与管理弹窗以一行展示版本／更新状态，**详情** 可展开检查策略与上次检查信息；核对移入、恢复或永久清除时隐藏更新控件。更新仅在受支持的 DSH Desktop `0.2.1-rc.3`、可验证的 profile 安装归属与原生管理器下启用，不是在不受支持的未来 DSH 版本上的自升级通道。DSH 运行期间每天检查一次 GitHub；**检查更新** 至少间隔一分钟才会再次发起网络请求。检查失败会显示错误，并在一小时后自动重试；失败不代表当前已是最新，也不会开始安装。
 
 选择 **查看并升级**，核对版本及纯文本更新说明，再点击 **确认升级**。只接受本插件兼容的稳定发行版；插件校验发行元数据、安装包校验和与归档内容，保存到私有缓存后，再由 DSH 为当前 profile 安装。会话和回收站保留，替换期间暂停归档变更；需要时按提示完整退出并重开，加载已安装的版本。结果不明确时，先核对状态或重试同一次请求；仍不明确时，完整退出并重开 DSH 对账，再考虑新升级。
 
