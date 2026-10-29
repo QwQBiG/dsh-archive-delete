@@ -2,7 +2,7 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
-## 0.1.5 — Unreleased
+## 0.1.5 — 2026-10-29
 
 - Add daily compatible stable-release checks from this package's GitHub repository and a manually requested check with a one-minute minimum interval; failed checks remain errors and retry after one hour.
 - Add update cards in plugin details and the management dialog, with running/installed versions, plain-text release notes and an explicit confirmation before installation.

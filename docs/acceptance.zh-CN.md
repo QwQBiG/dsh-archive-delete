@@ -77,16 +77,16 @@ node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-
 
 ## 验证状态 — 0.1.5
 
-状态：尚未发布。两平台自动验证已通过，Desktop 图形界面的最终确认／安装与重启结果仍未完成。
+状态：发布验证已完成。两个平台的自动验证已通过，下方隔离 macOS Desktop 的确认、激活及重启检查也已完成。
 
 ### 已完成的 CI 与本机验证
 
-日期：2026-10-29。运行 `40853917318` 的两个任务均以运行／客户端提交 `2c3e281aaa3cc55e8be59bbfdd23bace0e78bbd9` 通过，使用官方 DSH `0.2.1-rc.3`、Node `24.21.0`、pnpm `11.28.5`、隔离运行时与合成 profile。
+日期：2026-10-29。运行 `40856818666` 的两个任务均以运行／客户端提交 `d1398658f3e040f11533aef4f0a210b36c45d0b5` 通过，使用官方 DSH `0.2.1-rc.3`、Node `24.21.0`、pnpm `11.28.5`、隔离运行时与合成 profile。
 
 | 平台 | 已完成 CI 证据 | 单元／客户端／服务／扫描／更新 | 原生集成 |
 | --- | --- | --- | --- |
-| macOS（macos-14） | [运行 40853917318，任务 123379996983](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40853917318/job/123379996983) | 193 项通过，3 项 Windows 专用跳过，共 196 项 | 17 项通过，1 项 Windows 专用跳过，共 18 项 |
-| Windows（windows-latest） | [运行 40853917318，任务 123379996635](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40853917318/job/123379996635) | 193 项通过，3 项 POSIX 专用跳过，共 196 项 | 18 项通过，0 项跳过，共 18 项 |
+| macOS（macos-14） | [运行 40856818666，任务 123389738323](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40856818666/job/123389738323) | 193 项通过，3 项 Windows 专用跳过，共 196 项 | 17 项通过，1 项 Windows 专用跳过，共 18 项 |
+| Windows（windows-latest） | [运行 40856818666，任务 123389737770](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40856818666/job/123389737770) | 193 项通过，3 项 POSIX 专用跳过，共 196 项 | 18 项通过，0 项跳过，共 18 项 |
 
 - 两个平台均通过类型／构建、已提交 `lib` 比对、文档检查（7 对、62 个相对链接）、包校验、打包、SHA-256 与更新元数据生成、严格更新器准入，以及隔离包生命周期：安装、回环 URL 升级、重装和卸载。
 - GitHub 来源测试覆盖稳定／兼容选择、有限的元数据发现、固定 URL／CDN 重定向、确认漂移、SHA-256、恶意 tar／清单、依赖／钩子拒绝、大小上限、取消、超时、限流和离线错误，使用合成 HTTP 响应；`check-update-package.mjs` 还通过本地响应夹具，针对实际生成资产验证发行发现、身份重新校验、校验和及安装包准入。
@@ -95,13 +95,15 @@ node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-
 - 本机 macOS 在最后一项界面错误文案回归加入前，完整验证共 195 项，192 项通过、3 项 Windows 专用跳过；随后单独运行的界面测试共 26 项全部通过，包含该回归。上方最终 CI 共 196 项，已覆盖新增项。本机打包、元数据／更新器准入及隔离包生命周期也通过，复用已安装 DSH 运行时，没有另行下载应用。
 - 另一次针对固定 GitHub 公开发行接口的只读检查返回 `current`，未下载应用或安装包，不作为公网安装耗时证据。
 
-### macOS Desktop 图形证据与剩余检查
+### macOS Desktop 图形证据与限制
 
-通过 APFS 克隆复用本机已安装应用，使用独立 home/profile/userData 及合成会话／项目文件；外壳改动仅用于 QA 隔离与钩子，实际宿主使用原生界面和 HMR。没有使用真实 profile／历史，也没有再下载一个应用。
+通过 APFS 克隆复用本机已安装应用，使用独立 home/profile/userData 及合成会话／项目文件。测试外壳继承了本机改动，并增加隔离／诊断钩子和合成 GitHub 响应；这不作为全新外壳或公网升级证据。宿主使用原生界面、profile 管理器和 HMR。没有使用真实 profile／历史，也没有再下载一个应用。
 
-已实际看到原生 **Plugin updates** 卡片中的 **Running 0.1.5**、合成可用版本 `0.1.6`、发行链接及 **Review update**。展开后显示纯文本中英文合成更新说明、安装范围及 **Cancel / Confirm upgrade** 控件；点击 **Cancel** 后，文件侧核对已安装版本仍为 `0.1.5`，没有安装日志或 `.tgz` 下载。已记录合成会话／项目的哈希基线，供后续保留检查使用。
+原生 **Plugin updates** 卡片显示 **Running 0.1.5**、合成可用版本 `0.1.6`、发行链接及 **Review update**。展开后显示纯文本中英文合成说明、安装范围和 **Cancel / Confirm upgrade** 控件。取消后已安装版本仍为 `0.1.5`，没有安装日志或 `.tgz` 下载。点击 **Confirm upgrade** 后，原生管理器将已校验包保存到私有缓存，并将该文件登记为 profile 依赖；持久记录报告 `installed`。
 
-继续图形验证时 Mac 锁屏，computer use 要求用户手动解锁，目前已发出解锁请求。最终 **Confirm upgrade** 点击、真实图形安装、已安装／正在运行版本或重启显示，以及安装后哈希比较尚未完成，不能记为通过；上方自动原生管理器成功／回滚属于单独证据。Windows Desktop 图形界面仍未目视验证，先前已完成版本记录保留如下。
+重新打开详情页后显示 **v0.1.6**、**Running 0.1.6**、**The new version is installed and active** 及一个运行中的组件。管理弹窗正常打开，并显示一个合成归档会话。通过菜单完全退出、核对进程结束再重开后，新版仍已生效，成功记录保持完整。合成会话日志和项目文件的 SHA-256 与升级前一致，当前主 Desktop profile 未改动。
+
+图形夹具构建自 `e408281f55dd4ee43099e9381b1ada3d1d9c3e8a`；之后的服务不可用文案、Windows 夹具调用及已解决不确定状态诊断修复，由上方最终 CI 覆盖。合成 `0.1.6` 从未公开发布。这次 HMR 成功不保证所有后续升级都无需重启，也不保证任意激活失败都能完整回滚。Windows Desktop 图形界面仍未目视验证，先前已完成版本记录保留如下。
 
 ## 历史 CI 验证 — 0.1.4
 

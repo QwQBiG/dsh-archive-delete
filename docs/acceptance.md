@@ -77,16 +77,16 @@ node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-
 
 ## Verification status — 0.1.5
 
-Status: unreleased. Automated verification passed on both platforms; the Desktop graphical confirmation/install and restart outcome remain incomplete.
+Status: release verification completed. Automated verification passed on both platforms, and the isolated macOS Desktop confirmation, activation and restart checks below completed.
 
 ### Completed CI and local verification
 
-Date: 2026-10-29. Both jobs in run `40853917318` passed on runtime/client commit `2c3e281aaa3cc55e8be59bbfdd23bace0e78bbd9`, using official DSH `0.2.1-rc.3`, Node `24.21.0`, pnpm `11.28.5`, isolated runtimes and synthetic profiles.
+Date: 2026-10-29. Both jobs in run `40856818666` passed on runtime/client commit `d1398658f3e040f11533aef4f0a210b36c45d0b5`, using official DSH `0.2.1-rc.3`, Node `24.21.0`, pnpm `11.28.5`, isolated runtimes and synthetic profiles.
 
 | Platform | Completed CI evidence | Unit/client/service/scanner/updater | Native integration |
 | --- | --- | --- | --- |
-| macOS (macos-14) | [Run 40853917318, job 123379996983](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40853917318/job/123379996983) | 193 passed, 3 Windows-only skipped; 196 total | 17 passed, 1 Windows-only skipped; 18 total |
-| Windows (windows-latest) | [Run 40853917318, job 123379996635](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40853917318/job/123379996635) | 193 passed, 3 POSIX-only skipped; 196 total | 18 passed, 0 skipped; 18 total |
+| macOS (macos-14) | [Run 40856818666, job 123389738323](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40856818666/job/123389738323) | 193 passed, 3 Windows-only skipped; 196 total | 17 passed, 1 Windows-only skipped; 18 total |
+| Windows (windows-latest) | [Run 40856818666, job 123389737770](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40856818666/job/123389737770) | 193 passed, 3 POSIX-only skipped; 196 total | 18 passed, 0 skipped; 18 total |
 
 - Both jobs passed type/build checks, the committed `lib` comparison, documentation checks (7 pairs, 62 relative links), package validation, packing, SHA-256 and update-metadata generation, strict updater admission, and the isolated package lifecycle: installation, loopback-URL upgrade, reinstall and uninstall.
 - GitHub-source tests cover stable/compatible selection, bounded metadata-only discovery, fixed URLs/CDN redirects, changed confirmations, SHA-256, malicious tar/manifest content, dependency/hook refusal, size limits, cancellation, timeouts, rate limiting and offline errors. Source tests use synthetic HTTP responses. `check-update-package.mjs` also exercises discovery, pin revalidation, checksum and package admission against the actual generated assets through local response fixtures.
@@ -95,13 +95,15 @@ Date: 2026-10-29. Both jobs in run `40853917318` passed on runtime/client commit
 - Local macOS full verification passed 192 checks with 3 Windows-only skips out of 195 before the final UI error-message regression was added. A subsequent targeted UI run passed all 26 checks, including that regression; the final CI totals above include all 196. Local packing, metadata/updater admission and the isolated package lifecycle also passed, reusing the installed DSH runtime without downloading another app.
 - A separate read-only check against the public fixed GitHub release endpoint returned `current`. It downloaded no app or package and is not public-network installation timing evidence.
 
-### macOS Desktop graphical evidence and remaining checks
+### macOS Desktop graphical evidence and limits
 
-The installed app was reused through an APFS clone, with separate home/profile/userData and synthetic conversations/project files. Shell changes were limited to QA isolation/hooks; the live host used its native UI and HMR. No real profile/history was used and no second app was downloaded.
+The installed app was reused through an APFS clone, with separate home/profile/userData and synthetic conversations/project files. The test shell inherited local changes and added isolation/diagnostic hooks and synthetic GitHub responses; this is not a pristine-shell or public-network upgrade claim. The host used its native UI, profile manager and HMR. No real profile/history was used and no second app was downloaded.
 
-The native **Plugin updates** card visibly showed **Running 0.1.5**, a synthetic available `0.1.6`, its Release link, and **Review update**. Expanding review displayed English/Chinese synthetic notes as plain text, the installation scope, and **Cancel / Confirm upgrade** controls. Clicking **Cancel** left the installed version at `0.1.5`; no installation journal or `.tgz` download appeared. Synthetic session/project hash baselines were recorded for subsequent retention checks.
+The native **Plugin updates** card showed **Running 0.1.5**, a synthetic available `0.1.6`, its Release link, and **Review update**. Review displayed English/Chinese synthetic notes as plain text, the installation scope, and **Cancel / Confirm upgrade** controls. Cancellation left `0.1.5` installed, without an installation journal or `.tgz` download. After **Confirm upgrade**, the native manager saved the verified package in the private cache and registered that file as the profile dependency. The durable receipt reported `installed`.
 
-The Mac then locked during the continuing GUI run. Computer use requires the user to unlock it manually; the unlock request is pending. The final **Confirm upgrade** click, actual graphical installation, installed/running-version or restart display, and post-install hash comparison have not completed and are not recorded as passed. Automated native-manager success/rollback above is separate evidence. Windows Desktop GUI has not been visually tested. Earlier completed release records remain below.
+Reopening the details panel showed **v0.1.6**, **Running 0.1.6**, **The new version is installed and active**, and one running component. The management dialog opened with the one synthetic archived session. A full menu quit, process exit and reopen retained that active version and successful receipt. Synthetic session-log and project-file SHA-256 values matched their pre-upgrade baselines. The primary Desktop profile was not changed.
+
+The graphical fixture was built from `e408281f55dd4ee43099e9381b1ada3d1d9c3e8a`; the later unavailable-service message, Windows fixture invocation and resolved-uncertainty diagnostic fixes are covered by the final CI above. The synthetic `0.1.6` was never published. This one HMR success does not guarantee every future upgrade activates without restart or fully rolls back arbitrary activation failures. Windows Desktop GUI has not been visually tested. Earlier completed release records remain below.
 
 ## Historical CI verification — 0.1.4
 
