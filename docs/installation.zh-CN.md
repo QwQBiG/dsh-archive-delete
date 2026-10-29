@@ -13,7 +13,7 @@
 打开 **插件 → 添加插件**，粘贴固定版本的 Release 安装包地址：
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh-archive-delete-0.1.4.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz
 ```
 
 1. **添加并启用。** 原生管理器会在当前 profile 安装依赖并注册 bundle；提示重启时，完全退出 DSH 再打开。
@@ -22,17 +22,17 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh
 
 Release `.tgz` 资产仅包含包声明的可安装文件及预编译 `lib/` 产物。`codeload` 仓库归档还包含源码、测试、锁文件和 CI 配置，不是推荐安装包。安装无需源码构建、依赖 `prepare` 或安装钩子。这些版本暂不发布到 npm。
 
-下载后，请保留配套的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh-archive-delete-0.1.4.tgz.sha256)。两个文件位于同一目录时，macOS 可运行：
+下载后，请保留配套的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz.sha256)。两个文件位于同一目录时，macOS 可运行：
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.4.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.1.5.tgz.sha256
 ```
 
 Windows PowerShell 中，将输出的哈希与校验文件比较：
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.1.4.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.1.4.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.1.5.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.1.5.tgz.sha256
 ```
 
 固定版本 URL 标识所选发行版，校验文件用于核对下载内容；不同版本不承诺固定字节大小。
@@ -92,7 +92,7 @@ CLI 适用于能自行核对 profile 并重启宿主的受管理或无人值守�
 支持 Desktop profile 的 DSH CLI 可使用：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh-archive-delete-0.1.4.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz
 ```
 
 包管理器成功退出本身不代表已启用。经过管理器的 CLI 可自动注册 bundle，仅安装依赖的路径则可能遗漏。若独立 CLI 拒绝保留的 `desktop` profile，请使用 Desktop 管理器，不要改选其他 profile。
@@ -117,7 +117,7 @@ dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/re
 实际启动目标宿主，核对插件组件正在运行、详情中有 **管理归档、回收站与存储**，且弹窗可以响应。成功完成恢复和鉴权 API 注册后，本次启动会输出类似日志：
 
 ```text
-[archive-delete] v0.1.4 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.1.5 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
 应查看当前进程的新日志，并核对其中版本和路径；禁用或启动失败时不会输出此行。`--dump-config` 等配置导出可能在存在无法解析的 bundle 时仍成功，不能证明已启动或已启用。
@@ -160,7 +160,33 @@ Windows PowerShell 请替换为既有 Node 24+ 可执行文件和运行时目录
 
 自定义 home/profile 时请替换为实际值。能通过 profile 解析宿主时，`--runtime` 可省略。未提供该参数且无法解析宿主时，Doctor 报告警告而不猜测；显式提供的运行时无效时，检查失败。`--json` 输出结构化结果，`--lang en`／`--lang zh` 选择报告语言，`--help` 列出支持的选项。数据目录缺失可能表示插件尚未启动，会作为警告报告；当前启用状态仍需核对上方的新加载日志及可响应的管理弹窗。Doctor 不会下载另一个运行时。
 
-## 固定 URL 的升级方式
+## 插件内更新
+
+低于 `0.1.5` 的安装需先使用上方 Release 地址手动升级一次；旧版尚无更新控件。从 `0.1.5` 开始，可在插件详情或管理弹窗中打开 **插件更新**。
+
+### 检查与确认
+
+只有受支持的 DSH Desktop `0.2.1-rc.3`、可验证的当前 profile 安装归属及原生管理器都满足条件时，才启动自动检查。宿主不受支持时，原有兼容门禁仍有效，本更新器不是未来 DSH 版本上的自升级通道。DSH 运行期间，成功检查会缓存 24 小时；**检查更新** 最短间隔一分钟才会请求新结果，更早点击会使用已有记录。网络、限流或元数据失败仍显示错误，一小时后自动重试，不代表已安装版本就是最新。检查本身不下载完整安装包，也不安装任何内容。
+
+只考虑 `QwQBiG/dsh-archive-delete` 中的稳定发行版，并要求精确匹配 DSH 版本、支持当前 macOS／Windows 平台。选择 **查看并升级** 阅读版本和纯文本更新说明，再点击 **确认升级**。发行内容发生变化时，必须重新检查并核对。浏览器只提交候选标识和请求标识，不提供 URL 或安装包路径。
+
+安装通过 DSH 原生管理器，只替换当前 profile 中的同一个插件包，不安装到其他 profile，不删除会话历史或清空回收站。替换前暂停归档变更，并等待已接受的操作结束。已安装版本与正在运行版本不同时，请按提示完整退出并重开 DSH；插件内升级不承诺无需重启就立即生效。
+
+### 已校验安装包与保留的缓存
+
+委托安装前，插件会重新检查发行身份和元数据，下载已确认的包，核对精确大小与 SHA-256，再验证受限 gzip／tar 及包清单。必须符合预期包名／版本、精确 DSH 要求，并包含 bundle patch 和预编译文件；链接、不安全／重复归档路径、安装钩子、运行／可选／捆绑依赖，以及未经允许或非可选的 peer 都会拒绝。此校验阶段不解压写入文件，也不执行包代码。
+
+已校验归档保存于私有路径 `<DSH_HOME>/archive-delete/updates/packages/<version>-<sha256>.tgz`。原生管理器安装该本地文件，因此 profile 依赖可能显示为 `file:` 来源，而不是 GitHub URL。GitHub 仍是唯一分发来源，本地文件只是保留的已校验安装包；请与 profile 一起保留，供包管理器重装／复现安装。目前不会自动清理缓存，存储概览也不提供这些安装包的删除操作。
+
+`updates/<sha256(profileId)>.check.json` 保存检查时间与公开候选信息；`updates/<sha256(profileId)>.installation.json` 单独保存安装请求和结果。服务端从规范化 profile 目录推导 `profileId`，因此共享 DSH home 的 profile 各有更新记录，已校验安装包则共享 `packages` 目录。这些记录不是会话备份；卸载插件会将记录与安装包和回收站一起保留，不应把它们作为常规安装／卸载步骤删除。
+
+### 失败、卸载生命周期与不确定结果
+
+原生管理器不可用、安装属于内置／归属不明，或无法确认 profile 所有权时，使用下方手动 Release URL 路径。原生安装前的网络／完整性失败不会运行安装包。原生包管理失败已有清单／锁文件回滚覆盖，但新插件代码激活阶段失败，无法保证正在运行的应用完全回到旧状态；重试前请核对诊断与已安装／正在运行版本。
+
+关闭弹窗不会取消已经确认的升级。插件卸载生命周期会停止自动检查，但不会取消或等待已委托给宿主的安装：替换本身可能卸载旧插件，此时等待会造成死锁。中断后，通过 **核对安装状态** 与已安装包对照；**重试同一次请求** 会保留请求身份，不另发第二次升级，也不把响应丢失当作成功。若结果仍未知，请完整退出并重开 DSH 对账。已安装／正在运行状态未确认或 DSH 尚未完整重启时，继续保护归档变更。
+
+## 手动升级固定 URL
 
 Release URL 和固定 Git tag 都会固定安装版本。`pnpm update` 不会发现在其他 URL 上发布的新资产；内容可变化的 `main` 归档 URL 也不是版本跟踪机制。选择已发布的新版本，在同一 profile 的插件管理器中添加它的 **新固定版本资产 URL**。包名仍为 `@qwqbig/dsh-archive-delete`，添加新来源会替换既有依赖规格，无需先卸载。
 
@@ -178,7 +204,7 @@ dsh plugin --profile desktop remove @qwqbig/dsh-archive-delete
 
 打开相同 profile 的 `package.json`，若 `dsh.profile.bundles` 中仍有 `@qwqbig/dsh-archive-delete`，**只移除这个条目**，保留其他 bundle 和字段；保存为有效 JSON 后重新打开 DSH。移除依赖却未清理此条目，可能反复出现 `skipping profile bundle … cannot resolve` 启动诊断。不要通过包生命周期钩子自动修改正在使用的 profile。
 
-卸载保留 `<DSH_HOME>/archive-delete/`，其中包括回收站及待处理／恢复记录。重新安装受支持版本后可检查。备份时将这些记录与回收站一起保留，不要在移除依赖时删除它们。
+卸载保留 `<DSH_HOME>/archive-delete/`，包括回收站、待处理／恢复记录、更新日志和缓存安装包。重新安装支持版本后可继续查看；备份时请与回收站和 profile 一起保存，不要在移除依赖时删除。开始另一次包替换或移除前，先核对正在进行或结果不明的升级。
 
 ## 安装排错
 
@@ -191,6 +217,10 @@ dsh plugin --profile desktop remove @qwqbig/dsh-archive-delete
 | 宿主／版本不受支持 | 运行时门禁拒绝 | 核对诊断与管理弹窗中的所需／当前版本，使用 Desktop `0.2.1-rc.3` 及受支持存储和能力；`engines.dsh` 是描述字段，不是 pnpm 安装门禁。 |
 | 旧安装出现 peer 缺失警告 | 包元数据较旧或缺少运行时能力 | 当前宿主 peer 已标为可选；核对已安装插件版本及运行时诊断，不要在 profile 中额外安装另一套 Cordis／React／原生绑定。 |
 | 内部 Node 包装脚本报 `exec: : not found` | 缺少 Desktop 启动环境 | 使用已安装的 DSH 命令或原生管理器；开发／诊断需要真实 Node 24+ 可执行文件，见 [参与贡献](../CONTRIBUTING.zh-CN.md)。 |
+| 更新检查失败或被限流 | GitHub／网络请求未完成 | 保留已安装版本，查看诊断并稍后检查；错误不代表“已是最新”，自动重试间隔为一小时。 |
+| 发行或安装包校验失败 | 元数据、校验和、兼容性或归档发生变化 | 重新检查并核对当前兼容发行版，不安装未通过验证的文件，也不跳过确认。 |
+| 原生更新器不可用 | 无支持的管理器，或 profile 安装归属不明 | 在当前 profile 的原生插件管理器中使用固定 Release URL 手动升级。 |
+| 磁盘已装新版但仍运行旧版，或结果不明确 | 激活／重启要求或响应中断 | 按提示完整重启，或核对安装状态／重试同一次请求；保留更新记录和缓存。 |
 
 失败时保留所示状态，只重试相应目标。报告问题时提供宿主／插件版本和脱敏合成复现，预期操作状态见 [恢复规则](operations.zh-CN.md)。
 
@@ -201,14 +231,16 @@ dsh plugin --profile desktop remove @qwqbig/dsh-archive-delete
 ```sh
 pnpm install --frozen-lockfile
 pnpm verify
-pnpm pack
+pnpm pack --pack-destination artifacts
+node scripts/release-artifacts.mjs artifacts
+node --import tsx scripts/check-update-package.mjs artifacts
 ```
 
 已安装 DSH CLI 时，创建全新测试 home，安装到其隔离 `web` profile。在 POSIX shell 中：
 
 ```sh
 DSH_ARCHIVE_DELETE_TEST_HOME="$(mktemp -d)"
-DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/qwqbig-dsh-archive-delete-0.1.4.tgz"
+DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/artifacts/qwqbig-dsh-archive-delete-0.1.5.tgz"
 ```
 
 按上文核对隔离 profile 的注册和启用。Windows 使用 [参与贡献](../CONTRIBUTING.zh-CN.md) 中的自动隔离包生命周期检查；手动启动该宿主时保留临时 home 路径。打包产物可避免开发依赖进入运行时，主历史不能作为测试材料。

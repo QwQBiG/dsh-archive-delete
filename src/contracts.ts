@@ -1,4 +1,5 @@
 import type { UsageScanResult } from './storage-usage.js';
+import type { UpdateOverview } from './update-contracts.js';
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 export const PACKAGE_NAME = '@qwqbig/dsh-archive-delete';
@@ -54,14 +55,18 @@ export type ApiRequest =
   | { action: 'preview'; operation: Action; ids: string[] }
   | { action: 'execute'; previewId: string; requestId: string }
   | { action: 'cancelPending'; ids: string[]; requestId: string }
+  | { action: 'updates'; force: boolean }
+  | { action: 'installUpdate'; candidateId: string; requestId: string }
   | { action: 'storage'; workspaceId?: string };
-export type ApiResponse = { ok: true; value: Overview | Preview | BatchResult | StorageOverview } | { ok: false; error: { code: string; message: string } };
+export type ApiResponse = { ok: true; value: Overview | Preview | BatchResult | StorageOverview | UpdateOverview } | { ok: false; error: { code: string; message: string } };
 export interface ArchiveApi {
   list(): Promise<Overview>;
   preview(action: Action, ids: string[]): Promise<Preview>;
   execute(previewId: string, requestId: string): Promise<BatchResult>;
   cancelPending(ids: string[], requestId: string): Promise<BatchResult>;
   storage?(workspaceId?: string, signal?: AbortSignal): Promise<StorageOverview>;
+  updates?(force?: boolean): Promise<UpdateOverview>;
+  installUpdate?(candidateId: string, requestId: string): Promise<UpdateOverview>;
 }
 export interface Lease { release(): Promise<void> }
 export type LeaseResult = { kind: 'acquired'; lease: Lease } | { kind: 'loaded'; message: string } | { kind: 'busy'; message: string };

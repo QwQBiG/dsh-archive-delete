@@ -51,11 +51,24 @@ export class ArchiveService implements ArchiveApi {
   private startupFailures: ItemResult[] = [];
   private initialized = false;
   private closing = false;
+  private maintenance: 'update-in-progress' | 'update-restart-required' | undefined;
   private readonly requests: RequestJournal;
   constructor(readonly adapter: DshAdapter, readonly store: TrashStore) { this.requests = new RequestJournal(store.root); }
   private serialize<T>(work: () => Promise<T>): Promise<T> {
     if (this.closing) return Promise.reject(new ArchiveError('plugin-stopping', 'The plugin is stopping. Refresh after it reloads.'));
-    const task = this.tail.then(work, work); this.tail = task.catch(() => {}); return task;
+    const guarded = () => {
+      if (this.maintenance) throw new ArchiveError(this.maintenance, 'A plugin update is in progress or waiting for a restart.');
+      return work();
+    };
+    const task = this.tail.then(guarded, guarded); this.tail = task.catch(() => {}); return task;
+  }
+  /** Drain archive work before package replacement, without putting installation
+   * inside the tail: HMR may await close() while the native manager still runs. */
+  async beginUpdate(): Promise<(restartRequired?: boolean) => void> {
+    return this.serialize(async () => {
+      this.maintenance = 'update-in-progress';
+      return restartRequired => { this.maintenance = restartRequired ? 'update-restart-required' : undefined; };
+    });
   }
   async close(): Promise<void> { this.closing = true; await this.tail; }
   private async supported(): Promise<void> {

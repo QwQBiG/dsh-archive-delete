@@ -2,6 +2,9 @@ import React, { useCallback, useSyncExternalStore } from 'react';
 import { API_PATH, PACKAGE_NAME, ArchiveError, type Action, type ApiRequest, type ArchiveApi, type BatchResult, type Overview, type Preview, type StorageOverview } from './contracts.js';
 import { ArchiveClientController, ClientTransportError } from './client-state.js';
 import { ArchiveDialog, CLIENT_CSS, CLIENT_NAMESPACE, en, zh, type NativePrimitives, type Translate } from './client-ui.js';
+import { UpdateClientController } from './update-client.js';
+import { UpdateCard } from './update-ui.js';
+import type { UpdateOverview } from './update-contracts.js';
 
 type HostRequire = (name: string) => unknown;
 type Observable<T> = { getSnapshot(): T; subscribe(listener: () => void): () => void };
@@ -69,6 +72,27 @@ function isBatchResult(value: unknown): value is BatchResult {
     && object(value.counts) && ['succeeded', 'pending', 'skipped', 'failed'].every((key) => finite((value.counts as Record<string, unknown>)[key]))
     && Array.isArray(value.items) && value.items.every((item) => object(item) && typeof item.id === 'string' && typeof item.title === 'string' && ['moved', 'pending', 'restored', 'purged', 'cancelled', 'skipped', 'failed'].includes(String(item.status)));
 }
+function isUpdateOverview(value: unknown): value is UpdateOverview {
+  const version = (v: unknown) => typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v);
+  if (!object(value) || !version(value.currentVersion) || !version(value.installedVersion) || typeof value.hostVersion !== 'string'
+    || !['unknown', 'current', 'available', 'incompatible', 'error'].includes(String(value.availability)) || typeof value.canInstall !== 'boolean'
+    || (value.checkedAt !== undefined && !count(value.checkedAt)) || (value.nextCheckAt !== undefined && !count(value.nextCheckAt))
+    || (value.code !== undefined && typeof value.code !== 'string')) return false;
+  if (value.candidate !== undefined) {
+    const c = value.candidate;
+    if (!object(c) || typeof c.id !== 'string' || c.id.length > 512 || !version(c.version) || typeof c.requiredDshVersion !== 'string'
+      || typeof c.publishedAt !== 'string' || typeof c.notes !== 'string' || c.notes.length > 64_000 || !count(c.assetBytes)
+      || c.releaseUrl !== `https://github.com/QwQBiG/dsh-archive-delete/releases/tag/v${c.version}`) return false;
+  }
+  if (value.availability === 'available' && value.candidate === undefined) return false;
+  if (value.installation !== undefined) {
+    const i = value.installation;
+    if (!object(i) || typeof i.requestId !== 'string' || !version(i.version)
+      || !['installing', 'installed', 'restart-required', 'failed', 'interrupted', 'unknown'].includes(String(i.status))
+      || (i.code !== undefined && typeof i.code !== 'string')) return false;
+  }
+  return true;
+}
 
 /** Calls only the authenticated, same-origin DSH gateway; neither paths nor credentials are accepted. */
 export function createArchiveApi(transport: typeof fetch = globalThis.fetch.bind(globalThis), baseUri?: string): ArchiveApi {
@@ -103,6 +127,8 @@ export function createArchiveApi(transport: typeof fetch = globalThis.fetch.bind
     execute: (previewId, requestId) => request({ action: 'execute', previewId, requestId }, isBatchResult),
     cancelPending: (ids, requestId) => request({ action: 'cancelPending', ids, requestId }, isBatchResult),
     storage: (workspaceId, signal) => request({ action: 'storage', ...(workspaceId ? { workspaceId } : {}) }, isStorageOverview, signal),
+    updates: (force = false) => request({ action: 'updates', force }, isUpdateOverview),
+    installUpdate: (candidateId, requestId) => request({ action: 'installUpdate', candidateId, requestId }, isUpdateOverview),
   };
 }
 
@@ -115,9 +141,12 @@ export function startClient(require: HostRequire, apiFactory: () => ArchiveApi =
     name: 'archive-delete-client',
     inject: ['slots', 'locale', 'workspaces'],
     apply(ctx: ClientContext): void {
-      const controller = new ArchiveClientController(apiFactory());
+      const api = apiFactory();
+      const controller = new ArchiveClientController(api);
+      const updates = new UpdateClientController(api, controller);
       const disposers: Array<() => void> = [];
       ctx.effect(() => ctx.locale.register(CLIENT_NAMESPACE, { en, zh }), 'archive-delete: locale');
+      ctx.effect(() => { updates.start(); return () => updates.dispose(); }, 'archive-delete: update checks');
       ctx.effect(() => {
         if (typeof document === 'undefined') return () => {};
         const style = document.createElement('style');
@@ -136,11 +165,11 @@ export function startClient(require: HostRequire, apiFactory: () => ArchiveApi =
         return <primitives.MenuItemButton separatorBefore onSelect={() => { setMenuOpen(false); void controller.open(sessionId); }}>{t('menuTrash')}</primitives.MenuItemButton>;
       }
       function Overlay({ t }: { t: Translate }) {
-        return <ArchiveDialog controller={controller} primitives={primitives} t={t} />;
+        return <ArchiveDialog controller={controller} primitives={primitives} t={t} updates={updates} />;
       }
       function ConfigCard({ view, t }: { view?: string; t: Translate }) {
         if (view === 'summary') return null;
-        return <primitives.Button variant="outline" onClick={() => { void controller.open(); }}>{t('manage')}</primitives.Button>;
+        return <div className="dad-shell"><primitives.Button variant="outline" onClick={() => { void controller.open(); }}>{t('manage')}</primitives.Button><UpdateCard controller={updates} Button={primitives.Button} t={t} /></div>;
       }
 
       disposers.push(ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register({

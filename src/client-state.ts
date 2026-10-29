@@ -24,6 +24,7 @@ export interface ClientState {
   result: BatchResult | null;
   error: ClientError | null;
   uncertainRequest: boolean;
+  maintenance?: boolean;
   storage: StorageClientState;
 }
 
@@ -82,6 +83,9 @@ export class ArchiveClientController {
 
   getSnapshot = (): ClientState => this.state;
   get storageAvailable(): boolean { return typeof this.api.storage === 'function'; }
+  setMaintenance = (maintenance: boolean): void => {
+    this.update({ maintenance, ...(maintenance ? { preview: null, selected: [] } : {}) });
+  };
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
@@ -217,7 +221,7 @@ export class ArchiveClientController {
   }
 
   async preview(action: Action, ids = visibleSelection(this.state)): Promise<void> {
-    if (this.state.busy || this.state.tab === 'storage' || this.uncertainMutation || ids.length === 0) return;
+    if (this.state.maintenance || this.state.busy || this.state.tab === 'storage' || this.uncertainMutation || ids.length === 0) return;
     const generation = ++this.previewGeneration;
     this.update({ loading: true, error: null, preview: null });
     try {
@@ -238,7 +242,7 @@ export class ArchiveClientController {
   };
 
   async confirm(): Promise<void> {
-    if (this.state.busy || this.state.loading || this.uncertainMutation) return;
+    if (this.state.maintenance || this.state.busy || this.state.loading || this.uncertainMutation) return;
     const preview = this.state.preview;
     if (!canExecutePreview(preview, this.now())) {
       this.update({ error: { code: 'preview-expired', message: 'The preview has expired. Review the selection again.', uncertain: false } });
@@ -248,20 +252,20 @@ export class ArchiveClientController {
   }
 
   async cancelPending(ids: readonly string[]): Promise<void> {
-    if (this.state.busy || this.uncertainMutation || ids.length === 0) return;
+    if (this.state.maintenance || this.state.busy || this.uncertainMutation || ids.length === 0) return;
     await this.perform({ kind: 'cancel', ids: [...new Set(ids)], requestId: this.createId() });
   }
 
   /** Cancel the old queued consent before offering a new, explicit confirmation. */
   async reviewPending(id: string): Promise<void> {
-    if (this.disposed || !this.state.open || this.state.busy || this.state.loading || this.uncertainMutation
+    if (this.state.maintenance || this.disposed || !this.state.open || this.state.busy || this.state.loading || this.uncertainMutation
       || this.state.tab !== 'archived' || !this.state.overview?.support.supported
       || !pageItems(sortedItems(this.state.overview.archived, this.state.sort), this.state.page).some(item => item.id === id && item.pending)) return;
     await this.perform({ kind: 'cancel', ids: [id], requestId: this.createId(), review: { id, openGeneration: this.openGeneration } });
   }
 
   async retryUncertain(): Promise<void> {
-    if (this.state.busy || !this.uncertainMutation) return;
+    if (this.state.maintenance || this.state.busy || !this.uncertainMutation) return;
     await this.perform(this.uncertainMutation);
   }
 

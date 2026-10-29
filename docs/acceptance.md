@@ -56,19 +56,35 @@ The scenario table defines the acceptance targets. The verification record below
 | Current trash size | File changes after move or journaled partial purge, including a fully removed member | List/preview remaining bytes from the checked fingerprint observation, not historical manifest totals; drift invalidates old consent |
 | Sorting | Default/largest-first changes across a page boundary | Stable visible ordering, reset to page one and clear old selection/preview; pending controls retain their protections |
 | Read-only retention | Scan attachments, cache, spill, profiles, project files and receipts | No cleanup or automatic receipt expiry; all contents remain unchanged |
+| GitHub discovery | Stable/newer releases, exact host/OS compatibility, release/candidate bounds, failed network/rate checks | Metadata-only checks; daily success cache, one-minute manual throttle and one-hour failure retry; never treat failure as current or install automatically |
+| Update integrity | Changed IDs/SHA/metadata, untrusted redirects, oversized gzip/tar, traversal/links/duplicates, hooks/dependencies/peers | Reject before native installation; require a fresh matching server pin and verified package identity/prebuilt files |
+| Update admission | Profile-owned same-package target, double confirmation, request replay, archive work already accepted | Only current profile through the native manager; drain/pause archive mutations, one installation, stable request identity |
+| Update recovery | Cached/loaded version difference, response lost, unload/reload, activation failure | Independent per-profile check/install journals; reconcile installed state, retain verified file cache, protect uncertain/restart state; no full activation rollback guarantee |
+| Update UI | Details/dialog cards, notes, review/confirm/cancel, stale responses | Show running/installed versions, render notes as text and never install from check/open alone |
 | Documentation | Links, commands, and version references | Existing relative targets and consistent documented commands/versions |
 
 ## Commands
 
 ```sh
 pnpm verify
-pnpm pack
-node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.4.tgz
+pnpm pack --pack-destination artifacts
+node scripts/release-artifacts.mjs artifacts
+node --import tsx scripts/check-update-package.mjs artifacts
+node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.1.5.tgz
 ```
 
 `verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
-## CI verification — 0.1.4
+## Verification status — 0.1.5
+
+Status: implementation verification in progress; this version is not yet released. Full final-suite totals, isolated native-update outcomes and new macOS/Windows CI evidence are not yet recorded here. Earlier completed runs below describe their original versions, not this updater.
+
+- Targeted GitHub-source verification passed nine suites covering stable/compatible selection, bounded metadata-only checks, fixed URLs/CDN redirects, changed confirmations, SHA-256, malicious tar/manifest content, dependency/hook refusal, size limits, cancellation, timeouts, rate limiting and offline errors. These tests use synthetic HTTP responses, not public-network performance measurements.
+- An actual `npm pack --ignore-scripts` archive passed the source's strict packed-package validator and the release metadata generator in a disposable directory. The matching metadata and checksum were generated without installing a package into a user profile or downloading DSH.
+- A separate read-only check against the public fixed GitHub release endpoint returned `current`. It did not download an app or install a package. CI now requires `check-update-package.mjs` after metadata generation and before the installation lifecycle, exercising discovery, pin revalidation, checksum and package admission against the actual generated assets through local response fixtures.
+- Final built artifacts, complete local suites, native same-profile update/rollback/retention, both platform CI results and package lifecycle evidence remain required for release approval. No new Desktop graphical updater run, real-history operation or public-network installation timing is claimed.
+
+## Historical CI verification — 0.1.4
 
 Date: 2026-10-29. Both jobs in run 40845896781 passed on runtime commit f8a409a1967f2f252438128390e4307cca4f70ad, using official DSH 0.2.1-rc.3, Node 24.21.0, pnpm 11.28.5, isolated runtimes and synthetic profiles.
 

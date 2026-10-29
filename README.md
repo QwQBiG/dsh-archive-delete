@@ -6,7 +6,7 @@ Move archived DSH conversations to a recoverable trash, directly inside the desk
 
 `@qwqbig/dsh-archive-delete` · [Apache-2.0](LICENSE) · **DSH Desktop `0.2.1-rc.3` · official JSONL storage**
 
-Supports **macOS and Windows**. Native host integration and package installation are verified on both platforms; Windows Desktop GUI has not been visually tested. See the [acceptance record](docs/acceptance.md).
+Supports **macOS and Windows**. See the [acceptance record](docs/acceptance.md) for each version's verification status and Desktop GUI limits.
 
 ## What you get
 
@@ -15,6 +15,7 @@ Supports **macOS and Windows**. Native host integration and package installation
 - **A way back:** restore to the original workspace in archived state. A missing workspace becomes Ungrouped; existing paths are never overwritten.
 - **Work without restarting:** a confirmed move can release a wholly idle, host-managed conversation through its native lifecycle, then move it now. Already-trashed records can be permanently cleared in the same process. Protected or unavailable release paths remain pending.
 - **Storage at a glance:** manually scan DSH storage or one registered workspace; inspect categories, large files and top-level folders. The figures describe measured file bytes, not reclaimable space or identified AI output.
+- **Updates you control:** check compatible stable GitHub releases daily, review the version and release notes, then confirm installation through DSH's native manager in the current profile.
 - **A familiar interface:** the host language, theme, and native controls.
 
 Trash never expires automatically. Removing the plugin keeps the trash.
@@ -24,7 +25,7 @@ Trash never expires automatically. Removing the plugin keeps the trash.
 In DSH Desktop, use **Plugins → Add plugin** with the versioned Release package:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh-archive-delete-0.1.4.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz
 ```
 
 1. **Install:** enter the address above and enable the plugin. When asked to restart, fully quit DSH and open it again: **⌘Q / Quit** on macOS, or the app's **Exit/Quit** command on Windows. Closing a window alone can leave the process running.
@@ -33,9 +34,17 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh
 
 **Pending restart** means the original logs are still in place; no space has been freed yet. Use **Cancel waiting and review** to retire the old queued request and open a fresh move preview, or **Cancel pending move** to withdraw it. Only the new confirmation attempts an immediate move. After a successful move, use **Trash → Delete permanently** without restarting. Active work, pending input, external writers, and an unavailable safe-release capability remain protected. Each page/batch holds up to 100 targets; select-all applies to that page. Changing pages, tabs or sort order clears selection. Archived and Trash lists offer default order or largest first.
 
-The Release package contains the declared installable files and precompiled host/browser artifacts; it excludes source, tests, lockfiles, and CI configuration. Its [SHA-256 checksum](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.4/qwqbig-dsh-archive-delete-0.1.4.tgz.sha256) is provided alongside it. Users do not need Git or a source build.
+The Release package contains the declared installable files and precompiled host/browser artifacts; it excludes source, tests, lockfiles, and CI configuration. Its [SHA-256 checksum](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.5/qwqbig-dsh-archive-delete-0.1.5.tgz.sha256) is provided alongside it. Users do not need Git or a source build.
 
-The plugin manager installs the package and registers its bundle in the active profile. CLI installation is an alternative for managed or unattended setups and requires checking registration. To upgrade a fixed URL, add the newer release's URL again; `pnpm update` does not track new Release assets. [Installation and usage](docs/installation.md) covers upgrades, CLI bundle cleanup on uninstall, profile scope, full restart, troubleshooting, and the read-only Doctor for configuration and access checks.
+The plugin manager installs the package and registers its bundle in the active profile. CLI installation is an alternative for managed or unattended setups and requires checking registration. For versions before `0.1.5`, add the `0.1.5` Release URL once to obtain the in-app updater; `pnpm update` does not track new Release assets. [Installation and usage](docs/installation.md) covers upgrades, CLI bundle cleanup on uninstall, profile scope, full restart, troubleshooting, and the read-only Doctor for configuration and access checks.
+
+## Update from GitHub
+
+From `0.1.5`, **Plugin updates** appears in plugin details and the management dialog. It is enabled only on supported DSH Desktop `0.2.1-rc.3` with a verified profile-owned installation and native manager; it is not a self-upgrade path on an unsupported future DSH version. DSH checks GitHub daily while running; **Check for updates** permits another network check after at least one minute. A failed check is shown as an error, with an automatic retry after one hour. It never means that the installed version is current, and checking never installs a package.
+
+Choose **Review update**, read the version and plain-text notes, then **Confirm upgrade**. Only compatible stable releases of this package are accepted. The plugin checks the release metadata, package checksum and archive contents, saves a private verified package, then delegates installation to DSH for this profile. Conversations and trash are retained; archive changes pause during replacement. Follow any full-quit-and-reopen prompt to load the installed version. If the result is uncertain, check its status or retry the same request; if it remains uncertain, fully quit and reopen DSH to reconcile before another upgrade.
+
+GitHub remains the only distribution source. After an in-app upgrade, the profile's dependency can show `file:` pointing to `<DSH_HOME>/archive-delete/updates/packages/<version>-<sha256>.tgz`: this is the verified GitHub package kept for package-manager reproducibility. Keep that cache with the profile; there is no automatic cache cleanup. See [update behavior and recovery](docs/installation.md#updates-in-the-plugin) before removing any update files.
 
 ## Inspect storage
 
@@ -60,7 +69,9 @@ Use Node **24 or newer** and the repository's pinned pnpm version. The host prov
 ```sh
 pnpm install --frozen-lockfile
 pnpm verify
-pnpm pack
+pnpm pack --pack-destination artifacts
+node scripts/release-artifacts.mjs artifacts
+node --import tsx scripts/check-update-package.mjs artifacts
 ```
 
 Generated `lib` artifacts make GitHub installation runnable without a dependency `prepare` build. DSH and React are provided by the host.

@@ -2,9 +2,12 @@ import React, { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { SUPPORTED_DSH_VERSION, type Action, type BatchResult, type ItemStatus, type Preview, type StorageOverview, type SupportStatus } from './contracts.js';
 import { ArchiveClientController, canExecutePreview, pageCount, pageItems, selectableIds, sortedItems, visibleSelection, type ArchiveSort, type ArchiveTab, type ClientError, type ClientState, type StorageClientState } from './client-state.js';
 import type { UsageCategory, UsageCounters } from './storage-usage.js';
+import { UpdateCard, updateEn, updateZh, UPDATE_CSS } from './update-ui.js';
+import type { UpdateClientController } from './update-client.js';
 
 export const CLIENT_NAMESPACE = 'qwqbig.archiveDelete';
 export const en = {
+  ...updateEn,
   title: 'Archives, trash & storage', manage: 'Manage archives, trash and storage', menuTrash: 'Move to trash',
   archived: 'Archived', trash: 'Trash', storage: 'Storage overview', close: 'Close', refresh: 'Refresh', cancel: 'Cancel', back: 'Back',
   loading: 'Loading…', working: 'Processing the selected records…',
@@ -87,6 +90,7 @@ export const en = {
 export type TextKey = keyof typeof en;
 export type Translate = (key: TextKey, values?: Record<string, string | number>) => string;
 export const zh: Record<TextKey, string> = {
+  ...updateZh,
   title: '归档、回收站与存储', manage: '管理归档、回收站与存储', menuTrash: '移入回收站',
   archived: '已归档', trash: '回收站', storage: '存储概览', close: '关闭', refresh: '刷新', cancel: '取消', back: '返回',
   loading: '正在读取…', working: '正在处理选中的记录…',
@@ -185,6 +189,7 @@ export function localizeReason(code: string | undefined, message: string, t: Tra
     'unsafe-path': 'reasonPath', 'unsafe-lock': 'reasonPath', 'unknown-file': 'reasonPath', 'unknown-artifact': 'reasonPath',
     'path-conflict': 'reasonConflict', 'restore-conflict': 'reasonConflict', 'overlapping-targets': 'reasonOverlap',
     'store-busy': 'reasonStoreBusy',
+    'update-in-progress': 'updateWaiting', 'update-restart-required': 'updateRestart',
   };
   const key = code ? keys[code] : undefined;
   return key ? t(key) : message;
@@ -370,15 +375,15 @@ export function ResultContent({ result, t, retry, disabled, Button }: {
   </details>;
 }
 
-export function ArchiveDialog({ controller, primitives, t }: {
-  controller: ArchiveClientController; primitives: NativePrimitives; t: Translate;
+export function ArchiveDialog({ controller, primitives, t, updates }: {
+  controller: ArchiveClientController; primitives: NativePrimitives; t: Translate; updates?: UpdateClientController;
 }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
-  return <ArchiveDialogView state={state} controller={controller} primitives={primitives} t={t} />;
+  return <ArchiveDialogView state={state} controller={controller} primitives={primitives} t={t} {...(updates ? { updates } : {})} />;
 }
 
-export function ArchiveDialogView({ state, controller, primitives, t }: {
-  state: ClientState; controller: ArchiveClientController; primitives: NativePrimitives; t: Translate;
+export function ArchiveDialogView({ state, controller, primitives, t, updates }: {
+  state: ClientState; controller: ArchiveClientController; primitives: NativePrimitives; t: Translate; updates?: UpdateClientController;
 }) {
   const { Button, Checkbox, Modal } = primitives;
   const tabsId = useId();
@@ -391,7 +396,7 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
   const pages = pageCount(state);
   const supported = state.overview?.support.supported === true;
   const uncertain = state.uncertainRequest;
-  const locked = state.busy || state.loading || uncertain;
+  const locked = state.busy || state.loading || uncertain || state.maintenance;
   const preview = state.preview;
   const previewId = preview?.id;
   const archivedItems = sortedItems(state.overview?.archived ?? [], state.sort);
@@ -423,6 +428,8 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
 
   return <Modal open={state.open} onClose={controller.close} title={preview ? t(actionTitle[preview.action]) : t('title')} description={preview ? t(actionDescription[preview.action]) : state.tab === 'storage' ? t('storageIntro') : t('intro')} closeLabel={t('close')} className="dad-dialog" contentClassName="dad-content" footer={footer}>
     <div className="dad-shell">
+      {updates && <UpdateCard controller={updates} Button={Button} t={t} archiveBusy={state.busy || state.loading || uncertain} />}
+      {state.maintenance && <p className="dad-muted" role="status">{t('updateWaiting')}</p>}
       {state.error && <ErrorNotice error={uncertain ? { ...state.error, uncertain: true } : state.error} t={t} onRefresh={() => { void controller.refresh(); }} onRetry={() => { void controller.retryUncertain(); }} disabled={state.busy || state.loading} Button={Button} />}
       {state.overview && !supported && <section className="dad-alert" role="status"><strong>{t('unsupported')}</strong><p>{supportReason(state.overview.support, t)}</p><small>{t('supportDetails', { version: state.overview.support.version, platform: state.overview.support.platform })}</small></section>}
       {state.busy && <p className="dad-progress" role="status">{t('working')}</p>}
@@ -460,7 +467,7 @@ export function ArchiveDialogView({ state, controller, primitives, t }: {
   </Modal>;
 }
 
-export const CLIENT_CSS = `
+export const CLIENT_CSS = UPDATE_CSS + `
 .dad-dialog{width:min(780px,calc(100vw - 32px));max-width:calc(100vw - 32px)}
 .dad-content{max-height:min(65vh,540px);overflow:auto}
 .dad-shell{--dad-border:var(--dsw-alias-border-l1,#8883);--dad-muted:var(--dsw-alias-label-secondary,GrayText);--dad-primary:var(--dsw-alias-label-primary,CanvasText);display:flex;flex-direction:column;gap:12px;min-width:0;color:var(--dad-primary);font-size:13px;line-height:1.5}
