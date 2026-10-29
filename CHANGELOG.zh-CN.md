@@ -2,7 +2,7 @@
 
 简体中文 · [English](CHANGELOG.md)
 
-## 0.1.2 — 未发布
+## 0.1.2 — 2026-10-29
 
 - 推荐固定版本的 GitHub Release `.tgz` 资产和配套 SHA-256 校验文件，安装包不包含仅用于仓库的文件。
 - 说明通过添加新资产 URL 升级固定 URL、按 profile 启用、完整退出进程后重启，以及 CLI 卸载后的残留 bundle 核对与清理。

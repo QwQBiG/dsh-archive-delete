@@ -2,7 +2,7 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
-## 0.1.2 — Unreleased
+## 0.1.2 — 2026-10-29
 
 - Recommend versioned GitHub Release `.tgz` assets and matching SHA-256 checksums; exclude repository-only files from the installed package.
 - Explain fixed-URL upgrades by adding the new asset URL, profile-specific activation, full process restart, and verification/cleanup of stale bundle entries after CLI removal.

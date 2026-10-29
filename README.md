@@ -34,7 +34,7 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh
 
 The Release package contains the declared installable files and precompiled host/browser artifacts; it excludes source, tests, lockfiles, and CI configuration. Its [SHA-256 checksum](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh-archive-delete-0.1.2.tgz.sha256) is provided alongside it. Users do not need Git or a source build.
 
-The plugin manager installs the package and registers its bundle in the active profile. CLI installation is an alternative for managed or unattended setups and requires checking registration. To upgrade a fixed URL, add the newer release's URL again; `pnpm update` does not track new Release assets. [Installation and usage](docs/installation.md) covers upgrades, CLI bundle cleanup on uninstall, profile scope, full restart, and troubleshooting.
+The plugin manager installs the package and registers its bundle in the active profile. CLI installation is an alternative for managed or unattended setups and requires checking registration. To upgrade a fixed URL, add the newer release's URL again; `pnpm update` does not track new Release assets. [Installation and usage](docs/installation.md) covers upgrades, CLI bundle cleanup on uninstall, profile scope, full restart, troubleshooting, and the read-only Doctor for configuration and access checks.
 
 ## What changes on disk
 

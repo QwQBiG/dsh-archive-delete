@@ -34,7 +34,7 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh
 
 Release 安装包包含声明的可安装文件和预编译宿主／浏览器产物，不包含源码、测试、锁文件或 CI 配置，并提供对应的 [SHA-256 校验文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.2/qwqbig-dsh-archive-delete-0.1.2.tgz.sha256)。用户无需 Git 或源码构建。
 
-插件管理器会在当前 profile 安装包并注册 bundle。CLI 适用于受管理或无人值守的环境，需要核对注册状态。固定 URL 升级时，重新添加新版本的 Release 地址；`pnpm update` 不会跟踪新的 Release 资产。[安装使用指南](docs/installation.zh-CN.md) 包含升级、CLI 卸载后的 bundle 清理、profile 范围、完整重启及排错。
+插件管理器会在当前 profile 安装包并注册 bundle。CLI 适用于受管理或无人值守的环境，需要核对注册状态。固定 URL 升级时，重新添加新版本的 Release 地址；`pnpm update` 不会跟踪新的 Release 资产。[安装使用指南](docs/installation.zh-CN.md) 包含升级、CLI 卸载后的 bundle 清理、profile 范围、完整重启、排错，以及核对配置和访问权限的只读 Doctor。
 
 ## 磁盘上的处理范围
 

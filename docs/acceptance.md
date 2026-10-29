@@ -55,9 +55,24 @@ node scripts/verify-package-lifecycle.mjs ./qwqbig-dsh-archive-delete-0.1.2.tgz
 
 `verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
-## Current local verification — 0.1.2
+## CI verification — 0.1.2
 
-Date: 2026-10-29. The local macOS run used the existing DSH `0.2.1-rc.3` JSONL runtime, Node `24.21.0`, pnpm `11.28.5`, and temporary synthetic profiles. CI has not yet been run for `0.1.2`; the previous release's completed matrix is recorded separately below.
+Date: 2026-10-29. Both jobs in run `40835348347` passed on the same runtime commit, `d2bb1257f2706742d851ca4712cfcd707ea187b5`, using official DSH `0.2.1-rc.3` JSONL persistence, Node `24.21.0`, pnpm `11.28.5`, isolated runtimes, and temporary synthetic profiles.
+
+| Platform | Completed CI evidence | Unit/client/service | Native integration |
+| --- | --- | --- | --- |
+| macOS | [Run 40835348347, job 123318710293](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40835348347/job/123318710293) | 89 passed, 3 Windows-only skipped; 92 total | 11 passed, 1 Windows-only skipped; 12 total |
+| Windows | [Run 40835348347, job 123318709939](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/40835348347/job/123318709939) | 91 passed, 1 POSIX-only write-permission check skipped; 92 total | 12 passed, 0 skipped; 12 total |
+
+- Both platform jobs passed build/type checks, documentation and package checks, the committed `lib` comparison, packaging and SHA-256 verification, and the extended native package lifecycle.
+- Packed Doctor CLI checks passed for a structured JSON report and invalid-usage exit code 2. Reports retained `runtimeState: unverified`; offline prerequisites were not represented as live activation.
+- All three installation paths loaded the authenticated API. Fixed-URL upgrade checks used two distinct local HTTP asset URLs, replaced the dependency with `add` without first removing it, and preserved custom manifest fields, bundle entries, and the byte content of synthetic session logs already in trash. The upgraded installation also loaded its API.
+- Raw pnpm removal reproduced a stale bundle entry, followed by idempotent cleanup preserving other fields and trash. The tested Desktop CLI removed its entry automatically; manager reinstall/removal checks also preserved trash. These results document the tested invocation modes rather than assuming every host build behaves identically.
+- This is native runtime and package verification. It does not add a graphical Desktop run, a public GitHub download benchmark, or a network/proxy performance claim. The HTTP asset server is a local fixture.
+
+## Local verification — 0.1.2
+
+Date: 2026-10-29. The local macOS run used the existing DSH `0.2.1-rc.3` JSONL runtime, Node `24.21.0`, pnpm `11.28.5`, and temporary synthetic profiles. The corresponding completed CI matrix is recorded above; the previous release's matrix remains a separate historical record below.
 
 | Check | Completed local result |
 | --- | --- |
@@ -75,7 +90,7 @@ Date: 2026-10-29. The local macOS run used the existing DSH `0.2.1-rc.3` JSONL r
 
 ## Historical CI verification — 0.1.1
 
-Date: 2026-10-28. Target: official DSH `0.2.1-rc.3`, JSONL backend, Node `24.21.0`, and pnpm `11.28.5`. CI uses a fresh isolated official runtime and temporary synthetic profiles. Both platform jobs below passed on the same verified commit, `7e434b4`, in the same matrix run. The final release retains that runtime unchanged; only package-version and documentation metadata were updated afterward.
+Date: 2026-10-28. Target: official DSH `0.2.1-rc.3`, JSONL backend, Node `24.21.0`, and pnpm `11.28.5`. CI uses a fresh isolated official runtime and temporary synthetic profiles. Both platform jobs below passed on the same verified commit, `7e434b4`, in the same matrix run. The `0.1.1` release retained that runtime unchanged; only package-version and documentation metadata were updated afterward.
 
 | Platform | Completed CI evidence | Unit/client/service | Native integration |
 | --- | --- | --- | --- |
