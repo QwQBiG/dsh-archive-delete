@@ -180,3 +180,24 @@ test('stream size limits, rate limits, network failure, timeout and cancellation
   const controller = new AbortController(); controller.abort(); const before = size.calls.length;
   await assert.rejects(size.source().check(controller.signal), { code: 'update-cancelled' }); assert.equal(size.calls.length, before);
 });
+
+test('GitHub Retry-After and rate reset are respected without making another request', async () => {
+  for (const headers of [{ 'retry-after': '7200' }, { 'retry-after': new Date(Date.now() + 7_200_000).toUTCString() },
+    { 'x-ratelimit-reset': String(Math.ceil((Date.now() + 7_200_000) / 1000)) }]) {
+    const net = network([artifact()]); net.overrides.set(`${API}?per_page=20`, () => new Response('limited', { status: 429, headers }));
+    const source = net.source(); const now = Date.now();
+    await assert.rejects(source.check(), (error: unknown) => typeof error === 'object' && error !== null
+      && 'code' in error && error.code === 'update-rate-limited' && 'retryAt' in error && Number(error.retryAt) > now + 7_198_000);
+    await assert.rejects(source.check(), { code: 'update-rate-limited' }); assert.equal(net.calls.length, 1);
+  }
+});
+
+test('one discovery budget covers the release list and every metadata request', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const item = artifact(); const net = network([item]); let metadataStarted = false;
+  net.overrides.set(`${API}?per_page=20`, () => new Promise(resolve => setTimeout(() => resolve(Response.json([item.release])), 12)));
+  net.overrides.set(item.metadataUrl, () => { metadataStarted = true; return new Promise(() => {}); });
+  const checking = net.source({ timeoutMs: 20 }).check(); const rejected = assert.rejects(checking, { code: 'update-timeout' });
+  t.mock.timers.tick(12); await new Promise(resolve => setImmediate(resolve)); assert.equal(metadataStarted, true);
+  t.mock.timers.tick(8); await rejected; assert.equal(net.calls.length, 2);
+});

@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import type { BigIntStats } from 'node:fs';
 import { open, mkdir, lstat, realpath, readdir, rename, unlink, rmdir } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import { ArchiveError, type SessionGroup, type TrashEntry } from './contracts.js';
+import { ArchiveError, type DataIssue, type SessionGroup, type TrashEntry } from './contracts.js';
 import { assertCanonicalStoragePath, assertLocalStoragePath, assertPlainDirectory as plainDirectory, assertPrivateDirectory as privateDirectory,
   isWithin as within, readBoundedJson, samePath, syncDirectory } from './filesystem.js';
 
@@ -69,18 +69,21 @@ export function groupFingerprint(group: SessionGroup): string {
 export class TrashStore {
   readonly root: string;
   readonly sessionsRoot: string;
+  private issues: DataIssue[] = [];
   constructor(options: StoreOptions) { this.root = resolve(options.root); this.sessionsRoot = resolve(options.sessionsRoot); }
   private area(name: string): string { return join(this.root, name); }
   private operationPath(opId: string): string { return join(this.area('operations'), `${id(opId)}.json`); }
   private stage(entryId: string): string { return join(this.area('staging'), id(entryId)); }
   private entry(entryId: string): string { return join(this.area('trash'), id(entryId)); }
+  listIssues(): readonly DataIssue[] { return this.issues; }
+  private async sync(path: string): Promise<void> { await syncDirectory(path); }
 
   async initialize(): Promise<void> {
     assertLocalStoragePath(this.root); assertLocalStoragePath(this.sessionsRoot);
     await plainDirectory(this.sessionsRoot);
     if (within(this.sessionsRoot, this.root) || samePath(this.root, this.sessionsRoot))
       throw new ArchiveError('unsafe-path', 'Trash must be outside the session store.');
-    if (!await exists(this.root)) await mkdir(this.root, { mode: 0o700, recursive: true });
+    const createdRoot = !await exists(this.root) ? await mkdir(this.root, { mode: 0o700, recursive: true }) : undefined;
     await privateDirectory(this.root);
     const canonicalRoot = await realpath(this.root); const canonicalSessions = await realpath(this.sessionsRoot);
     assertLocalStoragePath(canonicalRoot); assertLocalStoragePath(canonicalSessions);
@@ -90,6 +93,13 @@ export class TrashStore {
     for (const name of ['operations', 'staging', 'trash', 'receipts']) {
       const p = this.area(name); if (!await exists(p)) await mkdir(p, { mode: 0o700 }); await privateDirectory(p);
     }
+    // Journals and staged moves depend on these directories remaining reachable.
+    // Recursive creation reports its first new ancestor; publish that chain too.
+    await this.sync(this.root);
+    if (createdRoot) {
+      for (let path = this.root; !samePath(path, createdRoot); path = dirname(path)) await this.sync(dirname(path));
+      await this.sync(dirname(createdRoot));
+    } else await this.sync(dirname(this.root));
     if ((await lstat(this.root)).dev !== (await lstat(this.sessionsRoot)).dev)
       throw new ArchiveError('cross-volume', 'Trash and sessions must be on the same volume.');
   }
@@ -100,13 +110,20 @@ export class TrashStore {
     validateGroup(group);
     assertLocalStoragePath(group.sessionsRoot);
     if (!samePath(group.sessionsRoot, this.sessionsRoot)) throw new ArchiveError('unsafe-path', 'Session store changed.');
+    await plainDirectory(this.sessionsRoot);
     const root = await realpath(this.sessionsRoot);
     for (const member of group.members) {
       assertLocalStoragePath(member.directory);
       const directory = resolve(member.directory);
       if (!within(this.sessionsRoot, directory) || !samePath(dirname(dirname(directory)), this.sessionsRoot) || basename(directory) !== sessionDirectoryName(member.id))
         throw new ArchiveError('unsafe-path', 'Session directory is outside the expected layout.');
-      await plainDirectory(dirname(directory));
+      try { await plainDirectory(dirname(directory)); }
+      catch (error) {
+        // Recovery and cancellation may outlive an empty source bucket. An
+        // existing redirected/unsafe bucket still fails the normal checks.
+        if (allowMissing && isMissing(error)) continue;
+        throw error;
+      }
       const canonicalParent = await realpath(dirname(directory)); assertLocalStoragePath(canonicalParent);
       if (!samePath(dirname(canonicalParent), root))
         throw new ArchiveError('unsafe-path', 'Session parent directory is unsafe.');
@@ -184,6 +201,8 @@ export class TrashStore {
     const stage = this.stage(op.entryId);
     if (await exists(stage) || await exists(this.entry(op.entryId))) throw new ArchiveError('conflict', 'A trash entry already exists.');
     await mkdir(stage, { mode: 0o700 });
+    // Publish the staging directory before a source rename can depend on it.
+    await this.sync(this.area('staging'));
     await atomicJson(join(stage, 'manifest.json'), { schema: 1, id: op.entryId, group, trashedAt: Date.now() } satisfies Manifest);
     for (const [i, member] of group.members.entries()) {
       await rename(member.directory, join(stage, String(i)));
@@ -247,16 +266,33 @@ export class TrashStore {
   }
   async completeEmptyPurge(op: Operation): Promise<boolean> {
     const path = this.entry(op.entryId);
-    if (!await exists(path)) return true;
+    if (!await exists(path)) { await this.sync(this.area('trash')); return true; }
+    const unchanged = await this.directoryGuard(path);
     await this.validateContainer(path, op.group, true);
     for (let i = 0; i < op.group.members.length; i++) if (await exists(join(path, String(i)))) return false;
-    await unlink(join(path, 'manifest.json')).catch(e => { if (!isMissing(e)) throw e; }); await rmdir(path);
+    if (await exists(join(path, 'manifest.json'))) {
+      const manifest = await this.manifest(op.entryId);
+      if (groupFingerprint(manifest.group) !== groupFingerprint(op.group))
+        throw new ArchiveError('corrupt-state', 'The interrupted deletion does not match its trash manifest.');
+    }
+    await unchanged();
+    // Make removed member entries durable before discarding their manifest.
+    await this.sync(path);
+    await unchanged();
+    await this.assertEmptyEntry(path);
+    await unlink(join(path, 'manifest.json')).catch(e => { if (!isMissing(e)) throw e; });
+    await this.sync(path); await unchanged(); await rmdir(path); await this.sync(this.area('trash'));
     return true;
   }
   async manifest(entryId: string): Promise<Manifest> {
     const directory = this.entry(entryId); await plainDirectory(directory);
-    const m = await this.readJson(join(directory, 'manifest.json')) as Manifest;
-    if (m.schema !== 1 || m.id !== entryId || !Number.isFinite(m.trashedAt)) throw new ArchiveError('corrupt-state', 'Invalid trash manifest.');
+    let m: Manifest;
+    try { m = await this.readJson(join(directory, 'manifest.json')) as Manifest; }
+    catch (error) {
+      if (isMissing(error)) throw new ArchiveError('corrupt-state', 'The trash manifest is missing. Its remaining data was left untouched.');
+      throw error;
+    }
+    if (!m || m.schema !== 1 || m.id !== entryId || !Number.isFinite(m.trashedAt)) throw new ArchiveError('corrupt-state', 'Invalid trash manifest.');
     validateGroup(m.group); await this.validateSource(m.group, true); await this.validateContainer(directory, m.group, true);
     return m;
   }
@@ -270,6 +306,9 @@ export class TrashStore {
     }
   }
   async entrySnapshot(entryId: string): Promise<EntrySnapshot> {
+    return this.measureEntry(entryId, await this.operations());
+  }
+  private async measureEntry(entryId: string, operations: readonly Operation[]): Promise<EntrySnapshot> {
     const entry = this.entry(entryId); const manifestPath = join(entry, 'manifest.json');
     const signature = (st: BigIntStats) => `${st.dev}:${st.ino}:${st.mode}:${st.size}:${st.mtimeNs}:${st.ctimeNs}`;
     const identity = (st: BigIntStats) => `${st.dev}:${st.ino}:${st.mode}`;
@@ -280,7 +319,7 @@ export class TrashStore {
     const manifest = await this.manifest(entryId);
     const entryNames = (await readdir(entry)).sort(); const allowed = new Set(['manifest.json', ...manifest.group.members.map((_, i) => String(i))]);
     if (entryNames.some(name => !allowed.has(name))) throw new ArchiveError('unknown-file', 'Unexpected data prevents measuring this entry.');
-    const partial = (await this.operations()).some(operation => operation.entryId === entryId
+    const partial = operations.some(operation => operation.entryId === entryId
       && ['purging', 'purged'].includes(operation.phase) && groupFingerprint(operation.group) === groupFingerprint(manifest.group));
     const hash = createHash('sha256').update(JSON.stringify(manifest));
     const observed: { path: string; signature: string }[] = [];
@@ -353,16 +392,34 @@ export class TrashStore {
     }
   }
   async list(): Promise<TrashEntry[]> {
+    this.issues = [];
     if (!await exists(this.area('trash'))) return [];
+    await privateDirectory(this.area('trash'));
     const entries: TrashEntry[] = [];
+    const operations = await this.operations();
+    const byEntry = new Map<string, Operation[]>();
+    for (const operation of operations) {
+      const group = byEntry.get(operation.entryId) ?? [];
+      group.push(operation); byEntry.set(operation.entryId, group);
+    }
     for (const key of await readdir(this.area('trash'))) {
-      if (!UUID.test(key)) throw new ArchiveError('corrupt-state', 'An unknown trash entry needs attention.');
-      const journals = (await this.operations()).filter(o => o.entryId === key);
-      if (journals.some(o => o.phase === 'restored-metadata' || o.phase === 'restored')) continue;
-      if (!await exists(join(this.entry(key), 'manifest.json')) && journals.some(o => o.phase === 'purging' || o.phase === 'purged')) continue;
-      const { manifest: m, sizeBytes } = await this.entrySnapshot(key);
-      entries.push({ id: key, sessionId: m.group.sessionId, title: m.group.title, trashedAt: m.trashedAt,
-        sizeBytes, memberCount: m.group.members.length });
+      try {
+        if (!UUID.test(key)) throw new ArchiveError('corrupt-state', 'An unknown trash entry needs attention. Its data was left untouched.');
+        const journals = byEntry.get(key) ?? [];
+        await plainDirectory(this.entry(key));
+        if (journals.some(o => o.phase === 'restored-metadata' || o.phase === 'restored')) continue;
+        if (!await exists(join(this.entry(key), 'manifest.json')) && journals.some(o => o.phase === 'purging' || o.phase === 'purged')) {
+          await this.assertEmptyEntry(this.entry(key)); continue;
+        }
+        const { manifest: m, sizeBytes } = await this.measureEntry(key, journals);
+        entries.push({ id: key, sessionId: m.group.sessionId, title: m.group.title, trashedAt: m.trashedAt,
+          sizeBytes, memberCount: m.group.members.length });
+      } catch (error) {
+        const detail = error instanceof ArchiveError ? error : isMissing(error)
+          ? new ArchiveError('corrupt-state', 'A trash entry is incomplete. Its remaining data was left untouched.')
+          : new ArchiveError('entry-unavailable', 'A trash entry could not be read. Its data was left untouched.');
+        this.issues.push({ scope: 'trash', id: key, code: detail.code, message: detail.message });
+      }
     }
     return entries.sort((a, b) => b.trashedAt - a.trashedAt);
   }
@@ -401,19 +458,54 @@ export class TrashStore {
   }
   async purge(entryId: string, context?: OperationContext): Promise<Operation> {
     // Partial purges remain retryable; no recursive rm can cross an unexpected entry.
-    const directory = this.entry(entryId); await plainDirectory(directory);
+    const directory = this.entry(entryId); const unchanged = await this.directoryGuard(directory);
     const m = await this.readJson(join(directory, 'manifest.json')) as Manifest;
-    if (m.schema !== 1 || m.id !== entryId) throw new ArchiveError('corrupt-state', 'Invalid trash manifest.');
+    if (!m || m.schema !== 1 || m.id !== entryId) throw new ArchiveError('corrupt-state', 'Invalid trash manifest.');
     validateGroup(m.group); await this.validateSource(m.group, true);
     await this.validateContainer(directory, m.group, true);
+    const members: { path: string; unchanged: () => Promise<void> }[] = [];
+    for (let i = 0; i < m.group.members.length; i++) {
+      const path = join(directory, String(i));
+      if (await exists(path)) members.push({ path, unchanged: await this.directoryGuard(path) });
+    }
     const op: Operation = { schema: 1, id: randomUUID(), entryId, phase: 'purging', group: m.group, createdAt: Date.now(), moved: [], ...context };
     await this.writeOperation(op);
-    for (let i = 0; i < m.group.members.length; i++) {
-      const p = join(directory, String(i)); if (!await exists(p)) continue;
-      for (const file of await readdir(p)) await unlink(join(p, file));
-      await rmdir(p);
+    for (const member of members) {
+      await unchanged(); await member.unchanged();
+      for (const file of await readdir(member.path)) {
+        const path = join(member.path, file); const st = await lstat(path);
+        if (!(LOG.test(file) || TEMP.test(file) || file === 'session.lock') || !st.isFile() || st.isSymbolicLink())
+          throw new ArchiveError('unknown-file', 'Unexpected data prevents permanent deletion.');
+        await unchanged(); await member.unchanged(); await unlink(path);
+      }
+      await unchanged(); await member.unchanged(); await this.sync(member.path);
+      await unchanged(); await member.unchanged(); await rmdir(member.path);
+      await this.sync(directory);
     }
-    await unlink(join(directory, 'manifest.json')); await rmdir(directory); await syncDirectory(this.area('trash'));
+    await unchanged(); await this.sync(directory);
+    await unchanged(); await this.assertEmptyEntry(directory);
+    await unlink(join(directory, 'manifest.json')); await this.sync(directory);
+    await unchanged(); await rmdir(directory); await this.sync(this.area('trash'));
     op.phase = 'purged'; await this.writeOperation(op); return op;
+  }
+  private async assertEmptyEntry(directory: string): Promise<void> {
+    if ((await readdir(directory)).some(name => name !== 'manifest.json'))
+      throw new ArchiveError('unknown-file', 'Unexpected data remains in the trash entry. Its manifest was retained.');
+  }
+  /** Recheck each owned directory immediately before path-based deletion. Node
+   * has no portable unlinkat; this does not promise immunity to a same-user
+   * adversary changing a parent during the final filesystem syscall. */
+  private async directoryGuard(path: string): Promise<() => Promise<void>> {
+    const before = await lstat(path, { bigint: true });
+    if (!before.isDirectory() || before.isSymbolicLink())
+      throw new ArchiveError('unsafe-path', 'A trash directory is unsafe.');
+    const canonical = await realpath(path); await assertCanonicalStoragePath(path, canonical);
+    const check = async () => {
+      const current = await lstat(path, { bigint: true });
+      if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== before.dev || current.ino !== before.ino
+        || !samePath(await realpath(path), canonical))
+        throw new ArchiveError('unsafe-path', 'A trash directory changed during permanent deletion.');
+    };
+    await check(); return check;
   }
 }

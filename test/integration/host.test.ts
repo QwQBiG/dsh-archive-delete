@@ -302,6 +302,22 @@ test('runtime version comes from the live profile installation, independent of p
   assert.equal((await absent.capabilities()).supported, false);
 });
 
+test('a second plugin instance obtains no data areas before the native store lease', async t => {
+  const f = await fixture(t); const home = join(f.home, 'second-instance-home'); await mkdir(home);
+  const root = join(home, 'archive-delete');
+  const held = await acquirePluginLease(root, getNativeLockExclusive(f.ctx), { lockNamed: getNativeWindowsLock(f.ctx) });
+  t.after(() => held.release());
+  const warnings: string[] = [];
+  const close = await applyPlugin({ get: name => f.ctx.get(name), dshHomePath: () => home,
+    waterfall: (event, request, next) => f.ctx.waterfall(event, request, next), emit: (event, ...args) => f.ctx.emit(event, ...args),
+    logger: { warn: message => warnings.push(message) },
+    connection: { fetch: { register: () => () => {} } },
+  });
+  t.after(close);
+  assert.ok(warnings.some(message => message.includes('Another DSH process owns')));
+  for (const area of ['trash', 'staging', 'operations', 'receipts']) await assert.rejects(access(join(root, area)), { code: 'ENOENT' });
+});
+
 test('successful startup logs its installed version and active API only after route admission; a failed mount never logs loaded', async t => {
   const f = await fixture(t);
   const info: string[] = []; const warnings: string[] = [];

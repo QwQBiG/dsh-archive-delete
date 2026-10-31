@@ -1,5 +1,6 @@
-import React, { useSyncExternalStore } from 'react';
+import React, { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import type { NativePrimitives } from './client-ui.js';
+import { formatTimestamp } from './client-format.js';
 import { UpdateClientController } from './update-client.js';
 
 export const updateEn = {
@@ -12,7 +13,7 @@ export const updateEn = {
   updateScope: 'This replaces this plugin in the current DSH profile. Archive work pauses during installation; your conversations and trash are retained. DSH may require a full quit and reopen to load the new version.',
   updateInstalling: 'Verifying and installing the confirmed update…', updateRestart: 'The new version is installed. Fully quit DSH and reopen it to finish loading it.',
   updateDone: 'The new version is installed and active.', updateFailed: 'The update did not complete.', updateInterrupted: 'The previous update was interrupted. Check again before retrying.',
-  updateUnknownOutcome: 'The installation outcome is uncertain. Check its status or retry the same request. If it remains uncertain, fully quit DSH and reopen it to reconcile.', updateReconcile: 'Check installation status', updateRetry: 'Retry the same request',
+  updateUnknownOutcome: 'The installation outcome is uncertain. Recheck this confirmed request; a recorded installation will not run again. If it remains uncertain, fully quit DSH and reopen it to reconcile.', updateReconcile: 'Check installation status', updateRetry: 'Recheck confirmed request',
   updateUnavailable: 'The native update manager is unavailable in this profile.', updateBusy: 'Finish the current operation before upgrading.',
   updateErrorNetwork: 'GitHub could not be reached. Your installed version is unchanged; try checking again later.',
   updateErrorService: 'The plugin service could not be reached. Check that the plugin is loaded, then try again.',
@@ -37,7 +38,7 @@ export const updateZh: Record<keyof typeof updateEn, string> = {
   updateScope: '替换当前 DSH profile 中的本插件，安装期间暂停归档操作，会话与回收站会保留。DSH 可能需要完整退出并重新打开，才能加载新版本。',
   updateInstalling: '正在校验并安装已确认的更新…', updateRestart: '新版本已安装，请完整退出 DSH 并重新打开，完成新版加载。',
   updateDone: '新版本已安装并生效。', updateFailed: '升级未完成。', updateInterrupted: '上次升级中断，请重新检查后再试。',
-  updateUnknownOutcome: '安装结果尚无法确认，请核对状态或重试同一次请求；若仍无法确认，请完整退出 DSH 并重新打开以核对记录。', updateReconcile: '核对安装状态', updateRetry: '重试同一次请求',
+  updateUnknownOutcome: '安装结果尚无法确认，请重新核对此次请求，已记录的安装不会重复执行；若仍无法确认，请完整退出 DSH 并重新打开以核对记录。', updateReconcile: '核对安装状态', updateRetry: '重新核对此次请求',
   updateUnavailable: '当前 profile 的原生更新管理器不可用。', updateBusy: '请先完成当前操作，再升级插件。',
   updateErrorNetwork: '无法连接 GitHub，已安装版本保持不变，请稍后重新检查。',
   updateErrorService: '无法连接插件服务，请确认插件已加载后再试。',
@@ -53,8 +54,10 @@ export const updateZh: Record<keyof typeof updateEn, string> = {
   updateDoneCompact: '已安装', updateErrorCompact: '检查失败', updateMore: '详情',
 };
 type Key = keyof typeof updateEn;
-type T = (key: Key, values?: Record<string, string | number>) => string;
+type T = (key: Key | 'dateLocale', values?: Record<string, string | number>) => string;
 function reason(code: string, t: T): string {
+  if (code === 'update-in-progress') return t('updateBusy');
+  if (code === 'update-restart-required') return t('updateRestart');
   if (code === 'update-service-unavailable') return t('updateErrorService');
   if (/rate/.test(code)) return t('updateErrorRate');
   if (/network|timeout|unreachable/.test(code)) return t('updateErrorNetwork');
@@ -70,6 +73,14 @@ export function UpdateCard({ controller, Button, t, archiveBusy = false }: {
   controller: UpdateClientController; Button: NativePrimitives['Button']; t: T; archiveBusy?: boolean;
 }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  const container = useRef<HTMLElement>(null);
+  const reviewTitle = useId();
+  const previousReview = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.reviewId) container.current?.querySelector<HTMLButtonElement>('[data-update-cancel]')?.focus();
+    else if (previousReview.current) container.current?.querySelector<HTMLButtonElement>('[data-update-review]')?.focus();
+    previousReview.current = state.reviewId;
+  }, [state.reviewId]);
   if (!controller.available) return null;
   const data = state.data; const installation = data?.installation;
   const restart = Boolean(data && data.currentVersion !== data.installedVersion) || installation?.status === 'restart-required';
@@ -90,7 +101,7 @@ export function UpdateCard({ controller, Button, t, archiveBusy = false }: {
     : code ? t('updateErrorCompact') : data?.availability === 'available' ? t('updateAvailable', { version: data.candidate!.version })
     : data?.availability === 'current' ? t('updateCurrentCompact') : data?.availability === 'incompatible' ? t('updateIncompatibleCompact') : t('updateUnknownCompact');
   const releaseLink = data?.candidate && <a href={data.candidate.releaseUrl} target="_blank" rel="noreferrer">{t('updateRelease')}</a>;
-  return <section className="dad-update" aria-label={t('updateTitle')} aria-busy={state.installing || state.checking}>
+  return <section ref={container} className="dad-update" aria-label={t('updateTitle')} aria-busy={state.installing || state.checking}>
     <div className="dad-update-summary">
       <span className="dad-update-version" aria-label={data ? t('updateCurrent', { version: data.currentVersion }) : undefined}>{data ? `v${data.currentVersion}` : t('updateTitle')}</span>
       {data && data.currentVersion !== data.installedVersion && <><span aria-hidden="true">→</span><span className="dad-update-version" aria-label={t('updateInstalled', { version: data.installedVersion })}>v{data.installedVersion}</span></>}
@@ -98,16 +109,16 @@ export function UpdateCard({ controller, Button, t, archiveBusy = false }: {
     </div>
     <div className="dad-update-controls">
       <Button size="sm" variant="outline" aria-label={t(state.uncertain ? 'updateReconcile' : 'updateCheck')} title={t(state.uncertain ? 'updateReconcile' : 'updateCheck')} disabled={state.installing || state.checking} onClick={() => { void controller.check(true); }}>{t(state.checking ? 'updateCheckingCompact' : state.uncertain ? 'updateReconcile' : 'updateCheckCompact')}</Button>
-      {canReview && !state.reviewId && <Button size="sm" variant="outline" disabled={busy} onClick={controller.review}>{t('updateReview')}</Button>}
+      {canReview && !state.reviewId && <Button size="sm" variant="outline" disabled={busy} data-update-review="" onClick={controller.review}>{t('updateReview')}</Button>}
       {state.uncertain && <Button size="sm" variant="outline" disabled={state.installing || state.checking} onClick={() => { void controller.retry(); }}>{t('updateRetry')}</Button>}
     </div>
     <details className="dad-update-info"><summary>{t('updateMore')}</summary><div className="dad-update-info-content">
       {data && <p>{t('updateCurrent', { version: data.currentVersion })}{data.currentVersion !== data.installedVersion && <> · {t('updateInstalled', { version: data.installedVersion })}</>}</p>}
       <p>{status}</p>{!state.reviewId && releaseLink}
-      <p className="dad-hint">{t('updateAutomatic')}{data?.checkedAt !== undefined && <> {t('updateChecked', { time: new Date(data.checkedAt).toLocaleString() })}</>}</p>
+      <p className="dad-hint">{t('updateAutomatic')}{data?.checkedAt !== undefined && <> {t('updateChecked', { time: formatTimestamp(data.checkedAt, t) })}</>}</p>
     </div></details>
     {code && <div className="dad-update-error" role="alert"><p>{reason(code, t)}</p><details><summary>{t('updateDetails')}</summary><code>{code}</code></details></div>}
-    {state.reviewId && data?.candidate && <div className="dad-update-review"><strong>{t('updateConfirmTitle', { version: data.candidate.version })}</strong>{releaseLink}<details open><summary>{t('updateNotes')}</summary><pre>{data.candidate.notes || t('updateNoNotes')}</pre></details><p>{t('updateScope')}</p><div className="dad-update-actions"><Button size="sm" variant="outline" disabled={state.installing} onClick={controller.cancelReview}>{t('updateCancel')}</Button><Button size="sm" variant="primary" disabled={busy || !canReview} onClick={() => { void controller.confirm(); }}>{t('updateConfirm')}</Button></div></div>}
+    {state.reviewId && data?.candidate && <div className="dad-update-review" role="group" aria-labelledby={reviewTitle}><strong id={reviewTitle}>{t('updateConfirmTitle', { version: data.candidate.version })}</strong>{releaseLink}<details open><summary>{t('updateNotes')}</summary><pre>{data.candidate.notes || t('updateNoNotes')}</pre></details><p>{t('updateScope')}</p><div className="dad-update-actions"><Button size="sm" variant="outline" disabled={state.installing} data-update-cancel="" onClick={controller.cancelReview}>{t('updateCancel')}</Button><Button size="sm" variant="primary" disabled={busy || !canReview} onClick={() => { void controller.confirm(); }}>{t('updateConfirm')}</Button></div></div>}
   </section>;
 }
 export const UPDATE_CSS = `

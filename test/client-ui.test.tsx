@@ -296,3 +296,128 @@ test('client registers native slots and disposes every contribution without a ne
   for (const dispose of effects.reverse()) dispose();
   assert.equal(disposedSlots, 3);
 });
+
+test('gateway rejects malformed optional diagnostics before they can reach React', async () => {
+  const send = (value: unknown) => createArchiveApi(async () => new Response(JSON.stringify({ ok: true, value })), 'https://example.test/');
+  const badText = [{ text: 'object' }, ['array'], 12, true, null];
+  for (const field of ['code', 'message']) for (const bad of badText) {
+    const item = { ...preview.items[0]!, [field]: bad };
+    await assert.rejects(send({ ...preview, items: [item] }).preview('trash', ['session-1']), ClientTransportError);
+    const outcome = { ...result.items[0]!, [field]: bad };
+    await assert.rejects(send({ ...result, items: [outcome] }).execute('preview-1', 'request-1'), ClientTransportError);
+    await assert.rejects(send({ ...overview, recentResults: [{ ...result, items: [outcome] }] }).list(), ClientTransportError);
+  }
+  for (const invalid of [
+    { ...overview, support: { ...overview.support, reason: {} } },
+    { ...overview, archived: [{ ...overview.archived[0]!, pendingReason: {} }] },
+    { ...overview, archived: [{ ...overview.archived[0]!, pending: 'true' }] },
+    { ...overview, issues: [{ scope: 'archive', code: 'invalid-session', message: {} }] },
+    { ...overview, issues: [{ scope: 'disk', code: 'invalid-session', message: 'bad' }] },
+  ]) await assert.rejects(send(invalid).list(), ClientTransportError);
+  assert.equal((await send(preview).preview('trash', ['session-1'])).id, preview.id);
+});
+
+test('diagnostic warnings preserve healthy list controls and localize known corruption and transport errors', async () => {
+  const current = { ...overview, issues: [{ scope: 'archive' as const, id: 'bad-record', code: 'invalid-session', message: 'raw host diagnostic' }] };
+  const controller = new ArchiveClientController({ ...api, list: async () => current }); await controller.open();
+  for (const language of ['en', 'zh'] as const) {
+    const t = translator(language);
+    const html = renderToStaticMarkup(<ArchiveDialogView state={controller.getSnapshot()} controller={controller} primitives={primitives} t={t} />);
+    assert.ok(html.includes(t('dataIssues', { n: 1 })));
+    assert.ok(html.includes('bad-record'));
+    assert.ok(html.includes(t('reasonDamaged')));
+    assert.ok(!html.includes('raw host diagnostic'));
+    assert.ok(html.includes('A sample conversation'));
+    assert.ok(html.includes(t('moveSelected')));
+    assert.equal(localizeReason('request-failed', 'Hardcoded English transport diagnostic', t), t('reasonTransport'));
+  }
+  controller.dispose();
+});
+
+test('confirmation separates eligible and protected targets and visibly marks permanent deletion', async () => {
+  const controller = new ArchiveClientController(api); await controller.open();
+  const mixed: Preview = { ...preview, action: 'purge', items: [
+    { ...preview.items[0]!, disposition: 'ready' },
+    { ...preview.items[0]!, id: 'second', disposition: 'pending' },
+    { ...preview.items[0]!, id: 'third', disposition: 'blocked' },
+  ] };
+  for (const language of ['en', 'zh'] as const) {
+    const t = translator(language);
+    const html = renderToStaticMarkup(<ArchiveDialogView state={{ ...controller.getSnapshot(), preview: mixed }} controller={controller} primitives={primitives} t={t} />);
+    assert.ok(html.includes(t('previewDisposition', { ready: 1, pending: 1, blocked: 1 })));
+    assert.match(html, /class="dad-danger-confirm"/);
+    const expired = renderToStaticMarkup(<ArchiveDialogView state={{ ...controller.getSnapshot(), preview: { ...mixed, expiresAt: 0 } }} controller={controller} primitives={primitives} t={t} />);
+    assert.ok(expired.includes(t('previewExpired')));
+    assert.match(expired, /class="dad-danger-confirm" disabled=""/);
+  }
+  controller.dispose();
+});
+
+test('scan refresh keeps the previous observation visibly labelled while updating or after failure', async () => {
+  const controller = new ArchiveClientController({ ...api, list: async () => ({ ...overview, storageWorkspaces: storageResult().workspaces }), storage: async () => storageResult() });
+  await controller.open(); controller.setTab('storage'); controller.setStorageWorkspace('project-1'); await controller.scanStorage('workspace');
+  const state = controller.getSnapshot();
+  for (const language of ['en', 'zh'] as const) for (const patch of [
+    { scanning: true }, { error: { code: 'scan-busy', message: 'raw host diagnostic', uncertain: false } }, { cancelled: true },
+  ]) {
+    const t = translator(language);
+    const html = renderToStaticMarkup(<ArchiveDialogView state={{ ...state, storage: { ...state.storage, ...patch } }} controller={controller} primitives={primitives} t={t} />);
+    assert.ok(html.includes(t('storagePrevious')));
+    assert.ok(html.includes('2.0 KiB'));
+    assert.ok(html.includes(t('storageObserved', { time: new Date(120).toLocaleString(t('dateLocale')), duration: 20 })));
+  }
+  controller.dispose();
+});
+
+test('response enum fields reject array coercions and counters require nonnegative integer numbers', async () => {
+  const send = (value: unknown) => createArchiveApi(async () => new Response(JSON.stringify({ ok: true, value })), 'https://example.test/');
+  for (const action of [['trash'], ['restore'], ['purge']]) {
+    await assert.rejects(send({ ...preview, action }).preview('trash', ['session-1']), ClientTransportError);
+    await assert.rejects(send({ ...result, action }).execute('preview-1', 'request-1'), ClientTransportError);
+  }
+  await assert.rejects(send({ ...preview, items: [{ ...preview.items[0]!, disposition: ['ready'] }] }).preview('trash', ['session-1']), ClientTransportError);
+  await assert.rejects(send({ ...result, items: [{ ...result.items[0]!, status: ['failed'] }] }).execute('preview-1', 'request-1'), ClientTransportError);
+  await assert.rejects(send({ ...overview, issues: [{ scope: ['archive'], code: 'invalid-session', message: 'Invalid' }] }).list(), ClientTransportError);
+  const storage = storageResult();
+  await assert.rejects(send({ ...storage, scope: ['host'], workspaceId: undefined }).storage!(), ClientTransportError);
+  await assert.rejects(send({ ...storage, categories: [{ ...storage.categories[0]!, status: ['partial'] }] }).storage!('project-1'), ClientTransportError);
+  const update = { currentVersion: '0.0.1', installedVersion: '0.0.1', hostVersion: '0.2.1-rc.3', availability: 'current', canInstall: true };
+  await assert.rejects(send({ ...update, availability: ['current'] }).updates!(), ClientTransportError);
+  await assert.rejects(send({ ...update, installation: { requestId: 'request-1', version: '0.0.2', status: ['installing'] } }).updates!(), ClientTransportError);
+  for (const invalid of ['1', -1, 0.5, true, null, {}, [1]]) {
+    await assert.rejects(send({ ...result, counts: { ...result.counts, succeeded: invalid } }).execute('preview-1', 'request-1'), ClientTransportError);
+    await assert.rejects(send({ ...overview, archived: [{ ...overview.archived[0]!, sizeBytes: invalid }] }).list(), ClientTransportError);
+  }
+});
+
+test('response identifiers are bounded nonempty strings without nul characters', async () => {
+  const send = (value: unknown) => createArchiveApi(async () => new Response(JSON.stringify({ ok: true, value })), 'https://example.test/');
+  for (const invalid of ['', '\0', 'x'.repeat(513), ['session-1'], {}]) {
+    await assert.rejects(send({ ...overview, archived: [{ ...overview.archived[0]!, id: invalid }] }).list(), ClientTransportError);
+    await assert.rejects(send({ ...overview, issues: [{ scope: 'archive', id: invalid, code: 'invalid-session', message: 'Invalid' }] }).list(), ClientTransportError);
+    await assert.rejects(send({ ...preview, items: [{ ...preview.items[0]!, sessionId: invalid }] }).preview('trash', ['session-1']), ClientTransportError);
+    await assert.rejects(send({ ...preview, items: [{ ...preview.items[0]!, memberIds: [invalid] }] }).preview('trash', ['session-1']), ClientTransportError);
+    await assert.rejects(send({ ...storageResult(), workspaces: [{ id: invalid, title: 'Project' }] }).storage!('project-1'), ClientTransportError);
+  }
+  for (const invalid of ['', '\0', 'x'.repeat(101)]) {
+    await assert.rejects(send({ ...preview, id: invalid }).preview('trash', ['session-1']), ClientTransportError);
+    await assert.rejects(send({ ...result, operationId: invalid }).execute('preview-1', 'request-1'), ClientTransportError);
+  }
+});
+
+test('repeated diagnostic occurrences retain their count, details and translated unavailable reason', async () => {
+  const issue = { scope: 'archive' as const, id: 'duplicate-record', code: 'invalid-session', message: 'Invalid header' };
+  const unavailable = { scope: 'trash' as const, code: 'entry-unavailable', message: 'Raw English unavailable diagnostic' };
+  const current = { ...overview, issues: [issue, { ...issue }, unavailable, { ...unavailable }] };
+  const controller = new ArchiveClientController({ ...api, list: async () => current }); await controller.open();
+  for (const language of ['en', 'zh'] as const) {
+    const t = translator(language);
+    const html = renderToStaticMarkup(<ArchiveDialogView state={controller.getSnapshot()} controller={controller} primitives={primitives} t={t} />);
+    assert.ok(html.includes(t('dataIssues', { n: 4 })));
+    assert.equal((html.match(/<code>duplicate-record<\/code>/g) ?? []).length, 2);
+    assert.equal((html.match(/<code>entry-unavailable<\/code>/g) ?? []).length, 2);
+    assert.ok(!html.includes('Raw English unavailable diagnostic'));
+    assert.equal(localizeReason('entry-unavailable', 'Raw English unavailable diagnostic', t), t('reasonDamaged'));
+  }
+  controller.dispose();
+});

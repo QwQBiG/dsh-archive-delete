@@ -56,12 +56,20 @@ The scenario table defines the acceptance targets. The verification record below
 | Current trash size | File changes after move or journaled partial purge, including a fully removed member | List/preview remaining bytes from the checked fingerprint observation, not historical manifest totals; drift invalidates old consent |
 | Sorting | Default/largest-first changes across a page boundary | Stable visible ordering, reset to page one and clear old selection/preview; pending controls retain their protections |
 | Read-only retention | Scan attachments, cache, spill, profiles, project files and receipts | No cleanup or automatic receipt expiry; all contents remain unchanged |
-| GitHub discovery | Stable/newer releases, exact host/OS compatibility, release/candidate bounds, failed network/rate checks | Metadata-only checks; daily success cache, one-minute manual throttle and one-hour failure retry; never treat failure as current or install automatically |
+| GitHub discovery | Stable/newer releases, exact host/OS compatibility, release/candidate bounds, failed network/rate checks | Metadata-only checks; daily success cache, one-minute manual throttle and failure retry after at least one hour or a longer rate-limit window; never treat failure as current or install automatically |
 | Update integrity | Changed IDs/SHA/metadata, untrusted redirects, oversized gzip/tar, traversal/links/duplicates, hooks/dependencies/peers | Reject before native installation; require a fresh matching server pin and verified package identity/prebuilt files |
 | Update admission | Profile-owned same-package target, double confirmation, request replay, archive work already accepted | Only current profile through the native manager; drain/pause archive mutations, one installation, stable request identity |
 | Update recovery | Cached/loaded version difference, response lost, unload/reload, activation failure | Independent per-profile check/install journals; reconcile installed state, retain verified file cache, protect uncertain/restart state; no full activation rollback guarantee |
 | Update UI | Details/dialog cards, notes, review/confirm/cancel, stale responses | Show running/installed versions, render notes as text and never install from check/open alone |
 | Documentation | Links, commands, and version references | Existing relative targets and consistent documented commands/versions |
+
+Additional reliability regressions cover:
+
+- Healthy-list availability with protected damaged/duplicate identities and unknown ancestry; missing manifests remain untouched.
+- Preview consumption even if durable publication reports failure; same-request recovery and expiry/maintenance rejection.
+- Consistent coalesced reads, retained idempotency receipts, explicit temporary-file cleanup and cold-versus-warm index behavior.
+- Same-scope rescan retention, stale-response rejection and order-independent workspace exclusions.
+- Streaming 64 KiB owner-route admission, late-install observation, GitHub backoff, shared verification budgets and exact release checksum agreement.
 
 ## Commands
 
@@ -70,12 +78,22 @@ pnpm verify
 pnpm pack --pack-destination artifacts
 node scripts/release-artifacts.mjs artifacts
 node --import tsx scripts/check-update-package.mjs artifacts
-node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.0.1.tgz
+node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.0.2.tgz
 ```
 
 `verify` covers build/type checks, unit tests, native integration, documentation checks, and package validation. Use Node 24 or newer; the recorded local run used the Desktop-bundled Node/pnpm through `PATH`. The package lifecycle command is a separate check after `pack`.
 
-## Verification record
+## 0.0.2 reliability verification
+
+Local regressions exercise protected damaged-record diagnostics, missing-bucket recovery, ordered purge/staging flushes, directory replacement guards, single-use preview publication failures, same-ID replay, coalesced refreshes, receipt indexing, strict response/request validation and the authenticated streaming body limit. Client checks cover maintenance/expiry races, eligible/protected counts, localized timestamps and previous-result rescans. Update checks cover uncertain-request reconciliation, observation beyond thirty seconds, shared network budgets, cancellation before delegation, rate-limit backoff, package admission and checksum/metadata agreement. These checks use synthetic data; historical Desktop evidence below is not a new graphical run of this release.
+
+On macOS with Node `24.21.0`, local `pnpm verify` passed 251 of 254 checks with 3 Windows-only skips, and 20 of 21 native host checks with 1 Windows-only skip. Type/build, documentation and package checks passed. Data mutations ran against isolated synthetic profiles.
+
+An isolated macOS Desktop process loaded the new plugin, exposed a separate damaged-trash warning beside a healthy archive, and produced the new idle-release/count confirmation with update controls hidden. The installed app was reused through an APFS clone with isolated home/profile/userData; it already contained unrelated shell edits and is not a pristine vendor-shell test. Native owner authentication was retained. The desktop control tool then reported inconsistent AX/screenshot/window state, so a complete new graphical move/restore/purge/scan pass is not claimed. The native SDK suite independently verifies those data transitions. The QA process quit normally; project/shared-attachment/orphan sentinels stayed byte-identical, and the temporary app/profile was removed.
+
+A local synthetic 5,000-receipt microbenchmark measured approximately 417 ms for the previous full-read listing, 24 ms for a new index's first recent lookup, and 0.8 ms median across five warm lookups. All 5,000 receipts remained present. This is a local repeated-read measurement, not a startup or cross-platform latency guarantee.
+
+## Historical verification: 0.0.1
 
 Release: `0.0.1`. Target: official DSH Desktop `0.2.1-rc.3`, default JSONL storage, Node `24.21.0` and pnpm `11.28.5`. Data mutations use isolated profiles and synthetic conversations; the primary Desktop profile is not a test fixture.
 

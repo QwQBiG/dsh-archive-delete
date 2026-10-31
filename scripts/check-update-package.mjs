@@ -9,11 +9,16 @@ const directory = resolve(process.argv[2] ?? 'artifacts');
 const name = `${pkg.name.replace(/^@/, '').replaceAll('/', '-')}-${pkg.version}.tgz`;
 const bytes = await readFile(join(directory, name));
 const metaName = name.replace(/\.tgz$/, '.update.json'); const meta = await readFile(join(directory, metaName));
+const digest = createHash('sha256').update(bytes).digest('hex');
+assert.equal(await readFile(join(directory, `${name}.sha256`), 'utf8'), `${digest}  ${name}\n`, 'The public checksum must match the exact release package.');
+const metadata = JSON.parse(meta.toString('utf8'));
+assert.equal(metadata.asset?.sha256, digest, 'Update metadata and the public checksum must agree.');
+assert.equal(metadata.asset?.bytes, bytes.length, 'Update metadata must describe the exact release package.');
 const base = 'https://github.com/QwQBiG/dsh-archive-delete/releases';
 const assetUrl = `${base}/download/v${pkg.version}/${name}`; const metaUrl = `${base}/download/v${pkg.version}/${metaName}`;
 const release = { id: 1, draft: false, prerelease: false, tag_name: `v${pkg.version}`, published_at: '2026-10-29T00:00:00Z',
   html_url: `${base}/tag/v${pkg.version}`, body: 'Package release verification', assets: [
-    { id: 2, name, state: 'uploaded', size: bytes.length, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`, browser_download_url: assetUrl },
+    { id: 2, name, state: 'uploaded', size: bytes.length, digest: `sha256:${digest}`, browser_download_url: assetUrl },
     { id: 3, name: metaName, state: 'uploaded', size: meta.length, browser_download_url: metaUrl },
   ] };
 // Exercise the same discovery, pin, checksum and archive admission used by an

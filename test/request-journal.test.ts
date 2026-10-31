@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { RequestJournal, type RequestContext } from '../src/request-journal.js';
@@ -72,8 +72,41 @@ test('crash-left private atomic temporaries never retain recovery titles after c
   await journal.complete(id, true); await assert.rejects(readFile(temporary), { code: 'ENOENT' });
   const orphan = join(root, 'receipts', `${randomUUID()}.json.${randomUUID()}.tmp`);
   await writeFile(orphan, 'Private intent that never became canonical', { mode: 0o600 });
-  assert.equal((await new RequestJournal(root).incomplete()).length, 0);
+  const restarted = new RequestJournal(root);
+  assert.equal((await restarted.incomplete()).length, 0);
+  assert.equal(await readFile(orphan, 'utf8'), 'Private intent that never became canonical');
+  await restarted.cleanTemporaryFiles();
   await assert.rejects(readFile(orphan), { code: 'ENOENT' });
+});
+
+test('recent reads only the newest completed results and retains old idempotency receipts', async t => {
+  const { root, journal } = await fixture(t); const ids: string[] = [];
+  for (let index = 0; index < 14; index++) {
+    const id = randomUUID(); ids.push(id);
+    await journal.begin(id, `fingerprint-${index}`, context());
+    await journal.complete(id, true);
+    await utimes(join(root, 'receipts', `${id}.json`), new Date(1_700_000_000_000 + index * 1000), new Date(1_700_000_000_000 + index * 1000));
+  }
+  assert.deepEqual((await journal.recent()).map(item => item.operationId), ids.slice(-10).reverse());
+  // Older records are not parsed just to display ten recent operations. An
+  // explicit replay still validates its own canonical receipt and refuses damage.
+  await writeFile(join(root, 'receipts', `${ids[0]}.json`), '{broken');
+  assert.deepEqual((await journal.recent()).map(item => item.operationId), ids.slice(-10).reverse());
+  await assert.rejects(journal.load(ids[0]!), { code: 'corrupt-state' });
+  assert.equal((await readdir(join(root, 'receipts'))).filter(name => name.endsWith('.json')).length, 14);
+  const newest = randomUUID(); await journal.begin(newest, 'newest', context()); await journal.complete(newest, true);
+  assert.equal((await journal.recent())[0]?.operationId, newest);
+  assert.equal((await journal.load(ids[1]!, 'fingerprint-1'))?.complete, true);
+});
+
+test('read-only receipt listings leave even unsafe temporary remnants untouched', async t => {
+  const { root, journal } = await fixture(t); const id = randomUUID();
+  await journal.begin(id, 'same', context()); await journal.complete(id, true);
+  const temporary = join(root, 'receipts', `${randomUUID()}.json.${randomUUID()}.tmp`);
+  await writeFile(temporary, 'not canonical', { mode: 0o666 });
+  assert.equal((await journal.incomplete()).length, 0);
+  assert.equal((await journal.recent()).length, 1);
+  assert.equal(await readFile(temporary, 'utf8'), 'not canonical');
 });
 test('cancel intent uses trash selection context with a stable cancel result', async t => {
   const { root, journal } = await fixture(t); const id = randomUUID(); const ctx = context();

@@ -3,6 +3,7 @@ import { gunzip } from 'node:zlib';
 import { ArchiveError, PACKAGE_NAME } from './contracts.js';
 import type { ReleaseUpdateMetadata, UpdateCandidate } from './update-contracts.js';
 import type { PinnedUpdate, ReleaseCheck, UpdateSource } from './update-source-types.js';
+import { UpdateRateLimitError } from './update-source-types.js';
 
 const REPOSITORY = 'QwQBiG/dsh-archive-delete';
 const API = `https://api.github.com/repos/${REPOSITORY}/releases`;
@@ -76,12 +77,22 @@ export function createGithubUpdateSource(options: GithubUpdateSourceOptions): Up
   if (!integer(timeoutMs) || timeoutMs > 30_000) throw new RangeError('Invalid update request timeout.');
   const fetcher = options.fetch ?? globalThis.fetch;
   const known = new Map<string, Resolved>();
+  let retryAt = 0;
+  const withBudget = async <T>(signal: AbortSignal | undefined, operation: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+    const controller = new AbortController();
+    const cancel = () => controller.abort(signal?.reason);
+    signal?.addEventListener('abort', cancel, { once: true }); if (signal?.aborted) cancel();
+    const timer = setTimeout(() => controller.abort(error('update-timeout', 'The GitHub update operation timed out.')), timeoutMs);
+    try { return await operation(controller.signal); }
+    finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
+  };
   async function read(url: string, maximum: number, signal?: AbortSignal): Promise<Uint8Array> {
+    if (Date.now() < retryAt) throw new UpdateRateLimitError(retryAt);
     const controller = new AbortController(); let timedOut = false; let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     const cancelled = () => error(timedOut ? 'update-timeout' : 'update-cancelled', timedOut ? 'The GitHub update request timed out.' : 'The update request was cancelled.');
-    const cancel = () => controller.abort();
+    const cancel = () => { timedOut = signal?.reason instanceof ArchiveError && signal.reason.code === 'update-timeout'; controller.abort(); };
     const abort = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(cancelled()), { once: true }));
-    signal?.addEventListener('abort', cancel, { once: true }); if (signal?.aborted) controller.abort();
+    signal?.addEventListener('abort', cancel, { once: true }); if (signal?.aborted) cancel();
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     const execute = async (): Promise<Uint8Array> => {
       let current = url;
@@ -102,7 +113,15 @@ export function createGithubUpdateSource(options: GithubUpdateSourceOptions): Up
         }
         if (!response.ok) {
           void response.body?.cancel().catch(() => {});
-          if (response.status === 403 || response.status === 429) throw error('update-rate-limited', 'GitHub rate-limited update checks. Try again later.');
+          if (response.status === 403 || response.status === 429) {
+            const now = Date.now(); const header = response.headers.get('retry-after');
+            const reset = response.headers.get('x-ratelimit-reset');
+            const after = header && /^\d+$/.test(header) ? now + Number(header) * 1000 : header ? Date.parse(header) : NaN;
+            const limitReset = reset && /^\d+$/.test(reset) ? Number(reset) * 1000 : NaN;
+            const requested = [after, limitReset].filter(value => Number.isSafeInteger(value) && value > now);
+            retryAt = Math.min(now + 7 * 86_400_000, Math.max(now + 60_000, ...requested));
+            throw new UpdateRateLimitError(retryAt);
+          }
           throw error(response.status === 404 ? 'update-release-unavailable' : 'update-network', 'The GitHub release could not be downloaded.');
         }
         const length = response.headers.get('content-length');
@@ -154,34 +173,40 @@ export function createGithubUpdateSource(options: GithubUpdateSourceOptions): Up
   };
   return {
     async check(signal): Promise<ReleaseCheck> {
-      const response = json(await read(`${API}?per_page=20`, limits.releasesBytes, signal)); if (!Array.isArray(response)) throw invalid();
-      const newer = response.slice(0, 20).flatMap(value => { const item = release(value); return item && compare(item.version, options.currentVersion) > 0 ? [item] : []; })
-        .sort((a, b) => compare(b.version, a.version)).slice(0, 5);
-      let failure: ArchiveError | undefined;
-      for (const item of newer) {
-        try {
-          const resolved = await resolveRelease(item, signal); if (!resolved) continue;
-          known.set(resolved.pin.candidate.id, structuredClone(resolved));
-          while (known.size > 8) known.delete(known.keys().next().value!);
-          return { availability: 'available', candidate: structuredClone(resolved.pin.candidate), pinned: structuredClone(resolved.pin) };
-        } catch (caught) { if (caught instanceof ArchiveError && caught.code === 'update-metadata-invalid') failure = caught; else throw caught; }
-      }
-      if (failure) throw failure;
-      return newer.length ? { availability: 'incompatible', code: 'update-incompatible' } : { availability: 'current' };
+      return withBudget(signal, async signal => {
+        const response = json(await read(`${API}?per_page=20`, limits.releasesBytes, signal)); if (!Array.isArray(response)) throw invalid();
+        const newer = response.slice(0, 20).flatMap(value => { const item = release(value); return item && compare(item.version, options.currentVersion) > 0 ? [item] : []; })
+          .sort((a, b) => compare(b.version, a.version)).slice(0, 5);
+        let failure: ArchiveError | undefined;
+        for (const item of newer) {
+          try {
+            const resolved = await resolveRelease(item, signal); if (!resolved) continue;
+            known.set(resolved.pin.candidate.id, structuredClone(resolved));
+            while (known.size > 8) known.delete(known.keys().next().value!);
+            return { availability: 'available', candidate: structuredClone(resolved.pin.candidate), pinned: structuredClone(resolved.pin) };
+          } catch (caught) { if (caught instanceof ArchiveError && caught.code === 'update-metadata-invalid') failure = caught; else throw caught; }
+        }
+        if (failure) throw failure;
+        return newer.length ? { availability: 'incompatible', code: 'update-incompatible' } : { availability: 'current' };
+      });
     },
     async revalidate(pin, signal): Promise<void> {
-      const record = trusted(pin); const item = release(json(await read(`${API}/${record.releaseId}`, limits.releasesBytes, signal)));
-      if (!item || item.id !== record.releaseId || compare(item.version, options.currentVersion) <= 0) throw error('update-source-changed', 'The confirmed release is no longer available.');
-      const current = await resolveRelease(item, signal);
-      if (!current || !samePin(current.pin, record.pin)) throw error('update-source-changed', 'The confirmed update changed. Check for updates again.');
+      return withBudget(signal, async signal => {
+        const record = trusted(pin); const item = release(json(await read(`${API}/${record.releaseId}`, limits.releasesBytes, signal)));
+        if (!item || item.id !== record.releaseId || compare(item.version, options.currentVersion) <= 0) throw error('update-source-changed', 'The confirmed release is no longer available.');
+        const current = await resolveRelease(item, signal);
+        if (!current || !samePin(current.pin, record.pin)) throw error('update-source-changed', 'The confirmed update changed. Check for updates again.');
+      });
     },
     async download(pin, signal): Promise<Uint8Array> {
-      const record = trusted(pin);
-      const bytes = await read(record.pin.assetUrl, Math.min(limits.assetBytes, record.pin.candidate.assetBytes), signal);
-      if (bytes.byteLength !== record.pin.candidate.assetBytes || createHash('sha256').update(bytes).digest('hex') !== record.pin.sha256)
-        throw error('update-checksum', 'The downloaded update does not match its confirmed SHA-256 checksum.');
-      await validatePackage(bytes, record.pin.candidate.version, options.hostVersion, limits); if (signal?.aborted) throw error('update-cancelled', 'The update request was cancelled.');
-      return bytes;
+      return withBudget(signal, async signal => {
+        const record = trusted(pin);
+        const bytes = await read(record.pin.assetUrl, Math.min(limits.assetBytes, record.pin.candidate.assetBytes), signal);
+        if (bytes.byteLength !== record.pin.candidate.assetBytes || createHash('sha256').update(bytes).digest('hex') !== record.pin.sha256)
+          throw error('update-checksum', 'The downloaded update does not match its confirmed SHA-256 checksum.');
+        await validatePackage(bytes, record.pin.candidate.version, options.hostVersion, limits); if (signal?.aborted) throw error('update-cancelled', 'The update request was cancelled.');
+        return bytes;
+      });
     },
   };
 }

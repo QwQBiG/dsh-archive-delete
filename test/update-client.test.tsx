@@ -9,6 +9,7 @@ import { createArchiveApi } from '../src/client.js';
 import { UpdateClientController } from '../src/update-client.js';
 import { UpdateCard } from '../src/update-ui.js';
 import { translator, type NativePrimitives } from '../src/client-ui.js';
+import { formatTimestamp } from '../src/client-format.js';
 import type { UpdateOverview } from '../src/update-contracts.js';
 
 const candidate = { id: 'confirmed-release', version: '0.1.6', requiredDshVersion: '0.2.1-rc.3', publishedAt: '2026-10-29T00:00:00Z',
@@ -129,7 +130,7 @@ test('normal update summary keeps version and actions compact, with policy and t
   for (const language of ['en', 'zh'] as const) {
     const translate = translator(language); const html = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />);
     const disclosure = html.match(/<details class="dad-update-info">[\s\S]*?<\/details>/)?.[0]; assert.ok(disclosure);
-    assert.ok(disclosure.includes(translate('updateAutomatic'))); assert.ok(disclosure.includes(translate('updateChecked', { time: new Date(100).toLocaleString() })));
+    assert.ok(disclosure.includes(translate('updateAutomatic'))); assert.ok(disclosure.includes(translate('updateChecked', { time: formatTimestamp(100, translate) })));
     assert.ok(!disclosure.startsWith('<details open'));
     const summary = html.replace(disclosure, '').replace(/<[^>]+>/g, '');
     assert.ok(summary.includes('v0.1.5')); assert.ok(summary.includes(translate('updateCurrentCompact'))); assert.ok(summary.includes(translate('updateCheckCompact')));
@@ -147,9 +148,40 @@ test('available update exposes review without showing release notes or confirmat
   assert.ok(!initial.includes('&lt;script&gt;')); assert.ok(!initial.includes(translate('updateConfirm'))); assert.ok(!initial.includes(translate('updateScope')));
   f.updates.review();
   const reviewed = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />);
+  assert.match(reviewed, /role="group" aria-labelledby="[^"]+"/); assert.match(reviewed, /data-update-cancel=""/);
   assert.ok(reviewed.includes('&lt;script&gt;')); assert.ok(reviewed.includes(translate('updateConfirm'))); assert.ok(reviewed.includes(translate('updateScope')));
   f.updates.cancelReview();
   assert.ok(!renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />).includes(translate('updateConfirm')));
+});
+
+test('installation observation continues beyond thirty seconds and stops once the confirmed request settles', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let requestId = ''; let checks = 0; let completed = false;
+  const f = fixture({
+    installUpdate: async (_candidateId, id) => { requestId = id; throw new ClientTransportError('synthetic lost reply'); },
+    updates: async () => { checks++; return requestId ? { ...available, installedVersion: completed ? candidate.version : available.currentVersion,
+      installation: { requestId, version: candidate.version, status: completed ? 'restart-required' : 'installing' } } : available; },
+  });
+  t.after(() => { f.updates.dispose(); f.archive.dispose(); });
+  await f.updates.check(); f.updates.review(); await f.updates.confirm();
+  for (let i = 0; i < 10; i++) { t.mock.timers.tick(3_000); await new Promise(resolve => setImmediate(resolve)); }
+  assert.equal(checks, 11);
+  completed = true;
+  t.mock.timers.tick(3_000); await new Promise(resolve => setImmediate(resolve)); assert.equal(checks, 11, 'polling backs off after thirty seconds');
+  t.mock.timers.tick(12_000); await new Promise(resolve => setImmediate(resolve)); assert.equal(checks, 12);
+  assert.equal(f.updates.getSnapshot().uncertain, false); assert.equal(f.updates.getSnapshot().data?.installation?.status, 'restart-required');
+  t.mock.timers.tick(60_000); await new Promise(resolve => setImmediate(resolve)); assert.equal(checks, 12);
+});
+
+test('update maintenance error codes retain specific repair instructions in both languages', async t => {
+  for (const [code, key] of [['update-in-progress', 'updateBusy'], ['update-restart-required', 'updateRestart']] as const) {
+    const f = fixture({ updates: async () => { throw new ArchiveError(code, 'Synthetic error'); } });
+    t.after(() => { f.updates.dispose(); f.archive.dispose(); }); await f.updates.check();
+    for (const language of ['en', 'zh'] as const) {
+      const translate = translator(language); const html = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />);
+      assert.ok(html.includes(translate(key)));
+    }
+  }
 });
 
 test('compact error state remains actionable outside collapsed update details and never says up to date', async t => {

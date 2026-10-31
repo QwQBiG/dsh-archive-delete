@@ -2,6 +2,17 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
+## 0.0.2 — Reliability and clearer confirmations
+
+- Flush staging parents before moving logs; order permanent-deletion directory flushes before dropping recovery metadata and completing the journal. Recheck owned directory identities before deletion. Windows retains its documented process-interruption guarantee.
+- Isolate damaged archive and trash records with visible diagnostics. Healthy records remain visible; uncertain relationships and unidentified ancestry remain protected. A missing original empty bucket no longer blocks recorded cleanup or cancellation.
+- Index subagent relationships and recent receipts, reuse operation reads within trash listings, and coalesce overlapping refreshes. Retain old receipts for exact request replay; receipt listings no longer delete temporary files.
+- Bind each preview to one request, including uncertain receipt-publication failures; preserve same-request replay. Invalidate in-flight previews during updates, show eligible/protected counts, and disable expired confirmations. Permanent deletion has a distinct confirmation style.
+- Strictly validate response fields and request enums, bound owner-authenticated request streams before buffering, localize diagnostics, unify time formatting, and reduce repeated list sorting.
+- Keep the previous same-scope storage result visible during rescans and after failure/cancellation, with an explicit previous-result label. Equivalent exclusion order no longer invalidates a workspace scan.
+- Reconcile an uncertain update against the native installation without repeating it, continue status polling with backoff, honor GitHub rate-limit timing, and bound/cancel pre-install verification. Release generation and checks bind package admission, public checksum and updater metadata to the same bytes.
+- Acquire the plugin-store lease before creating data areas; retry transient native-peer resolution and report unavailable idle-release capabilities without logging session content.
+
 ## 0.0.1 — Initial public release
 
 - Move archived conversations to recoverable trash from their native DSH menu or the **Archived / Trash / Storage overview** dialog. Review up to 100 targets per page/batch, sort default/largest-first, and see individual results and retries; changing page, tab or sort clears selection.

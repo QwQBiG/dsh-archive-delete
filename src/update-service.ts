@@ -1,12 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { link, lstat, mkdir, open, readdir, rename, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { ArchiveError } from './contracts.js';
 import { assertPrivateDirectory, readBoundedJson, syncDirectory } from './filesystem.js';
 import type { UpdateCandidate, UpdateInstallation, UpdateOverview } from './update-contracts.js';
 import type { UpdateHost } from './update-host-types.js';
 import type { ReleaseCheck, UpdateSource } from './update-source-types.js';
+import { UpdateRateLimitError } from './update-source-types.js';
 
 const DAY = 24 * 60 * 60_000;
 const RETRY = 60 * 60_000;
@@ -39,8 +40,11 @@ class UpdateStore {
   async initialize(): Promise<void> {
     await assertPrivateDirectory(this.root);
     for (const path of [this.area(), this.packages()]) {
-      await mkdir(path, { mode: 0o700 }).catch(error => { if (error.code !== 'EEXIST') throw error; });
+      let created = false;
+      try { await mkdir(path, { mode: 0o700 }); created = true; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
       await assertPrivateDirectory(path);
+      if (created) await syncDirectory(dirname(path));
       for (const name of await readdir(path)) if (/^\.update-[a-f\d-]{36}\.tmp$/.test(name)) {
         const temporary = join(path, name); const st = await lstat(temporary);
         if (!st.isFile() || st.isSymbolicLink()) throw new ArchiveError('update-state-unsafe', 'A temporary update file is unsafe.');
@@ -104,6 +108,7 @@ export class UpdateService {
   private cache: Cache | undefined;
   private checkPromise: Promise<void> | undefined;
   private checkAbort: AbortController | undefined;
+  private installAbort: AbortController | undefined;
   private installation: SavedInstallation | undefined;
   private installPromise: Promise<UpdateOverview> | undefined;
   private activeRequest: { requestId: string; candidateId: string } | undefined;
@@ -120,7 +125,7 @@ export class UpdateService {
     const cached = await this.store.read('check.json');
     if (record(cached) && cached.schema === 1 && cached.currentVersion === this.options.host.loadedVersion && cached.hostVersion === this.options.host.hostVersion
       && typeof cached.checkedAt === 'number' && Number.isSafeInteger(cached.checkedAt) && cached.checkedAt >= 0 && cached.checkedAt <= this.now()
-      && typeof cached.nextCheckAt === 'number' && cached.nextCheckAt >= cached.checkedAt && cached.nextCheckAt <= cached.checkedAt + DAY
+      && typeof cached.nextCheckAt === 'number' && Number.isSafeInteger(cached.nextCheckAt) && cached.nextCheckAt >= cached.checkedAt && cached.nextCheckAt <= cached.checkedAt + 7 * DAY
       && record(cached.check) && ['current', 'available', 'incompatible', 'error'].includes(String(cached.check.availability))
       && (cached.check.code === undefined || /^update-[a-z-]+$/.test(String(cached.check.code)))
       && (cached.check.candidate === undefined || candidate(cached.check.candidate))) this.cache = cached as unknown as Cache;
@@ -159,9 +164,11 @@ export class UpdateService {
   }
   async info(force = false): Promise<UpdateOverview> {
     if (this.closed) throw new ArchiveError('update-stopping', 'The plugin is stopping.');
+    if (!this.installPromise) await this.reconcileInstallation();
     if (this.installPromise || this.installedVersion !== this.options.host.loadedVersion) return this.overview();
     const due = !this.cache || this.now() >= this.cache.nextCheckAt;
-    const manual = force && (!this.cache || this.now() - this.cache.checkedAt >= 60_000);
+    const rateLimited = this.cache?.check.code === 'update-rate-limited' && this.now() < this.cache.nextCheckAt;
+    const manual = force && !rateLimited && (!this.cache || this.now() - this.cache.checkedAt >= 60_000);
     if (!this.checkPromise && (due || manual)) {
       const abort = new AbortController(); this.checkAbort = abort;
       const checking = (async () => {
@@ -177,7 +184,7 @@ export class UpdateService {
           // Keep the previous candidate visible, but explicitly mark the failed
           // observation rather than claiming it is current.
           this.cache = { schema: 1, currentVersion: this.options.host.loadedVersion, hostVersion: this.options.host.hostVersion,
-            checkedAt, nextCheckAt: checkedAt + RETRY, check: { availability: 'error', code: errorCode(error),
+            checkedAt, nextCheckAt: Math.max(checkedAt + RETRY, error instanceof UpdateRateLimitError ? Math.min(checkedAt + 7 * DAY, error.retryAt) : 0), check: { availability: 'error', code: errorCode(error),
               ...(this.cache?.check.candidate ? { candidate: this.cache.check.candidate } : {}) } };
           await this.store.write('check.json', this.cache).catch(() => {});
         }
@@ -196,7 +203,10 @@ export class UpdateService {
     }
     if (this.installation?.requestId === requestId) {
       if (this.installation.candidateId !== candidateId) throw new ArchiveError('update-request-conflict', 'This request belongs to a different update.');
-      return this.installPromise ?? this.overview();
+      if (this.installPromise) return this.installPromise;
+      if (this.closed) throw new ArchiveError('update-stopping', 'The plugin is stopping.');
+      await this.reconcileInstallation();
+      return this.overview();
     }
     if (this.closed || !this.options.host.canInstall) throw new ArchiveError('update-unavailable', 'The native plugin manager is unavailable.');
     if (this.installPromise || this.installedVersion !== this.options.host.loadedVersion
@@ -212,15 +222,41 @@ export class UpdateService {
     void task.finally(() => { if (this.installPromise === task) { this.installPromise = undefined; this.activeRequest = undefined; } }).catch(() => {});
     return task;
   }
+  /** A lost manager reply never authorizes a second installation. Re-read the
+   * native profile to settle an already installed target; an old or unreadable
+   * target alone cannot prove that a delegated package operation has stopped. */
+  private async reconcileInstallation(): Promise<void> {
+    const saved = this.installation;
+    if (!saved || !['installing', 'unknown', 'restart-required'].includes(saved.status)) return;
+    let installed: string;
+    try { installed = (await this.options.host.installed()).version; }
+    catch { return; }
+    this.installedVersion = installed;
+    if (installed !== saved.version || this.installation !== saved || this.installPromise) return;
+    const status = installed === this.options.host.loadedVersion ? 'installed' : 'restart-required';
+    if (saved.status === status && saved.code === undefined) return;
+    this.installation = { ...saved, status };
+    delete this.installation.code;
+    await this.store.write('installation.json', this.installation);
+  }
   private async runInstall(reviewed: UpdateCandidate, candidateId: string, requestId: string): Promise<UpdateOverview> {
     let release: ((restartRequired?: boolean) => void) | undefined;
     let managerCalled = false;
+    const abort = new AbortController(); this.installAbort = abort;
+    const budget = setTimeout(() => abort.abort(new ArchiveError('update-timeout', 'Update verification exceeded its time budget.')), 30_000);
+    const checkStopped = () => {
+      if (this.closed) throw new ArchiveError('update-stopping', 'The plugin stopped before installation.');
+      if (abort.signal.aborted) throw new ArchiveError('update-timeout', 'Update verification exceeded its time budget.');
+    };
     try {
-      const checked = await this.options.source.check();
+      const checked = await this.options.source.check(abort.signal);
+      checkStopped();
       if (checked.availability !== 'available' || checked.pinned?.candidate.id !== candidateId || checked.candidate?.version !== reviewed.version)
         throw new ArchiveError('update-changed', 'The release changed. Review a fresh update before installing.');
-      await this.options.source.revalidate(checked.pinned);
-      const bytes = await this.options.source.download(checked.pinned);
+      await this.options.source.revalidate(checked.pinned, abort.signal);
+      checkStopped();
+      const bytes = await this.options.source.download(checked.pinned, abort.signal);
+      checkStopped();
       const packagePath = await this.store.package(reviewed.version, checked.pinned.sha256, bytes);
       const installed = await this.options.host.installed();
       if (installed.version !== this.options.host.loadedVersion) throw new ArchiveError('update-restart-required', 'A different version is already installed. Restart DSH before continuing.');
@@ -230,6 +266,7 @@ export class UpdateService {
       this.installation = { requestId, candidateId, version: reviewed.version, status: 'installing', startedAt: this.now() };
       await this.store.write('installation.json', this.installation);
       if (this.closed) throw new ArchiveError('update-stopping', 'The plugin stopped before installation.');
+      checkStopped(); clearTimeout(budget);
       managerCalled = true;
       const result = await this.options.host.install(packagePath, reviewed.version, requestId);
       this.installedVersion = (await this.options.host.installed()).version;
@@ -252,11 +289,12 @@ export class UpdateService {
       release?.(changed); release = undefined;
       if (managerCalled) return this.overview();
       throw error;
-    } finally { release?.(true); }
+    } finally { clearTimeout(budget); if (this.installAbort === abort) this.installAbort = undefined; release?.(true); }
   }
   async close(): Promise<void> {
     this.closed = true; if (this.interval) clearInterval(this.interval);
     this.checkAbort?.abort(); await this.checkPromise?.catch(() => {});
+    this.installAbort?.abort();
     // The host owns an admitted installation. Awaiting it here would deadlock
     // self-replacement when HMR is already awaiting this plugin's disposal.
   }

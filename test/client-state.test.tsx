@@ -543,3 +543,49 @@ test('redacted completion receipts retain preview titles only in client memory',
   assert.equal(controller.getSnapshot().result?.items[0]?.title, 'A');
   assert.equal(redacted.items[0]?.title, '');
 });
+
+test('maintenance invalidates in-flight confirmations even when it ends before the response arrives', async () => {
+  for (const rejects of [false, true]) {
+    const response = deferred<Preview>();
+    let executions = 0;
+    const controller = new ArchiveClientController(api({ preview: () => response.promise,
+      execute: async () => { executions++; return result(); } }), () => 'request-1', () => 1);
+    await controller.open(); controller.toggle('archive-a');
+    const checking = controller.preview('trash');
+    assert.equal(controller.getSnapshot().loading, true);
+    controller.setMaintenance(true);
+    assert.deepEqual(controller.getSnapshot().selected, []);
+    assert.equal(controller.getSnapshot().preview, null);
+    assert.equal(controller.getSnapshot().loading, false);
+    controller.setMaintenance(false);
+    if (rejects) response.reject(new Error('late transport diagnostic'));
+    else response.resolve(preview());
+    await checking;
+    assert.equal(controller.getSnapshot().preview, null);
+    assert.equal(controller.getSnapshot().error, null);
+    await controller.confirm(); assert.equal(executions, 0);
+    controller.dispose();
+  }
+});
+
+test('same-scope rescan retains the last observation through pending, failure and cancellation, without leaking scopes', async () => {
+  const response = deferred<StorageOverview>();
+  let calls = 0;
+  const controller = new ArchiveClientController(api({ list: async () => ({ ...overview(), storageWorkspaces: storageOverview().workspaces }),
+    storage: async id => { calls++; if (calls === 1) return storageOverview(id); if (calls === 2) return response.promise; throw new Error('scan failed'); } }));
+  await controller.open(); controller.setTab('storage');
+  await controller.scanStorage('host');
+  const last = controller.getSnapshot().storage.result;
+  const rescan = controller.scanStorage('host');
+  assert.equal(controller.getSnapshot().storage.result, last);
+  response.reject(new Error('scan failed')); await rescan;
+  assert.equal(controller.getSnapshot().storage.result, last);
+  assert.ok(controller.getSnapshot().storage.error);
+  await controller.scanStorage('host');
+  assert.equal(controller.getSnapshot().storage.result, last);
+  controller.setStorageWorkspace('project-1');
+  assert.equal(controller.getSnapshot().storage.result, null);
+  await controller.scanStorage('workspace');
+  assert.equal(controller.getSnapshot().storage.result, null);
+  controller.dispose();
+});

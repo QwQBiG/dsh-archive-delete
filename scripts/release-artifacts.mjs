@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, open, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { gunzipSync } from 'node:zlib';
+import { tsImport } from 'tsx/esm/api';
 
 const stableVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const exactVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
@@ -38,9 +38,10 @@ const after = await lstat(path, { bigint: true });
 if (BigInt(bytes.length) !== before.size || before.dev !== after.dev || before.ino !== after.ino
   || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs)
   throw new Error('The packed release changed while generating its metadata.');
-// Verify gzip integrity while bounding the expanded bytes; archive/package
-// validation is performed by the updater before installation.
-gunzipSync(bytes, { maxOutputLength: 64 * 1024 * 1024 });
+// Refuse unsupported package contents before publishing either checksum file.
+// This is the exact bounded admission path used by an installed updater.
+const { validateUpdatePackage } = await tsImport('../src/update-source.ts', import.meta.url);
+await validateUpdatePackage(bytes, pkg.version, pkg.engines.dsh);
 const sha256 = createHash('sha256').update(bytes).digest('hex');
 const metadataFilename = filename.replace(/\.tgz$/, '.update.json');
 const metadata = { schema: 1, packageName: pkg.name, version: pkg.version, requiredDshVersion: pkg.engines.dsh,

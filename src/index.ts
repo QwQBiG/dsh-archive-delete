@@ -35,7 +35,6 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
     else {
       const paths = await getHostPaths(ctx);
       const store = new TrashStore({ root: paths.root, sessionsRoot: paths.sessionsRoot });
-      await store.initialize();
       lease = await acquirePluginLease(paths.root, getNativeLockExclusive(ctx), { lockNamed: getNativeWindowsLock(ctx) });
       archive = new ArchiveService(adapter, store);
       await archive.initialize();

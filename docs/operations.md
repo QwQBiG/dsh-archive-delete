@@ -16,9 +16,13 @@ Batch feedback reports moved/restored/purged successes, pending requests, skippe
 
 ## Preview and execution
 
-Preview resolves selected IDs on the host, groups explicit subagents, and reports the actual scope. It is read-only. Execution uses an opaque preview identity and a request identity, rechecking archive state, contents, relationships, activity, paths, and lease ownership.
+Preview resolves selected IDs on the host, groups explicit subagents, and reports the actual scope. It is read-only. The confirmation shows ready, idle-release and protected counts, uses a distinct permanent-deletion action, and disables itself on expiry. Maintenance invalidates in-flight previews so a late reply cannot restore an old confirmation. Execution uses an opaque preview identity and a request identity, rechecking archive state, contents, relationships, activity, paths, and lease ownership.
 
 The service serializes mutations. It persists request intent before starting and records each target's outcome durably. Reusing a request identity reads its recorded outcome instead of starting another transition; a completed pending request can later receive the startup move's outcome. A failed member must not disappear from the retryable result merely because another member or bookkeeping update succeeded.
+
+Each preview is consumed before durable request admission, including when publication reports an uncertain write/sync failure. A new request ID needs a new preview; the original request ID can still replay a durable intent or result. Overlapping refreshes coalesce, but reads remain serialized with transitions so they cannot observe a half-moved group.
+
+Damaged archive/trash records are reported separately and left untouched while healthy rows remain visible. Known damaged relationship components are protected; unidentified ancestry blocks archive moves. A missing original empty bucket does not by itself prevent journaled cleanup or cancellation, and never permits overwriting an existing unsafe parent.
 
 ## Move to trash
 
@@ -26,7 +30,7 @@ The service serializes mutations. It persists request intent before starting and
 2. Reject unarchived parents, active work/interactions, unsafe or ambiguous storage, and external write ownership.
 3. During a fresh manual execution, if the blocker is idle ownership by this host, attempt the admitted native lifecycle teardown for the complete group. Do not close active work, maintenance, queued input, unknown ownership, or externally held writers.
 4. After a successful release, re-inspect content, archive state and membership, then acquire compatible exclusive leases and revalidate the group. Changed data requires another confirmation. If safe release is unavailable, persist a pending request without moving any log.
-5. Persist the prepared operation, then use same-volume moves for owned session-log directories.
+5. Persist the prepared operation and the newly created staging parent entry, then use same-volume moves for owned session-log directories.
 6. Settle the corresponding host registration and projection metadata through the adapter, and publish a complete trash entry.
 7. Release leases and report the exact result. A failed intermediate stage is recorded for rollback/recovery, not reported as moved.
 
@@ -56,17 +60,19 @@ Permanent purge cannot undo bytes already removed. If it fails part-way, preserv
 
 No automatic expiry or empty-trash task is installed. Shared attachments, spill files, project working directories, third-party caches, and remote copies are outside the operation.
 
+On POSIX, purge flushes removed file entries in each member directory, then member removal in the trash entry, before removing and flushing the manifest, removing the entry, and syncing the trash parent. Only then can the operation become durably purged and its journal finish. Directory identities are checked again immediately before path-based deletion. Node has no portable `unlinkat` boundary: these guards do not promise protection against a same-user adversary changing a parent during the final syscall. Windows retains file flushing and process-interruption recovery, without a directory-fsync or whole-machine power-loss guarantee.
+
 ## Size observations and storage scans
 
 Archived and Trash can be sorted in default order or largest first. Changing sort, page or tab clears selection. Trash row/preview sizes and the confirmation fingerprint come from a current checked observation of remaining owned files; saved original sizes do not describe a partial purge. Recovery metadata and lock files are outside the row figure. Both restore and purge recheck the fingerprint under the native lease before mutation. A changed observation requires another confirmation, not an adjusted old one.
 
-**Storage overview** is a separate read-only flow: choose DSH storage or one registered workspace, explicitly start a scan, then view its measured categories, files, folders, time and limits. Opening it does not scan files. DSH scans exclude valid registered project directories even below the data home; projects require their own explicitly selected scan. Refreshing the workspace list does not refresh measured sizes. There is one active scan at a time; cancellation, scope changes and closing prevent late results from replacing the current view. An incomplete or unavailable scan is not a failed archive operation and does not change pending requests or recovery journals.
+**Storage overview** is a separate read-only flow: choose DSH storage or one registered workspace, explicitly start a scan, then view its measured categories, files, folders, time and limits. Opening it does not scan files. DSH scans exclude valid registered project directories even below the data home; projects require their own explicitly selected scan. Refreshing the workspace list does not refresh measured sizes. A same-scope rescan retains the previous timestamped result with an earlier-observation label while updating, or after failure/cancellation; a different scope clears it. Equivalent exclusion-order changes are ignored. There is one active scan at a time; cancellation, scope changes and closing prevent late results from replacing the current view. An incomplete or unavailable scan is not a failed archive operation and does not change pending requests or recovery journals.
 
 The result measures logical file bytes. Verified path/hard-link identities are globally counted once; folder totals count aliases and overlapping subtotals are not additive. Missing/unavailable categories remain unknown. Metadata can change during scanning, so partial sizes and observation timestamps are retained. A result never represents reclaimed physical space, proves AI origin or authorizes deleting a file. There is no storage-category purge, project cleanup, automatic scan or receipt expiry; permanent mutation still requires the existing Trash preview and confirmation.
 
 ## Plugin update state and recovery
 
-Update discovery and installation have separate state. The automatic daily check runs only on supported DSH Desktop `0.2.1-rc.3` with an eligible profile-owned native manager; a manual request can refresh after at least one minute. An unsupported future host remains behind the original compatibility gate, rather than gaining a self-upgrade path. A failed observation is `error`, not `current`, and is retried automatically after one hour. `available` identifies a compatible stable GitHub release; it never means that installation has started. The update card shows the running and installed versions, renders notes as plain text, and requires review followed by confirmation.
+Update discovery and installation have separate state. The automatic daily check runs only on supported DSH Desktop `0.2.1-rc.3` with an eligible profile-owned native manager; a manual request can refresh after at least one minute. An unsupported future host remains behind the original compatibility gate, rather than gaining a self-upgrade path. A failed observation is `error`, not `current`, and is retried automatically after at least one hour and respects any longer GitHub rate-limit window, including manual checks. `available` identifies a compatible stable GitHub release; it never means that installation has started. The update card shows the running and installed versions, renders notes as plain text, and requires review followed by confirmation.
 
 Before replacement, refetch and compare the server-owned release pin, download the exact package, verify its SHA-256 and bounded tar/manifest, then persist the private verified archive at `updates/packages/<version>-<sha256>.tgz`. DSH's native manager receives that file for this same package and current profile. The retained `file:` dependency source is expected; keep the package for reinstall/reproduction. Packages have no automatic expiry or cleanup action.
 
@@ -86,6 +92,10 @@ The maintenance gate stops accepting new archive mutations and drains accepted w
 Disposal aborts update checks but does not cancel or await a native installation already delegated to the host. Self-replacement can unload the old plugin while the native job is running; awaiting that job from its disposer would deadlock the reload. The host job settles its own result, and startup reconciles the saved request with the installed package. Lost responses are not success proof; use status reconciliation or the same request ID rather than launching another install. If the result remains unknown, fully quit and reopen DSH to reconcile before proceeding.
 
 Native package-manager failure tests cover manifest and lockfile rollback. Activation of new code is a later boundary and cannot guarantee complete runtime rollback. Keep the journals and verified package, inspect diagnostics, and follow restart guidance when running/installed versions differ. Installation and manual replacement use the fixed Release asset URL; distribution remains GitHub-only.
+
+Repeated uncertain update requests re-read native installation state without replaying a recorded install. A matching installed target can settle to installed/restart-required; an old or unreadable target alone cannot prove the delegated operation stopped, so it stays protected. Observation backs off from 3 to 15 to 60 seconds until settled or client disposal. Discovery requests share a 15-second budget and installation preflight has a 30-second budget; disposal cancels only work not yet delegated to the manager.
+
+Completed receipts remain available for exact request replay. Recent-result reads keep a warm index of up to ten completed receipts and validate displayed receipts; the initial directory inventory and startup recovery still scale with history. Temporary receipt cleanup is an explicit startup step, not a side effect of listing.
 
 ## Recovery expectations
 

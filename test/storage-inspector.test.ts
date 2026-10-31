@@ -217,7 +217,7 @@ test('storage route only accepts an optional bounded ID and forwards cancellatio
   controller.abort(); assert.equal(signal?.aborted, true);
   assert.deepEqual(await response.json(), { ok: true, value: result });
   const unsupported = await createRequestHandler(archiveApi())(request({ action: 'storage' }));
-  assert.equal(unsupported.status, 409); assert.match(await unsupported.text(), /unsupported-host/);
+  assert.equal(unsupported.status, 422); assert.match(await unsupported.text(), /unsupported-host/);
 });
 
 test('disabled plugin exposes a rejecting storage API without allocating or scanning data', async () => {
@@ -227,9 +227,27 @@ test('disabled plugin exposes a rejecting storage API without allocating or scan
     let handler: ((request: Request) => Promise<Response>) | undefined;
     const close = await apply({ ...f.ctx, connection: { fetch: { register: (route: { fetch: typeof handler }) => { handler = route.fetch; return () => {}; } } } });
     const response = await handler!(request({ action: 'storage' }));
-    assert.equal(response.status, 409); assert.match(await response.text(), /unsupported-host/);
+    assert.equal(response.status, 422); assert.match(await response.text(), /unsupported-host/);
     const listed = await handler!(request({ action: 'list' }));
     assert.equal(listed.status, 200); await close();
     await assert.rejects(() => realpath(join(f.home, 'archive-delete')), { code: 'ENOENT' });
+  } finally { await f.cleanup(); }
+});
+
+test('workspace exclusion order and repeated exclusions do not invalidate an otherwise identical scan', async () => {
+  const f = await fixture();
+  try {
+    const exclusions = [join(f.project, 'cache'), join(f.project, 'output')];
+    let calls = 0;
+    const inspector = new StorageInspector({ workspaces: () => [{ id: 'project', title: 'Project' }],
+      sources: async () => [{ id: 'workspace', kind: 'workspace', readOnly: true, path: f.project,
+        excludePaths: calls++ === 0 ? exclusions : [exclusions[1]!, exclusions[0]!, exclusions[0]!] }] });
+    assert.equal((await inspector.scan('project')).scope, 'workspace');
+    await inspector.close();
+    calls = 0;
+    const changed = new StorageInspector({ workspaces: () => [], sources: async () => [{ id: 'workspace', kind: 'workspace', readOnly: true, path: f.project,
+      excludePaths: calls++ === 0 ? exclusions : [exclusions[1]!] }] });
+    await assert.rejects(changed.scan('project'), { code: 'workspace-changed' });
+    await changed.close();
   } finally { await f.cleanup(); }
 });

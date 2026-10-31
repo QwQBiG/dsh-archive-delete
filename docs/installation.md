@@ -13,7 +13,7 @@ Move archived conversations to trash, restore them, or permanently clear selecte
 Open **Plugins → Add plugin** and paste the versioned Release package URL:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.1/qwqbig-dsh-archive-delete-0.0.1.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh-archive-delete-0.0.2.tgz
 ```
 
 1. **Add and enable.** The native manager installs the dependency and registers its bundle in the current profile. Fully quit and reopen DSH when it requests a restart.
@@ -22,17 +22,17 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.1/qwqbig-dsh
 
 Release `.tgz` assets contain only the package's declared installable files, including precompiled `lib/` artifacts. Repository archives from `codeload` contain source, tests, lockfiles, and CI configuration as well; they are not the recommended install package. No source build, dependency `prepare`, or installation hook is needed. The plugin is distributed through GitHub Releases, not npm.
 
-For a downloaded package, retain its matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.1/qwqbig-dsh-archive-delete-0.0.1.tgz.sha256). With both files in the same directory, check on macOS:
+For a downloaded package, retain its matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh-archive-delete-0.0.2.tgz.sha256). With both files in the same directory, check on macOS:
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.1.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.2.tgz.sha256
 ```
 
 In Windows PowerShell, compare the reported hash with the checksum file:
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.0.1.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.0.1.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.0.2.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.0.2.tgz.sha256
 ```
 
 A fixed version URL identifies the chosen release; the checksum checks the downloaded file. No fixed byte-size claim is made across releases.
@@ -65,9 +65,15 @@ Restart prompts during installation or upgrade concern loading the new plugin pa
 
 Shared attachments, spill, project files, other plugin caches, and remote copies are outside permanent cleanup. The confirmation shows the scope; permanent cleanup cannot be undone.
 
+### Protected-record notices and confirmations
+
+Damaged archive/trash records are listed in a separate warning without hiding healthy rows. Their remaining data is left untouched. A damaged relationship component is protected; if ancestry cannot be located, archive moves remain blocked until the host inventory is repaired. Do not remove manifests or journals to bypass the warning. Confirmations show ready, idle-release and protected counts, and expire after five minutes; obtain a new preview when expired. Each preview authorizes one request, while reusing its request ID can recover the recorded result.
+
 ## Storage overview
 
 Open plugin details → **Manage archives, trash and storage** → **Storage overview**. Choose **Scan DSH storage**, or choose one workspace from the registered list and then **Scan selected workspace**. Opening the window, selecting the tab or changing the workspace does not start a scan. No all-project scan runs in the background. **Refresh workspace list** refreshes the registered choices, not the measured sizes; start another scan to update the figures. **Cancel scan**, closing the dialog or changing tabs stops the current scan; a late result is not displayed as a new result.
+
+When rescanning the same scope, the previous result and timestamp remain visible with a previous-result label. Cancellation or failure keeps that earlier observation; it is not the outcome of the new attempt. Switching between DSH and workspace scans, or choosing a different workspace, clears the old result. Equivalent exclusion paths in a different order do not count as a workspace change.
 
 ### Locations and categories
 
@@ -92,7 +98,7 @@ CLI installation is intended for managed or unattended setups where the caller c
 With a Desktop-enabled DSH CLI:
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.1/qwqbig-dsh-archive-delete-0.0.1.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh-archive-delete-0.0.2.tgz
 ```
 
 A successful package-manager exit alone does not prove activation. A manager-enabled CLI can register bundles automatically, while an installation-only path can leave them absent. If the standalone CLI rejects the reserved `desktop` profile, use Desktop's manager rather than selecting a different profile.
@@ -117,7 +123,7 @@ A successful package-manager exit alone does not prove activation. A manager-ena
 Start the actual target host and check the plugin component is running, its details contain **Manage archives, trash and storage**, and the dialog responds. After successful recovery and authenticated API registration, the current startup emits a line like:
 
 ```text
-[archive-delete] v0.0.1 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.0.2 loaded · target DSH 0.2.1-rc.3 (host 0.2.1-rc.3) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
 Use a fresh line from the current process and check its version/path. It is not emitted for disabled or failed startup. A configuration dump such as `--dump-config` may succeed even with an unresolved bundle; it does not prove startup or activation.
@@ -166,7 +172,7 @@ Update controls are included in the plugin details and management dialog. A comp
 
 ### Check and confirm
 
-Automatic checking starts only on supported DSH Desktop `0.2.1-rc.3`, with a verifiable profile-owned installation and the supported native manager. On an unsupported host, the existing compatibility gate remains in force; this updater is not a self-upgrade path on future DSH versions. While DSH is running, successful checks are cached for 24 hours. **Check** requests a fresh check after a minimum interval of one minute; earlier clicks use the recorded result. A network, rate-limit or metadata failure remains an error, with an automatic retry after one hour. It does not establish that the installed version is up to date. No check downloads the full package or installs anything.
+Automatic checking starts only on supported DSH Desktop `0.2.1-rc.3`, with a verifiable profile-owned installation and the supported native manager. On an unsupported host, the existing compatibility gate remains in force; this updater is not a self-upgrade path on future DSH versions. While DSH is running, successful checks are cached for 24 hours. **Check** requests a fresh check after a minimum interval of one minute; earlier clicks use the recorded result. A network, rate-limit or metadata failure remains an error, with an automatic retry after at least one hour; a longer GitHub rate-limit window is respected. It does not establish that the installed version is up to date. Manual checks also respect the rate-limit window. No check downloads the full package or installs anything. Network access follows the launched runtime environment; the plugin does not configure a proxy or automatically interpret `HTTPS_PROXY` for the host.
 
 Only stable releases from `QwQBiG/dsh-archive-delete` are considered, with the exact required DSH version and a compatible macOS/Windows declaration. Choose **Review update** to read the version and plain-text notes, then **Confirm upgrade** to install. A changed release requires a fresh check and review. The browser supplies a candidate ID and request ID, never a URL or package path.
 
@@ -174,7 +180,7 @@ Installation replaces only this same plugin in the current profile through DSH's
 
 ### Verified package and retained cache
 
-Before delegating installation, the plugin rechecks the release identity and metadata, downloads the confirmed package, verifies its exact size and SHA-256, and validates the bounded gzip/tar and packed manifest. It requires the expected name/version, exact DSH requirement, bundle patch and prebuilt files. Links, unsafe/duplicate archive paths, install hooks, runtime/optional/bundled dependencies and unapproved or nonoptional peers are refused. No files are extracted or package code executed during this verification.
+Before delegating installation, the plugin rechecks the release identity and metadata, downloads the confirmed package, verifies its exact size and SHA-256, and validates the bounded gzip/tar and packed manifest. It requires the expected name/version, exact DSH requirement, bundle patch and prebuilt files. Links, unsafe/duplicate archive paths, install hooks, runtime/optional/bundled dependencies and unapproved or nonoptional peers are refused. No files are extracted or package code executed during this verification. A discovery operation shares a 15-second budget across its release-list and metadata requests; pre-install verification has a 30-second budget. Unloading cancels verification before delegation, not a native installation already running. SHA-256 checks integrity against the TLS/GitHub repository source; it is not an independent publisher signature.
 
 The verified archive is saved privately as `<DSH_HOME>/archive-delete/updates/packages/<version>-<sha256>.tgz`. The native manager installs this local file, so the profile dependency can display a `file:` source instead of the GitHub URL. GitHub is still the sole distribution source; the local file is its verified retained install package. Keep it with the profile for package-manager reinstall/reproduction. There is no automatic cache cleanup, and the storage overview does not offer a delete action for these packages.
 
@@ -184,7 +190,7 @@ The verified archive is saved privately as `<DSH_HOME>/archive-delete/updates/pa
 
 If the native manager is unavailable, the installation is built-in/ambiguous, or profile ownership cannot be established, use the manual Release URL path below. Network/integrity failures before native installation do not run the package. Native package-manager failures have manifest/lockfile rollback coverage, but failure while activating new plugin code cannot guarantee a complete rollback of the running application. Check diagnostics and the installed/running versions before retrying.
 
-Closing the dialog does not cancel an already confirmed upgrade. Plugin unloading stops automatic checks but does not cancel or wait for an installation already delegated to the host: replacement itself can unload the old plugin, and waiting there could deadlock it. After interruption, **Check installation status** reconciles with the installed package. **Retry the same request** keeps its identity; do not start a second upgrade or treat a lost response as success. If the outcome is still unknown, fully quit and reopen DSH to reconcile it. Archive changes remain protected until the installed/running state is resolved or DSH is fully restarted.
+Closing the dialog does not cancel an already confirmed upgrade. Plugin unloading stops automatic checks but does not cancel or wait for an installation already delegated to the host: replacement itself can unload the old plugin, and waiting there could deadlock it. After interruption, **Check installation status** reconciles with the installed package. **Recheck confirmed request** retains the request identity and reads fresh native installation state; a recorded installation is not run again. Status observation continues every 3 seconds initially, then every 15 seconds, then every 60 seconds until settled or the client unloads. Do not start a second upgrade or treat a lost response as success. If the outcome is still unknown, fully quit and reopen DSH to reconcile it. Archive changes remain protected until the installed/running state is resolved or DSH is fully restarted.
 
 ## Manual upgrade of a fixed URL
 
@@ -217,10 +223,10 @@ Removal retains `<DSH_HOME>/archive-delete/`, including trash, pending/recovery 
 | Unsupported host/version | Runtime admission failed | Read required/current versions in diagnostics and the management dialog. Use Desktop `0.2.1-rc.3` with the supported storage/capabilities. `engines.dsh` is descriptive, not a pnpm install gate. |
 | Host peer warnings | Package metadata or runtime capabilities need checking | Release packages mark host-provided peers as optional. Check the installed package and runtime diagnostics; do not install a second Cordis/React/native stack into the profile. |
 | `exec: : not found` from the internal Node wrapper | Missing Desktop launch environment | Use the installed DSH command or native manager. Development/diagnostics need a real Node 24+ executable; see [Contributing](../CONTRIBUTING.md). |
-| Update check fails or is rate-limited | GitHub/network request did not complete | Keep the installed version, inspect the diagnostic, and check again later; errors do not mean “up to date.” Automatic retry is after one hour. |
+| Update check fails or is rate-limited | GitHub/network request did not complete | Keep the installed version, inspect the diagnostic, and check again later; errors do not mean “up to date.” Automatic retry is after at least one hour and respects a longer GitHub rate-limit window. |
 | Release or package verification fails | Changed metadata, checksum, compatibility or archive | Check again and review the current compatible release. Do not install an unverified file or bypass the confirmation. |
 | Native updater unavailable | No supported manager or unambiguous profile-owned target | Use the manual fixed Release URL in this profile's native plugin manager. |
-| New version installed but old version running, or outcome uncertain | Activation/restart or response interrupted | Follow the full-restart prompt, or check installation status/retry the same request. Preserve update records and cache. |
+| New version installed but old version running, or outcome uncertain | Activation/restart or response interrupted | Follow the full-restart prompt, or check installation status/recheck the confirmed request. Preserve update records and cache. |
 
 For failures, retain the reported status and retry the specific target. Report host/plugin versions and a sanitized synthetic reproduction. Expected operation states are documented in [recovery](operations.md).
 
@@ -240,7 +246,7 @@ With DSH's CLI installed, create a fresh test home and install into its isolated
 
 ```sh
 DSH_ARCHIVE_DELETE_TEST_HOME="$(mktemp -d)"
-DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/artifacts/qwqbig-dsh-archive-delete-0.0.1.tgz"
+DSH_HOME="$DSH_ARCHIVE_DELETE_TEST_HOME" dsh plugin --profile web add "$PWD/artifacts/qwqbig-dsh-archive-delete-0.0.2.tgz"
 ```
 
 Verify the isolated profile's registration and activation as above. On Windows, use the automated isolated package lifecycle check in [Contributing](../CONTRIBUTING.md). Keep the temporary home path if launching that host manually. A packed artifact keeps development dependencies out of the runtime; primary history is not a fixture.

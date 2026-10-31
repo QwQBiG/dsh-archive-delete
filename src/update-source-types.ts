@@ -1,4 +1,10 @@
 import type { UpdateCandidate } from './update-contracts.js';
+import { ArchiveError } from './contracts.js';
+
+/** Public-server backoff is carried only to the server-side cache. */
+export class UpdateRateLimitError extends ArchiveError {
+  constructor(readonly retryAt: number) { super('update-rate-limited', 'GitHub rate-limited update checks. Try again later.'); }
+}
 
 /** Server-owned pin, kept behind the authenticated API boundary. */
 export interface PinnedUpdate { candidate: UpdateCandidate; assetUrl: string; sha256: string }
