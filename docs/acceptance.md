@@ -11,6 +11,7 @@ Package `0.0.2`, official DSH Desktop `0.2.1-rc.3` / `0.2.1-rc.5`, JSONL storage
 | Unit/client/service suite | 276 passed of 283; 3 Windows-only and 4 Electron-only skips in plain Node on macOS |
 | Native host integration | 20 passed of 21; 1 Windows-only skip on macOS |
 | Build/type, docs and package checks | Passed |
+| macOS / Windows × rc.3 / rc.5 | [All four CI jobs passed](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/41190749043), including native package installation and lifecycle |
 | Pack, checksums, update metadata and updater admission | Passed |
 | Isolated install, URL replacement, uninstall/reinstall | Passed; bundle registration and retained trash checked |
 | Installed rc.5 ASAR / Electron | 26 passed of 27 including native host and ASAR metadata checks; 1 Windows-only skip |

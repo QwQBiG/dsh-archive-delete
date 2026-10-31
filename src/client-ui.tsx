@@ -86,7 +86,7 @@ export const en = {
   storageObserved: 'Observed {time} · {duration} ms', storageWindow: 'Scan started {time}', storageFiles: '{unique} unique files · {paths} file paths', storageDirectoryFiles: '{n} file paths',
   storageUnknown: 'Unknown', storageMissing: 'Not found', storageCategoryUnavailable: 'Unavailable', storageCategoryComplete: 'Complete', storageCategoryPartial: 'Partial',
   storageBreakdown: 'Storage categories', storageOverlap: 'Some categories overlap. Their sizes cannot be added together; the total above removes verified duplicates.', storageIdentity: 'File identity was unavailable for {n} paths; duplicate detection may be incomplete.', storageDeduplicated: 'Counted once: {links} duplicate hard links and {paths} repeated paths.',
-  storageTypeBreakdown: 'File types', storageFileCount: '{n} files', storageUpdated: 'Updated {time}',
+  storageTypeBreakdown: 'File types', storageFileCount: 'Files: {n}', storageUpdated: 'Updated {time}',
   storageOtherLocations: 'Other locations ({n})', storageUnavailableCount: '{n} unavailable', storageScanDetails: 'Statistics details', storageMoreFiles: 'More files ({n})',
   storageKindDependencies: 'Dependencies', storageKindBuild: 'Build folders', storageKindVersionControl: 'Version control', storageKindLogs: 'Logs', storageKindMedia: 'Media', storageKindArchives: 'Archives', storageKindCode: 'Code & config', storageKindDocuments: 'Documents', storageKindOther: 'Other files',
   storageDetails: 'Details', storageLargest: 'Largest files', storageDirectories: 'Top-level folders', storageRootFiles: 'Files at the root',

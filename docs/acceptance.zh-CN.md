@@ -11,6 +11,7 @@
 | 单元／客户端／服务套件 | 283 项中 276 项通过，macOS 普通 Node 跳过 3 项 Windows 和 4 项 Electron 专用测试 |
 | 原生宿主集成 | 21 项中 20 项通过，macOS 跳过 1 项 Windows 专用测试 |
 | 构建／类型、文档和包检查 | 通过 |
+| macOS / Windows × rc.3 / rc.5 | [四组 CI 全部通过](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/41190749043)，包含原生安装及包生命周期 |
 | 打包、校验和、更新元数据及更新器准入 | 通过 |
 | 隔离安装、URL 替换、卸载／重装 | 通过，核对 bundle 登记和回收站保留 |
 | 已安装 rc.5 ASAR／Electron | 宿主及 ASAR 清单检查共 27 项，26 项通过，1 项 Windows 专用跳过 |
