@@ -3,6 +3,7 @@ import type { BigIntStats } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { assertCanonicalStoragePath, assertLocalStoragePath, isWithin, samePath } from './filesystem.js';
+import { classifyStorageFile, preferredFileKind, type FileKind } from './storage-classification.js';
 
 export interface UsageRoot {
   id: string; kind: string; label?: string; path?: string; unavailableReason?: string; readOnly: true;
@@ -11,7 +12,9 @@ export interface UsageRoot {
   /** Measure exactly this regular file, never its parent. Omitted means directory-only. */
   file?: true;
 }
-export interface UsageFile { relativePath: string; sizeBytes: number; source: 'unknown' }
+export interface UsageFile { relativePath: string; sizeBytes: number; source: 'unknown'; kind?: FileKind }
+/** Mutually exclusive within a category; separate categories may overlap. */
+export interface UsageFileKind { kind: FileKind; fileBytes: number; fileCount: number }
 /** Directory totals count paths, including hard-link aliases; these are logical file bytes. */
 export interface UsageDirectory { relativePath: string; fileBytes: number; fileCount: number }
 export interface UsageCounters {
@@ -26,6 +29,7 @@ export interface UsageCategory {
   fileBytes: number | null; referencedBytes: number | null; fileCount: number; uniqueFileCount: number;
   counters: UsageCounters; issues: UsageIssue[]; overlaps: string[];
   largestFiles: UsageFile[]; directories: UsageDirectory[];
+  fileKinds?: UsageFileKind[];
 }
 export interface StorageUsage {
   metric: 'logical-file-bytes'; startedAt: number; finishedAt: number; durationMs: number; complete: boolean;
@@ -66,7 +70,7 @@ export async function scanStorage(roots: UsageRoot[], options: UsageScanOptions 
   const startedAt = Date.now(); const tick = clock();
   const categories: UsageCategory[] = roots.map(root => ({ id: root.id, kind: root.kind, ...(root.label ? { label: root.label } : {}),
     readOnly: true, status: 'complete', fileBytes: null, referencedBytes: null, fileCount: 0, uniqueFileCount: 0,
-    counters: counters(), issues: [], overlaps: [], largestFiles: [], directories: [] }));
+    counters: counters(), issues: [], overlaps: [], largestFiles: [], directories: [], fileKinds: [] }));
   const globalIdentities = new Set<string>(); const globalPaths = new Set<string>();
   const measuredRoots: { id: string; path: string; excludes: string[] }[] = [];
   const excluded = (paths: string[], path: string) => paths.some(skip => samePath(skip, path) || isWithin(skip, path));
@@ -95,6 +99,8 @@ export async function scanStorage(roots: UsageRoot[], options: UsageScanOptions 
     }
     if (!await checkpoint(category)) continue;
     const localIdentities = new Set<string>(); const localPaths = new Set<string>();
+    const classifiedFiles = new Map<string, { kind: FileKind; fileBytes: number }>();
+    const fileKinds = new Map<FileKind, UsageFileKind>();
     const folders = new Map<string, UsageDirectory>();
     const observations: { path: string; relativePath: string; signature: string }[] = [];
     const rootIsFile = root.file === true;
@@ -162,6 +168,8 @@ export async function scanStorage(roots: UsageRoot[], options: UsageScanOptions 
       if (stat.size < 0n || stat.size > BigInt(Number.MAX_SAFE_INTEGER)) { category.counters.unsupported++; issue(category, 'size-unrepresentable', rel); return; }
       const bytes = Number(stat.size); const key = pathKey(canonicalFor(rel));
       const identity = stat.ino > 0n && stat.dev > 0n ? `${stat.dev}:${stat.ino}` : undefined;
+      const kind = classifyStorageFile(rel);
+      const classificationKey = identity ? `identity:${identity}` : `path:${key}`;
       category.fileCount++; category.counters.files++; fileCount++;
       category.referencedBytes = add(category.referencedBytes!, bytes); referencedBytes = add(referencedBytes, bytes);
       const folder = rel.includes(sep) ? rel.split(sep)[0]! : '.';
@@ -169,13 +177,27 @@ export async function scanStorage(roots: UsageRoot[], options: UsageScanOptions 
       summary.fileBytes = add(summary.fileBytes, bytes); summary.fileCount++; folders.set(folder, summary);
       if (localPaths.has(key)) category.counters.duplicatePaths++;
       else if (identity && localIdentities.has(identity)) category.counters.duplicateHardlinks++;
-      else { category.fileBytes = add(category.fileBytes!, bytes); category.uniqueFileCount++; }
+      else {
+        const measuredBytes = add(category.fileBytes!, bytes); const creditedBytes = measuredBytes - category.fileBytes!;
+        category.fileBytes = measuredBytes; category.uniqueFileCount++;
+        const group = fileKinds.get(kind) ?? { kind, fileBytes: 0, fileCount: 0 };
+        group.fileBytes += creditedBytes; group.fileCount++; fileKinds.set(kind, group);
+        classifiedFiles.set(classificationKey, { kind, fileBytes: creditedBytes });
+      }
+      const classified = classifiedFiles.get(classificationKey);
+      if (classified && preferredFileKind(classified.kind, kind) !== classified.kind) {
+        const previous = fileKinds.get(classified.kind)!;
+        previous.fileBytes -= classified.fileBytes; previous.fileCount--;
+        if (previous.fileCount === 0) fileKinds.delete(classified.kind);
+        const next = fileKinds.get(kind) ?? { kind, fileBytes: 0, fileCount: 0 };
+        next.fileBytes += classified.fileBytes; next.fileCount++; fileKinds.set(kind, next); classified.kind = kind;
+      }
       if (globalPaths.has(key)) duplicatePaths++;
       else if (identity && globalIdentities.has(identity)) duplicateHardlinks++;
       else { fileBytes = add(fileBytes, bytes); uniqueFileCount++; }
       if (!identity) { category.counters.identityUnknown++; identityUnknown++; }
       localPaths.add(key); globalPaths.add(key); if (identity) { localIdentities.add(identity); globalIdentities.add(identity); }
-      category.largestFiles.push({ relativePath: rel.split(sep).join('/'), sizeBytes: bytes, source: 'unknown' });
+      category.largestFiles.push({ relativePath: rel.split(sep).join('/'), sizeBytes: bytes, source: 'unknown', kind });
       category.largestFiles.sort((a, b) => b.sizeBytes - a.sizeBytes || a.relativePath.localeCompare(b.relativePath));
       category.largestFiles.length = Math.min(category.largestFiles.length, largestLimit);
     };
@@ -217,6 +239,7 @@ export async function scanStorage(roots: UsageRoot[], options: UsageScanOptions 
       } catch { category.counters.changed++; issue(category, 'entry-disappeared', observation.relativePath); }
     }
     category.directories = [...folders.values()].sort((a, b) => b.fileBytes - a.fileBytes || a.relativePath.localeCompare(b.relativePath)).slice(0, directoryLimit);
+    category.fileKinds = [...fileKinds.values()].sort((a, b) => b.fileBytes - a.fileBytes || a.kind.localeCompare(b.kind));
   }
   const finishedAt = Date.now();
   return { metric: 'logical-file-bytes', startedAt, finishedAt, durationMs: Math.max(0, clock() - tick),

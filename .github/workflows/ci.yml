@@ -11,7 +11,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-14, windows-latest]
+        dsh: [0.2.1-rc.3, 0.2.1-rc.5]
     runs-on: ${{ matrix.os }}
+    env:
+      DSH_TEST_VERSION: ${{ matrix.dsh }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

@@ -1,7 +1,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import type { BigIntStats } from 'node:fs';
 import { open, mkdir, lstat, realpath, readdir, rename, unlink, rmdir } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, posix, resolve, win32 } from 'node:path';
 import { ArchiveError, type DataIssue, type SessionGroup, type TrashEntry } from './contracts.js';
 import { assertCanonicalStoragePath, assertLocalStoragePath, assertPlainDirectory as plainDirectory, assertPrivateDirectory as privateDirectory,
   isWithin as within, readBoundedJson, samePath, syncDirectory } from './filesystem.js';
@@ -19,6 +19,31 @@ export interface Operation {
 export interface Manifest { schema: 1; id: string; group: SessionGroup; trashedAt: number }
 export interface EntrySnapshot { manifest: Manifest; sizeBytes: number; logBytes: number; fileCount: number; fingerprint: string }
 export interface StoreOptions { root: string; sessionsRoot: string }
+
+/** Directories whose entries must be published before recovery depends on a
+ * newly created root. The finite relative segment count bounds every walk. */
+export function directoryPublicationPaths(root: string, firstCreated?: string, platform = process.platform): string[] {
+  const paths = platform === 'win32' ? win32 : posix;
+  assertLocalStoragePath(root, platform);
+  const normalizedRoot = paths.resolve(root);
+  // Node can report its own Windows mkdir result using an extended drive path.
+  // This spelling is accepted only for that result, never for a storage root.
+  const created = platform === 'win32' && firstCreated?.startsWith('\\\\?\\') ? firstCreated.slice(4) : firstCreated;
+  if (created !== undefined) assertLocalStoragePath(created, platform);
+  const boundary = created === undefined ? normalizedRoot : paths.resolve(created);
+  const relative = paths.relative(boundary, normalizedRoot);
+  if (paths.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${paths.sep}`))
+    throw new ArchiveError('unsafe-path', 'The created storage directory is not an ancestor of the plugin root.');
+  const count = (relative === '' ? 0 : relative.split(paths.sep).length) + 2;
+  const result: string[] = []; let current = normalizedRoot;
+  for (let index = 0; index < count; index++) {
+    result.push(current);
+    const parent = paths.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return result;
+}
 
 async function exists(path: string): Promise<boolean> {
   try { await lstat(path); return true; } catch (e) { if (isMissing(e)) return false; throw e; }
@@ -95,11 +120,8 @@ export class TrashStore {
     }
     // Journals and staged moves depend on these directories remaining reachable.
     // Recursive creation reports its first new ancestor; publish that chain too.
-    await this.sync(this.root);
-    if (createdRoot) {
-      for (let path = this.root; !samePath(path, createdRoot); path = dirname(path)) await this.sync(dirname(path));
-      await this.sync(dirname(createdRoot));
-    } else await this.sync(dirname(this.root));
+    const publishedRoot = createdRoot && process.platform === 'win32' ? await realpath(createdRoot) : createdRoot;
+    for (const path of directoryPublicationPaths(this.root, publishedRoot)) await this.sync(path);
     if ((await lstat(this.root)).dev !== (await lstat(this.sessionsRoot)).dev)
       throw new ArchiveError('cross-volume', 'Trash and sessions must be on the same volume.');
   }

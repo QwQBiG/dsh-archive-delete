@@ -6,14 +6,15 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import test, { type TestContext } from 'node:test';
-import { PACKAGE_NAME, SUPPORTED_DSH_VERSION } from '../src/contracts.js';
+import { PACKAGE_NAME, SUPPORTED_DSH_VERSION, SUPPORTED_DSH_VERSIONS } from '../src/contracts.js';
 import { createUpdateHost } from '../src/update-host.js';
 import { PLUGIN_VERSION } from '../src/version.js';
 import type { HostContext } from '../src/dsh-adapter.js';
 
-function packedFixture(version: string): Buffer {
+function packedFixture(version: string, hosts?: readonly string[]): Buffer {
   const manifest = { name: PACKAGE_NAME, version, type: 'module', main: './lib/index.js',
-    engines: { node: '>=24', dsh: SUPPORTED_DSH_VERSION }, dsh: { manifestVersion: 1, bundle: { patch: './cordis.patch.yml' } } };
+    engines: { node: '>=24', dsh: SUPPORTED_DSH_VERSION }, ...(hosts ? { dshArchiveDelete: { supportedDshVersions: hosts } } : {}),
+    dsh: { manifestVersion: 1, bundle: { patch: './cordis.patch.yml' } } };
   const files = new Map([['package/package.json', JSON.stringify(manifest)], ['package/lib/index.js', 'export const name="synthetic";'],
     ['package/lib/client.js', '/* synthetic */'], ['package/cordis.patch.yml', '[]\n']]);
   const chunks: Buffer[] = [];
@@ -28,15 +29,15 @@ function packedFixture(version: string): Buffer {
   return gzipSync(Buffer.concat([...chunks, Buffer.alloc(1024)]));
 }
 
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, hostVersion = SUPPORTED_DSH_VERSION as string) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'archive-update-host-'))); t.after(() => rm(root, { recursive: true, force: true }));
   const home = join(root, 'home'); const dir = join(home, 'profiles', 'synthetic'); const runtime = join(root, 'runtime');
   const anchor = join(runtime, 'node_modules', '@deepseek-ai', 'dsh', 'package.json');
   const managerRoot = join(runtime, 'node_modules', '@deepseek-ai', 'dsh-plugin-manager');
   const installedRoot = join(dir, 'node_modules', PACKAGE_NAME); const packages = join(home, 'archive-delete', 'updates', 'packages');
   await Promise.all([mkdir(installedRoot, { recursive: true }), mkdir(managerRoot + '/lib', { recursive: true }), mkdir(join(anchor, '..'), { recursive: true }), mkdir(packages, { recursive: true })]);
-  await writeFile(anchor, JSON.stringify({ name: '@deepseek-ai/dsh', version: SUPPORTED_DSH_VERSION }));
-  await writeFile(join(managerRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-plugin-manager', version: SUPPORTED_DSH_VERSION, type: 'module', main: 'lib/index.js' }));
+  await writeFile(anchor, JSON.stringify({ name: '@deepseek-ai/dsh', version: hostVersion }));
+  await writeFile(join(managerRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-plugin-manager', version: hostVersion, type: 'module', main: 'lib/index.js' }));
   const moduleFile = join(managerRoot, 'lib', 'index.js');
   await writeFile(moduleFile, 'export class PluginManager { constructor(profile) { this.profile=profile; } async listBundles(){return this.rows;} async installBundle(){throw Error("not configured");} }');
   const native = await import(pathToFileURL(moduleFile).href);
@@ -52,9 +53,9 @@ async function fixture(t: TestContext) {
     await writeFile(join(installedRoot, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version, dsh: { bundle: { patch: 'cordis.patch.yml' } } }));
   };
   await save();
-  const version = '0.1.9'; const packed = packedFixture(version);
+  const version = '0.1.9'; const packed = packedFixture(version, hostVersion === SUPPORTED_DSH_VERSION ? undefined : [SUPPORTED_DSH_VERSION, hostVersion]);
   const packagePath = join(packages, `${version}-${createHash('sha256').update(packed).digest('hex')}.tgz`); await writeFile(packagePath, packed, { mode: 0o600 });
-  return { root, home, dir, profile, anchor, manager, row, ctx, installedRoot, packagePath, version, save };
+  return { root, home, dir, profile, anchor, manager, managerRoot, row, ctx, installedRoot, packagePath, version, save };
 }
 
 test('native update target reports loaded and installed versions separately and retains the private source', async t => {
@@ -82,17 +83,27 @@ test('missing or mismatched host manager, runtime and profile do not grant insta
 });
 
 test('install delegates to the host once and verifies dependency path/version and activation result', async t => {
-  for (const application of ['applied', 'restart-required'] as const) {
-    const f = await fixture(t); const requestId = randomUUID(); let calls = 0;
+  for (const hostVersion of SUPPORTED_DSH_VERSIONS) for (const application of ['applied', 'restart-required'] as const) {
+    const f = await fixture(t, hostVersion); const requestId = randomUUID(); let calls = 0;
     f.manager.installBundle = async (path: string, options: unknown) => {
       calls++; assert.equal(path, f.packagePath); assert.deepEqual(options, { requestId, saveExact: true, enabled: true });
       await f.save(f.version, `file:${f.packagePath}`);
       return { bundle: PACKAGE_NAME, version: f.version, application, packageResult: { exitCode: 0 } };
     };
     const adapter = await createUpdateHost(f.ctx);
+    assert.equal(adapter.canInstall, true); assert.equal(adapter.hostVersion, hostVersion);
     assert.deepEqual(await adapter.install(f.packagePath, f.version, requestId), { status: application === 'applied' ? 'installed' : 'restart-required' });
     assert.equal(calls, 1); assert.equal(adapter.loadedVersion, PLUGIN_VERSION);
   }
+});
+
+test('native updater accepts only explicit host versions with a matching manager generation', async t => {
+  for (const hostVersion of ['0.2.1-rc.2', '0.2.1-rc.4', '0.2.1', '0.2.2']) {
+    const f = await fixture(t, hostVersion); assert.equal((await createUpdateHost(f.ctx)).canInstall, false, hostVersion);
+  }
+  const f = await fixture(t, '0.2.1-rc.5');
+  await writeFile(join(f.managerRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-plugin-manager', version: SUPPORTED_DSH_VERSION, type: 'module', main: 'lib/index.js' }));
+  assert.equal((await createUpdateHost(f.ctx)).canInstall, false, 'a manager from another host generation is refused');
 });
 
 test('only a canonical server package filename inside the persistent private package directory is admitted', async t => {

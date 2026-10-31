@@ -5,6 +5,9 @@ export type JsonObject = { [key: string]: JsonValue };
 export const PACKAGE_NAME = '@qwqbig/dsh-archive-delete';
 export const API_PATH = '/api/dsh-archive-delete';
 export const SUPPORTED_DSH_VERSION = '0.2.1-rc.3';
+export const SUPPORTED_DSH_VERSIONS = [SUPPORTED_DSH_VERSION, '0.2.1-rc.5'] as const;
+export const SUPPORTED_DSH_VERSION_LABEL = SUPPORTED_DSH_VERSIONS.join(' / ');
+export function isSupportedDshVersion(version: string): boolean { return (SUPPORTED_DSH_VERSIONS as readonly string[]).includes(version); }
 
 export interface SupportStatus { supported: boolean; version: string; platform: string; reason?: string }
 export interface Activity { kind: string; label: string }

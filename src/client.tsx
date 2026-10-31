@@ -5,6 +5,7 @@ import { ArchiveDialog, CLIENT_CSS, CLIENT_NAMESPACE, en, zh, type NativePrimiti
 import { UpdateClientController } from './update-client.js';
 import { UpdateCard } from './update-ui.js';
 import type { UpdateOverview } from './update-contracts.js';
+import { FILE_KINDS } from './storage-classification.js';
 
 type HostRequire = (name: string) => unknown;
 type Observable<T> = { getSnapshot(): T; subscribe(listener: () => void): () => void };
@@ -41,6 +42,16 @@ function workspaces(value: unknown): boolean {
 function relativePath(value: unknown): boolean {
   return typeof value === 'string' && value.length > 0 && !value.includes('\0') && !/^[/\\]|^[a-z]:/i.test(value) && !value.split(/[/\\]/).includes('..');
 }
+function fileKinds(value: unknown, fileBytes: unknown, fileCount: unknown): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length > FILE_KINDS.length
+    || !value.every(kind => object(kind) && oneOf(kind.kind, FILE_KINDS) && count(kind.fileBytes) && count(kind.fileCount) && Number(kind.fileCount) > 0)
+    || new Set(value.map(kind => kind.kind)).size !== value.length) return false;
+  if (fileBytes === null) return value.length === 0 && fileCount === 0;
+  const bytes = value.reduce((sum, kind) => sum + Number(kind.fileBytes), 0);
+  const files = value.reduce((sum, kind) => sum + Number(kind.fileCount), 0);
+  return count(bytes) && count(files) && bytes === fileBytes && files === fileCount;
+}
 
 function isOverview(value: unknown): value is Overview {
   return object(value) && object(value.support) && typeof value.support.supported === 'boolean'
@@ -68,8 +79,10 @@ function isStorageOverview(value: unknown): value is StorageOverview {
     && count(category.fileCount) && count(category.uniqueFileCount) && object(category.counters)
     && ['entries', 'files', 'directories', 'symlinks', 'unreadable', 'changed', 'unsupported', 'crossDevice', 'depthLimit', 'duplicateHardlinks', 'duplicatePaths', 'identityUnknown', 'excluded'].every(key => count((category.counters as Record<string, unknown>)[key]))
     && strings(category.overlaps)
+    && fileKinds(category.fileKinds, category.fileBytes, category.uniqueFileCount)
     && Array.isArray(category.issues) && category.issues.every(issue => object(issue) && typeof issue.code === 'string' && (issue.relativePath === undefined || relativePath(issue.relativePath)))
-    && Array.isArray(category.largestFiles) && category.largestFiles.every(file => object(file) && relativePath(file.relativePath) && count(file.sizeBytes) && file.source === 'unknown')
+    && Array.isArray(category.largestFiles) && category.largestFiles.every(file => object(file) && relativePath(file.relativePath) && count(file.sizeBytes) && file.source === 'unknown'
+      && (file.kind === undefined || oneOf(file.kind, FILE_KINDS)))
     && Array.isArray(category.directories) && category.directories.every(directory => object(directory) && relativePath(directory.relativePath) && count(directory.fileBytes) && count(directory.fileCount)));
 }
 function isPreview(value: unknown): value is Preview {

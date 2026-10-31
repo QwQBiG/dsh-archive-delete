@@ -3,7 +3,7 @@ import { access, mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, writeF
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { acquirePluginLease, createDshAdapter, getNativeLockExclusive, getNativeWindowsLock, isLocalWindowsDriveType, windowsSessionLockName, type HostContext } from '../src/dsh-adapter.js';
+import { acquirePluginLease, createDshAdapter, getNativeLockExclusive, getNativeWindowsLock, getStorageSources, isLocalWindowsDriveType, windowsSessionLockName, type HostContext } from '../src/dsh-adapter.js';
 import type { JsonObject } from '../src/contracts.js';
 import { createRequestHandler, parseApiRequest, registerHostRoutes } from '../src/host-routes.js';
 import type { ArchiveApi } from '../src/contracts.js';
@@ -82,6 +82,29 @@ test('adapter gates unsupported versions and platforms without touching session 
     await assert.rejects(() => wrongVersion.listArchived(), { code: 'unsupported-host' });
     const wrongPlatform = await createDshAdapter(f.ctx, { home: f.home, version: '0.2.1-rc.3', platform: 'linux' });
     assert.equal((await wrongPlatform.capabilities()).supported, false);
+  } finally { await f.cleanup(); }
+});
+
+test('adapter and storage admit only explicitly supported host manifests, including rc.5', async () => {
+  const f = await fixture();
+  try {
+    await f.add('version-gate'); const anchor = join(f.home, 'live-host-package.json');
+    const ctx = { ...f.ctx, profileContext: { installAnchor: anchor }, dshHomePath: () => f.home };
+    for (const [version, expected] of [['0.2.1-rc.3', true], ['0.2.1-rc.5', true], ['0.2.1-rc.4', false], ['0.2.1-rc.6', false], ['0.3.0', false]] as const) {
+      await writeFile(anchor, JSON.stringify({ name: '@deepseek-ai/dsh', version }));
+      const adapter = await createDshAdapter(ctx, { home: f.home, platform: 'darwin', lockExclusive: async () => {} });
+      const status = await adapter.capabilities();
+      assert.equal(status.version, version); assert.equal(status.supported, expected, version);
+      if (expected) {
+        assert.equal((await adapter.inspect('version-gate')).sessionId, 'version-gate');
+        assert.equal((await getStorageSources(ctx)).find(root => root.id === 'sessions')!.path, f.sessionsRoot);
+      } else {
+        await assert.rejects(adapter.listArchived(), { code: 'unsupported-host' });
+        await assert.rejects(getStorageSources(ctx), { code: 'unsupported-host' });
+      }
+    }
+    assert.equal((await f.adapter.listArchived()).length, 1);
+    await assert.rejects(access(join(f.home, 'archive-delete')), { code: 'ENOENT' });
   } finally { await f.cleanup(); }
 });
 

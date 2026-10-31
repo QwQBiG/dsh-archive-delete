@@ -1,20 +1,32 @@
 import { spawn } from 'node:child_process';
 import { access, appendFile, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 
-const version = '0.2.1-rc.3';
+const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+const supported = pkg.dshArchiveDelete?.supportedDshVersions;
+if (!Array.isArray(supported) || !supported.length || new Set(supported).size !== supported.length
+  || !supported.every(value => typeof value === 'string' && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value))
+  || !supported.includes(pkg.engines?.dsh)) throw new Error('The package must declare its supported native test versions / 安装包必须声明支持的原生测试版本');
+const version = process.env.DSH_TEST_VERSION ?? pkg.engines.dsh;
+if (!supported.includes(version)) throw new Error(`Unsupported DSH_TEST_VERSION=${version}; supported: ${supported.join(' / ')} / 不支持所选原生测试版本`);
 async function announce(root) {
   const manifest = JSON.parse(await readFile(join(root, 'node_modules/@deepseek-ai/dsh/package.json'), 'utf8'));
-  if (manifest.name !== '@deepseek-ai/dsh' || manifest.version !== version) throw new Error('Unexpected native runtime version / 原生运行时版本不匹配');
+  if (manifest.name !== '@deepseek-ai/dsh' || manifest.version !== version) throw new Error(`Unexpected native runtime: expected ${version}, found ${manifest.version} / 原生运行时版本不匹配`);
   if (process.env.GITHUB_ENV) await appendFile(process.env.GITHUB_ENV, `DSH_RUNTIME_ROOT=${root}\n`);
-  console.log(`Native test runtime ready / 原生测试运行时已就绪: DSH_RUNTIME_ROOT=${root}`);
+  console.log(`Native test runtime ready / 原生测试运行时已就绪: DSH ${manifest.version}; DSH_RUNTIME_ROOT=${root}`);
 }
 const installed = '/Applications/DeepSeek Harness.app/Contents/Resources/app/dsh';
 const existing = process.env.DSH_RUNTIME_ROOT ?? installed;
-try { await access(join(existing, 'node_modules/@deepseek-ai/dsh/package.json')); await announce(existing); process.exit(0); }
-catch (error) { if (error.code !== 'ENOENT') throw error; }
-if (process.env.CI !== 'true') throw new Error('Reuse the installed DSH app or set DSH_RUNTIME_ROOT; this helper downloads only in CI / 请复用已安装 DSH 或设置 DSH_RUNTIME_ROOT；此脚本仅在 CI 中下载');
+if (!isAbsolute(existing)) throw new Error('DSH_RUNTIME_ROOT must be an absolute runtime directory / DSH_RUNTIME_ROOT 必须为绝对路径');
+let actual;
+try {
+  const manifest = JSON.parse(await readFile(join(existing, 'node_modules/@deepseek-ai/dsh/package.json'), 'utf8'));
+  if (manifest.name !== '@deepseek-ai/dsh' || typeof manifest.version !== 'string') throw new Error('Invalid native runtime manifest / 原生运行时清单无效');
+  actual = manifest.version;
+} catch (error) { if (error.code !== 'ENOENT') throw error; }
+if (actual === version) { await announce(existing); process.exit(0); }
+if (process.env.CI !== 'true') throw new Error(`Expected DSH ${version}; ${actual ? `found ${actual} at ${existing}` : `no runtime found at ${existing}`}. Set DSH_TEST_VERSION and DSH_RUNTIME_ROOT to a matching installed runtime. Downloads are CI-only / 请指定版本匹配的已安装运行时；本地不会下载`);
 if (!['darwin', 'win32'].includes(process.platform)) throw new Error('Native integration verification requires macOS or Windows / 原生集成验证需要 macOS 或 Windows');
 // Invoke npm's JavaScript CLI with this Node process. Windows command shims
 // cannot be passed to child_process.spawn() without an intermediate shell.

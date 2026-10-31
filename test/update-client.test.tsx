@@ -184,16 +184,29 @@ test('update maintenance error codes retain specific repair instructions in both
   }
 });
 
-test('compact error state remains actionable outside collapsed update details and never says up to date', async t => {
+test('update check failures keep the compact status and action, with the explanation in details', async t => {
   const f = fixture({ updates: async () => ({ ...available, availability: 'error', code: 'update-network' }) });
   t.after(() => { f.updates.dispose(); f.archive.dispose(); }); await f.updates.check();
   for (const language of ['en', 'zh'] as const) {
     const translate = translator(language); const html = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />);
     const visible = html.replace(/<details class="dad-update-info">[\s\S]*?<\/details>/, '');
-    assert.match(visible, /role="alert"/); assert.ok(visible.includes(translate('updateErrorNetwork')));
+    assert.doesNotMatch(visible, /role="alert"/);
+    const text = visible.replace(/<[^>]+>/g, '');
+    assert.ok(!text.includes(translate('updateErrorNetwork')));
+    assert.ok(html.includes(`<p>${translate('updateErrorNetwork')}</p>`));
+    assert.ok(visible.includes(translate('updateCheckCompact')));
     assert.ok(visible.includes(translate('updateErrorCompact'))); assert.ok(!visible.includes(translate('updateCurrentCompact')));
     assert.ok(!visible.includes(translate('updateReview')));
   }
+});
+
+test('an unresolved installation retains its actionable notice outside update details', async t => {
+  const f = fixture({ updates: async () => ({ ...available, installation: { requestId: randomUUID(), version: candidate.version, status: 'unknown', code: 'update-outcome-unknown' } }) });
+  t.after(() => { f.updates.dispose(); f.archive.dispose(); }); await f.updates.check();
+  const translate = translator('zh'); const html = renderToStaticMarkup(<UpdateCard controller={f.updates} Button={Button} t={translate} />);
+  const visible = html.replace(/<details class="dad-update-info">[\s\S]*?<\/details>/, '');
+  assert.match(visible, /role="alert"/); assert.ok(visible.includes(translate('updateUnknownOutcome')));
+  assert.ok(visible.includes(translate('updateUncertainCompact'))); assert.equal(f.archive.getSnapshot().maintenance, true);
 });
 
 test('compact restart state distinguishes running and installed versions while preserving archive protection', async t => {

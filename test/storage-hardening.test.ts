@@ -4,11 +4,40 @@ import { mkdir, readFile, readdir, rename, rmdir, symlink, unlink, writeFile } f
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { fixture, present } from './fixtures.js';
-import type { Operation, TrashStore } from '../src/storage.js';
+import { directoryPublicationPaths, TrashStore, type Operation } from '../src/storage.js';
 import { ArchiveService } from '../src/service.js';
 
 type StoreInternals = { sync(path: string): Promise<void>; writeOperation(operation: Operation): Promise<void> };
 const internals = (store: TrashStore) => store as unknown as StoreInternals;
+
+test('directory publication is bounded for POSIX roots and recursive creation chains', () => {
+  assert.deepEqual(directoryPublicationPaths('/data/new/plugin', '/data/new', 'darwin'), ['/data/new/plugin', '/data/new', '/data']);
+  assert.deepEqual(directoryPublicationPaths('/data/plugin', undefined, 'darwin'), ['/data/plugin', '/data']);
+  assert.deepEqual(directoryPublicationPaths('/', '/', 'darwin'), ['/']);
+  for (const unrelated of ['/other', '/data/sibling', '/data/new/plugin/child'])
+    assert.throws(() => directoryPublicationPaths('/data/new/plugin', unrelated, 'darwin'), { code: 'unsafe-path' });
+});
+
+test('Windows directory publication admits mkdir namespace spelling without walking forever at a drive root', () => {
+  const root = String.raw`C:\Users\Runner\new\plugin`;
+  const expected = [root, String.raw`C:\Users\Runner\new`, String.raw`C:\Users\Runner`];
+  assert.deepEqual(directoryPublicationPaths(root, String.raw`\\?\C:\Users\Runner\new`, 'win32'), expected);
+  assert.deepEqual(directoryPublicationPaths(root, String.raw`c:\users\runner\NEW`, 'win32'), expected);
+  assert.deepEqual(directoryPublicationPaths('C:\\', '\\\\?\\C:\\', 'win32'), ['C:\\']);
+  for (const unrelated of [String.raw`D:\new`, String.raw`C:\other`, String.raw`C:\Users\Runner\new\plugin\child`, String.raw`\\?\UNC\server\share`])
+    assert.throws(() => directoryPublicationPaths(root, unrelated, 'win32'), { code: 'unsafe-path' });
+});
+
+test('initialization publishes a newly created ancestor chain once before returning', async t => {
+  const f = await fixture(); t.after(f.close);
+  const root = join(f.root, 'new-parent', 'new-child', 'plugin');
+  const store = new TrashStore({ root, sessionsRoot: f.sessions });
+  const methods = internals(store); const sync = methods.sync.bind(methods); const observed: string[] = [];
+  methods.sync = async path => { observed.push(path); await sync(path); };
+  await store.initialize();
+  assert.deepEqual(observed, [root, join(f.root, 'new-parent', 'new-child'), join(f.root, 'new-parent'), f.root]);
+  for (const area of ['trash', 'staging', 'operations', 'receipts']) assert.equal(await present(join(root, area)), true);
+});
 async function trashed(t: TestContext, children: string[] = []) {
   const f = await fixture(); t.after(f.close); const group = await f.add('parent', children);
   const operation = await f.store.prepareTrash(group); await f.store.markDetached(operation);

@@ -30,6 +30,21 @@ function stable(value: unknown): number[] | undefined {
   if (typeof value !== 'string' || value.length > 64 || !STABLE.test(value)) return;
   const parts = value.split('.').map(Number); return parts.every(Number.isSafeInteger) ? parts : undefined;
 }
+function exactVersion(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 100 && SEMVER.test(value)
+    && value.split(/[-+]/, 1)[0]!.split('.').every(part => Number.isSafeInteger(Number(part)));
+}
+
+/** Exact package declarations supplement the legacy primary engine field. */
+export function supportedPackageDshVersions(manifest: unknown): string[] {
+  if (!object(manifest) || !object(manifest.engines) || !exactVersion(manifest.engines.dsh)) throw packageInvalid();
+  const primary = manifest.engines.dsh;
+  if (manifest.dshArchiveDelete === undefined) return [primary];
+  const declared = object(manifest.dshArchiveDelete) ? manifest.dshArchiveDelete.supportedDshVersions : undefined;
+  if (!Array.isArray(declared) || declared.length < 1 || declared.length > 8 || !declared.every(exactVersion)
+    || new Set(declared).size !== declared.length || !declared.includes(primary)) throw packageInvalid();
+  return [...declared] as string[];
+}
 function compare(left: string, right: string): number {
   const a = stable(left)!; const b = stable(right)!;
   for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i]! > b[i]! ? 1 : -1;
@@ -67,6 +82,7 @@ function samePin(left: PinnedUpdate, right: PinnedUpdate): boolean {
 /** Fixed public repository only. This source never accepts browser URLs, tokens or paths. */
 export function createGithubUpdateSource(options: GithubUpdateSourceOptions): UpdateSource {
   if (!stable(options.currentVersion)) throw new TypeError('The current plugin version must be stable SemVer.');
+  if (!exactVersion(options.hostVersion)) throw new TypeError('The host version must be exact SemVer.');
   const limits = { ...MAX };
   for (const name of Object.keys(MAX) as (keyof Limits)[]) if (options.limits?.[name] !== undefined) {
     const value = options.limits[name]!;
@@ -146,7 +162,9 @@ export function createGithubUpdateSource(options: GithubUpdateSourceOptions): Up
     finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); void reader?.cancel().catch(() => {}); }
   }
   async function resolveRelease(item: Release, signal?: AbortSignal): Promise<Resolved | undefined> {
-    const name = `qwqbig-dsh-archive-delete-${item.version}.tgz`; const metadataName = name.replace(/\.tgz$/, '.update.json');
+    const name = `qwqbig-dsh-archive-delete-${item.version}.tgz`;
+    const specificName = name.replace(/\.tgz$/, `.dsh-${options.hostVersion}.update.json`);
+    const metadataName = item.assets.some(value => value.name === specificName) ? specificName : name.replace(/\.tgz$/, '.update.json');
     const asset = item.assets.filter(value => value.name === name); const meta = item.assets.filter(value => value.name === metadataName);
     if (!asset.length || !meta.length) return;
     if (asset.length !== 1 || meta.length !== 1) throw invalid();
@@ -220,7 +238,8 @@ function text(header: Buffer, start: number, length: number): string {
   const field = header.subarray(start, start + length); const end = field.indexOf(0);
   try { return new TextDecoder('utf-8', { fatal: true }).decode(end < 0 ? field : field.subarray(0, end)); } catch { throw packageInvalid(); }
 }
-async function validatePackage(bytes: Uint8Array, version: string, hostVersion: string, limits: Limits): Promise<void> {
+interface PackageCompatibility { primaryDshVersion: string; supportedDshVersions: string[] }
+async function validatePackage(bytes: Uint8Array, version: string, hostVersion: string, limits: Limits): Promise<PackageCompatibility> {
   if (!stable(version) || !SEMVER.test(hostVersion) || !bytes.byteLength || bytes.byteLength > limits.assetBytes) throw packageInvalid();
   let tar: Buffer;
   try { tar = await new Promise<Buffer>((resolve, reject) => gunzip(bytes, { maxOutputLength: limits.expandedBytes }, (caught, value) => caught ? reject(caught) : resolve(value))); }
@@ -252,7 +271,7 @@ async function validatePackage(bytes: Uint8Array, version: string, hostVersion: 
   if (!terminated) throw packageInvalid();
   const manifest = files.get('package/package.json'); if (!manifest || manifest.length > 64 * 1024) throw packageInvalid();
   let pkg: unknown; try { pkg = json(manifest); } catch { throw packageInvalid(); }
-  if (!object(pkg) || pkg.name !== PACKAGE_NAME || pkg.version !== version || !object(pkg.engines) || pkg.engines.dsh !== hostVersion
+  if (!object(pkg) || pkg.name !== PACKAGE_NAME || pkg.version !== version || !supportedPackageDshVersions(pkg).includes(hostVersion)
     || pkg.main !== './lib/index.js' || !object(pkg.dsh) || pkg.dsh.manifestVersion !== 1 || !object(pkg.dsh.bundle) || pkg.dsh.bundle.patch !== './cordis.patch.yml') throw packageInvalid();
   for (const path of ['package/cordis.patch.yml', 'package/lib/index.js', 'package/lib/client.js']) if (!files.get(path)?.length) throw packageInvalid();
   for (const key of ['dependencies', 'optionalDependencies']) {
@@ -269,9 +288,15 @@ async function validatePackage(bytes: Uint8Array, version: string, hostVersion: 
         || !object(meta) || meta.optional !== true) throw packageInvalid();
     }
   }
+  return { primaryDshVersion: (pkg.engines as Record<string, unknown>).dsh as string, supportedDshVersions: supportedPackageDshVersions(pkg) };
 }
 
 /** Reusable immediately before native installation; no extraction or execution. */
 export async function validateUpdatePackage(bytes: Uint8Array, version: string, requiredDshVersion: string): Promise<void> {
   await validatePackage(bytes, version, requiredDshVersion, MAX);
+}
+
+/** Release tooling reads compatibility only after full package admission. */
+export async function inspectUpdatePackageCompatibility(bytes: Uint8Array, version: string, requiredDshVersion: string): Promise<PackageCompatibility> {
+  return validatePackage(bytes, version, requiredDshVersion, MAX);
 }

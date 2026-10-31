@@ -6,6 +6,7 @@ import { createArchiveApi, startClient } from '../src/client.js';
 import { ArchiveClientController, ClientTransportError, type ClientState } from '../src/client-state.js';
 import { UpdateClientController } from '../src/update-client.js';
 import { ArchiveDialogView, PreviewContent, ResultContent, StorageResultContent, en, zh, translator, localizeReason, type NativePrimitives } from '../src/client-ui.js';
+import { FILE_KINDS } from '../src/storage-classification.js';
 import { ArchiveError, PACKAGE_NAME, type ArchiveApi, type BatchResult, type Overview, type Preview, type StorageOverview } from '../src/contracts.js';
 
 const overview: Overview = {
@@ -93,7 +94,7 @@ test('storage refusals explain the available next step in either language', asyn
   controller.dispose();
 });
 
-test('partial storage reports show unknown bytes, limits, relative files and unknown origin without cleanup actions', () => {
+test('partial storage reports retain unknown bytes and scan notes without per-file origin warnings or cleanup actions', () => {
   for (const language of ['en', 'zh'] as const) {
     const t = translator(language);
     const html = renderToStaticMarkup(<StorageResultContent result={storageResult()} t={t} />);
@@ -103,7 +104,7 @@ test('partial storage reports show unknown bytes, limits, relative files and unk
     assert.ok(html.includes(t('storagePartial')));
     assert.ok(html.includes(t('storageIssueTime')));
     assert.ok(html.includes(t('storageIssueLink')));
-    assert.ok(html.includes(t('storageSource')));
+    assert.ok(!html.includes(t('storageSource')));
     assert.ok(html.includes(t('storageProvenance')));
     assert.ok(html.includes(t('storageMetric')));
     assert.ok(html.includes(t('storageOverlap')));
@@ -185,7 +186,7 @@ test('confirmation explains descendants, delayed movement, and retained data in 
     const html = renderToStaticMarkup(<PreviewContent preview={preview} t={translator(language)} />);
     assert.match(html, /A sample conversation/);
     assert.match(html, /3/);
-    assert.ok(html.includes(language === 'en' ? 'No disk space has been freed yet' : '目前尚未释放磁盘空间'));
+    assert.ok(html.includes(translator(language)('pendingHint')));
     assert.ok(html.includes(language === 'en' ? 'Shared attachments' : '共享附件'));
     assert.ok(html.includes(language === 'en' ? 'project files' : '项目文件'));
   }
@@ -201,7 +202,7 @@ test('pending rows expose explicit cancellation-and-review while staying outside
     assert.ok(html.includes(language === 'en' ? 'Cancel waiting and review' : '取消等待并重新核对'));
     assert.ok(html.includes(language === 'en' ? 'Cancel pending move' : '取消待处理'));
     assert.match(html, /<label><input[^>]*disabled=""[^>]*\/>A sample conversation<\/label>/);
-    assert.ok(html.includes(language === 'en' ? 'without restarting' : '无需重启'));
+    assert.ok(html.includes(translator(language)('pendingHint')));
   }
   controller.dispose();
 });
@@ -420,4 +421,82 @@ test('repeated diagnostic occurrences retain their count, details and translated
     assert.equal(localizeReason('entry-unavailable', 'Raw English unavailable diagnostic', t), t('reasonDamaged'));
   }
   controller.dispose();
+});
+
+function classifiedStorage(): StorageOverview {
+  const current = storageResult();
+  const kinds = FILE_KINDS.map((kind, index) => ({ kind, fileBytes: (FILE_KINDS.length - index) * 1024, fileCount: 1 }));
+  const bytes = kinds.reduce((sum, kind) => sum + kind.fileBytes, 0);
+  const category = { ...current.categories[0]!, status: 'complete' as const, fileBytes: bytes, referencedBytes: bytes, fileCount: kinds.length, uniqueFileCount: kinds.length,
+    counters: { ...current.categories[0]!.counters, files: kinds.length }, issues: [], overlaps: [], fileKinds: kinds,
+    largestFiles: kinds.map((entry, index) => ({ relativePath: `folder-${index}/sample.bin`, sizeBytes: entry.fileBytes, source: 'unknown' as const, kind: entry.kind })),
+    directories: [{ relativePath: 'folder-0', fileBytes: kinds[0]!.fileBytes, fileCount: 1 }] };
+  return { ...current, complete: true, fileBytes: bytes, referencedBytes: bytes, fileCount: kinds.length, uniqueFileCount: kinds.length,
+    duplicateHardlinks: 0, duplicatePaths: 0, identityUnknown: 0, categories: [category] };
+}
+
+test('workspace storage highlights recognized file types and large files, with detailed metrics collapsed', () => {
+  for (const language of ['en', 'zh'] as const) {
+    const t = translator(language); const current = classifiedStorage();
+    const html = renderToStaticMarkup(<StorageResultContent result={current} t={t} />);
+    assert.ok(html.includes(t('storageTypeBreakdown')));
+    for (const key of ['storageKindDependencies', 'storageKindBuild', 'storageKindVersionControl', 'storageKindLogs', 'storageKindMedia', 'storageKindArchives', 'storageKindCode', 'storageKindDocuments', 'storageKindOther'] as const) assert.ok(html.includes(t(key).replaceAll('&', '&amp;')));
+    assert.ok(html.includes(t('storageFileCount', { n: 9 })));
+    assert.ok(html.indexOf('dad-storage-kinds') < html.indexOf('dad-storage-scan-details'));
+    assert.ok(html.includes('folder-0/sample.bin'));
+    assert.ok(html.includes(t('storageMoreFiles', { n: 4 })));
+    assert.match(html, /<details class="dad-storage-scan-details dad-storage-details"><summary>/);
+    assert.ok(html.indexOf(t('storageMetric')) > html.indexOf('dad-storage-scan-details'));
+    assert.ok(!html.includes(t('storageSource')));
+    assert.ok(!html.includes('dad-storage-bar'));
+    assert.ok(!html.includes('<button'));
+  }
+  const zeroFiles = classifiedStorage(); zeroFiles.categories[0]!.fileKinds = [{ kind: 'code', fileBytes: 0, fileCount: 1 }];
+  zeroFiles.categories[0]!.fileBytes = 0; zeroFiles.categories[0]!.uniqueFileCount = 1;
+  const zeroHtml = renderToStaticMarkup(<StorageResultContent result={zeroFiles} t={translator('en')} />);
+  assert.ok(zeroHtml.includes('dad-storage-kinds')); assert.ok(zeroHtml.includes('0 B'));
+});
+
+test('host storage keeps nonzero locations prominent and groups empty or unavailable locations with visible status', () => {
+  const base = storageResult(); const sample = base.categories[0]!;
+  const host: StorageOverview = { ...base, scope: 'host', fileBytes: 6144, categories: [
+    { ...sample, id: 'sessions', kind: 'sessions', fileBytes: 2048, status: 'complete', issues: [] },
+    { ...sample, id: 'attachments', kind: 'attachments', fileBytes: 4096, status: 'complete', issues: [] },
+    ...Array.from({ length: 10 }, (_, index) => ({ ...sample, id: `empty-${index}`, kind: 'cache', fileBytes: 0, status: 'complete' as const, uniqueFileCount: 0, fileCount: 0, largestFiles: [], directories: [], issues: [] })),
+    { ...sample, id: 'unavailable', kind: 'spill', fileBytes: null, status: 'unavailable', issues: [{ code: 'root-unresolved' }] },
+    { ...sample, id: 'missing', kind: 'settings', fileBytes: null, status: 'missing', issues: [{ code: 'ENOENT' }] },
+  ] };
+  delete host.workspaceId;
+  for (const language of ['en', 'zh'] as const) {
+    const t = translator(language); const html = renderToStaticMarkup(<StorageResultContent result={host} t={t} />);
+    const visible = html.slice(html.indexOf('class="dad-storage-categories"'), html.indexOf('class="dad-storage-other"'));
+    assert.ok(visible.indexOf('data-category="attachments"') < visible.indexOf('data-category="sessions"'));
+    assert.ok(!visible.includes('data-category="empty-'));
+    assert.match(html, /<details class="dad-storage-other"><summary>/);
+    assert.ok(html.includes(t('storageOtherLocations', { n: 12 })));
+    assert.ok(html.includes(t('storageUnavailableCount', { n: 2 })));
+    assert.ok(html.includes(t('storageCategoryUnavailable'))); assert.ok(html.includes(t('storageMissing')));
+    assert.ok(html.includes(t('storageIssueRoot')));
+    assert.ok(!html.includes('dad-storage-bar'));
+  }
+});
+
+test('storage purpose metadata is optional for older responses and strictly validated when supplied', async () => {
+  const send = (value: unknown) => createArchiveApi(async () => new Response(JSON.stringify({ ok: true, value })), 'https://example.test/');
+  assert.equal((await send(storageResult()).storage!('project-1')).categories[0]!.fileKinds, undefined);
+  const valid = classifiedStorage();
+  assert.equal((await send(valid).storage!('project-1')).categories[0]!.fileKinds?.length, 9);
+  const category = valid.categories[0]!;
+  const invalidKinds = [null, {}, [{ kind: 'ai-generated', fileBytes: 1, fileCount: 1 }], [{ kind: ['code'], fileBytes: 1, fileCount: 1 }],
+    [{ kind: 'code', fileBytes: -1, fileCount: 1 }], [{ kind: 'code', fileBytes: 1, fileCount: 0.5 }], [{ kind: 'code', fileBytes: '1', fileCount: 1 }],
+    [{ kind: 'code', fileBytes: category.fileBytes, fileCount: category.uniqueFileCount }, { kind: 'code', fileBytes: 0, fileCount: 0 }],
+    [{ kind: 'code', fileBytes: category.fileBytes, fileCount: 0 }, { kind: 'documents', fileBytes: 0, fileCount: category.uniqueFileCount }],
+    [{ kind: 'code', fileBytes: 1, fileCount: category.uniqueFileCount }], [{ kind: 'code', fileBytes: category.fileBytes, fileCount: 1 }]];
+  for (const fileKinds of invalidKinds) await assert.rejects(send({ ...valid, categories: [{ ...category, fileKinds }] }).storage!('project-1'), ClientTransportError);
+  for (const kind of ['ai-generated', ['code'], null, {}]) await assert.rejects(send({ ...valid, categories: [{ ...category, largestFiles: [{ ...category.largestFiles[0]!, kind }] }] }).storage!('project-1'), ClientTransportError);
+  const unavailable = { ...valid, categories: [{ ...category, fileBytes: null, fileKinds: category.fileKinds }] };
+  await assert.rejects(send(unavailable).storage!('project-1'), ClientTransportError);
+  await assert.rejects(send({ ...unavailable, categories: [{ ...unavailable.categories[0]!, fileKinds: [] }] }).storage!('project-1'), ClientTransportError);
+  const oldHtml = renderToStaticMarkup(<StorageResultContent result={storageResult()} t={translator('en')} />);
+  assert.ok(oldHtml.includes('output/ai-generated-cache.tmp')); assert.ok(!oldHtml.includes('dad-storage-kinds'));
 });

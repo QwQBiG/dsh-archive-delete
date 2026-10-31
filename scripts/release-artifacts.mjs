@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import assert from 'node:assert/strict';
 import { constants } from 'node:fs';
 import { lstat, open, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -40,12 +41,18 @@ if (BigInt(bytes.length) !== before.size || before.dev !== after.dev || before.i
   throw new Error('The packed release changed while generating its metadata.');
 // Refuse unsupported package contents before publishing either checksum file.
 // This is the exact bounded admission path used by an installed updater.
-const { validateUpdatePackage } = await tsImport('../src/update-source.ts', import.meta.url);
-await validateUpdatePackage(bytes, pkg.version, pkg.engines.dsh);
+const { validateUpdatePackage, supportedPackageDshVersions, inspectUpdatePackageCompatibility } = await tsImport('../src/update-source.ts', import.meta.url);
+const hosts = supportedPackageDshVersions(pkg);
+const packed = await inspectUpdatePackageCompatibility(bytes, pkg.version, pkg.engines.dsh);
+assert.equal(packed.primaryDshVersion, pkg.engines.dsh, 'The packed legacy engine must match the release primary.');
+assert.deepEqual(packed.supportedDshVersions.toSorted(), hosts.toSorted(), 'The packed host declarations must match the release manifest.');
+for (const host of hosts) await validateUpdatePackage(bytes, pkg.version, host);
 const sha256 = createHash('sha256').update(bytes).digest('hex');
 const metadataFilename = filename.replace(/\.tgz$/, '.update.json');
-const metadata = { schema: 1, packageName: pkg.name, version: pkg.version, requiredDshVersion: pkg.engines.dsh,
-  platforms: ['darwin', 'win32'], asset: { name: filename, bytes: bytes.length, sha256 } };
+const metadataFiles = hosts.map(host => ({ name: host === pkg.engines.dsh ? metadataFilename : filename.replace(/\.tgz$/, `.dsh-${host}.update.json`),
+  metadata: { schema: 1, packageName: pkg.name, version: pkg.version, requiredDshVersion: host,
+    platforms: ['darwin', 'win32'], asset: { name: filename, bytes: bytes.length, sha256 } } }));
 await writeFile(`${path}.sha256`, `${sha256}  ${filename}\n`);
-await writeFile(join(resolve(process.argv[2] ?? 'artifacts'), metadataFilename), `${JSON.stringify(metadata, null, 2)}\n`);
-console.log(JSON.stringify({ file: filename, bytes: bytes.length, sha256, metadata: metadataFilename }));
+for (const item of metadataFiles) await writeFile(join(resolve(process.argv[2] ?? 'artifacts'), item.name), `${JSON.stringify(item.metadata, null, 2)}\n`);
+console.log(JSON.stringify({ file: filename, bytes: bytes.length, sha256, metadata: metadataFilename,
+  hostMetadata: metadataFiles.filter(item => item.name !== metadataFilename).map(item => item.name) }));

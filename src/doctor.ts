@@ -2,9 +2,10 @@ import { constants } from 'node:fs';
 import { access, lstat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join } from 'node:path';
-import { PACKAGE_NAME, SUPPORTED_DSH_VERSION } from './contracts.js';
+import { PACKAGE_NAME, SUPPORTED_DSH_VERSIONS, SUPPORTED_DSH_VERSION_LABEL, isSupportedDshVersion } from './contracts.js';
 import { assertCanonicalStoragePath, assertLocalStoragePath, assertPlainDirectory, assertPrivateDirectory, readBoundedJson } from './filesystem.js';
 import { PLUGIN_VERSION } from './version.js';
+import { readHostManifest } from './host-manifest.js';
 
 export type DoctorLanguage = 'en' | 'zh';
 export type DoctorStatus = 'pass' | 'warn' | 'fail';
@@ -19,6 +20,7 @@ export interface DoctorReport {
   home: string;
   profile: { name: string; directory: string };
   targetDshVersion: string;
+  supportedDshVersions: readonly string[];
   host: { version: string; source: 'explicit-runtime' | 'profile-resolution' | 'unresolved'; manifest?: string };
   runtimeState: 'unverified';
   checks: DoctorCheck[];
@@ -31,6 +33,11 @@ function code(error: unknown): string | undefined { return record(error) && type
 async function manifest(path: string): Promise<Manifest> {
   const data = await readBoundedJson(path, 1024 * 1024);
   if (!record(data)) throw new Error('invalid manifest');
+  return data;
+}
+async function hostCodeManifest(path: string): Promise<Manifest> {
+  const data = await readHostManifest(path);
+  if (!record(data)) throw new Error('invalid host manifest');
   return data;
 }
 function version(value: unknown): value is string { return typeof value === 'string' && value.length > 0 && value.length <= 128; }
@@ -53,7 +60,8 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   };
   const report: DoctorReport = {
     schemaVersion: 1, ok: false, status: 'warn', language, plugin: { name: PACKAGE_NAME, version: PLUGIN_VERSION },
-    home: options.home, profile: { name: profile, directory: profileDirectory }, targetDshVersion: SUPPORTED_DSH_VERSION,
+    home: options.home, profile: { name: profile, directory: profileDirectory }, targetDshVersion: SUPPORTED_DSH_VERSION_LABEL,
+    supportedDshVersions: [...SUPPORTED_DSH_VERSIONS],
     host: { version: 'unknown', source: 'unresolved' }, runtimeState: 'unverified', checks,
     note: text('This read-only check does not prove that DSH is running or has loaded this plugin. Fully quit and reopen the selected profile, then check its component status, loaded log, and management button.',
       '此只读检查无法证明 DSH 正在运行或已加载插件。请完全退出后重新打开所选 profile，再检查组件状态、加载日志和管理按钮。'),
@@ -114,20 +122,20 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
       assertLocalStoragePath(options.runtimeRoot);
       const direct = join(options.runtimeRoot, 'package.json');
       let directManifest: Manifest | undefined;
-      try { directManifest = await manifest(direct); } catch (error) { if (code(error) !== 'ENOENT') throw error; }
+      try { directManifest = await hostCodeManifest(direct); } catch (error) { if (code(error) !== 'ENOENT') throw error; }
       hostManifest = directManifest?.name === '@deepseek-ai/dsh' ? direct : join(options.runtimeRoot, 'node_modules', '@deepseek-ai', 'dsh', 'package.json');
       report.host.source = 'explicit-runtime';
     } else {
       hostManifest = createRequire(profileManifest).resolve('@deepseek-ai/dsh/package.json');
       report.host.source = 'profile-resolution';
     }
-    const installed = await manifest(hostManifest);
+    const installed = await hostCodeManifest(hostManifest);
     if (installed.name !== '@deepseek-ai/dsh' || !version(installed.version)) throw new Error('unexpected host');
     report.host.manifest = hostManifest; report.host.version = installed.version;
-    const match = installed.version === SUPPORTED_DSH_VERSION;
+    const match = isSupportedDshVersion(installed.version);
     add('host-version', match ? 'pass' : 'fail', match ? 'host-version-matches' : 'host-version-mismatch',
-      `Selected runtime: DSH ${installed.version}; required: ${SUPPORTED_DSH_VERSION}.${match ? ' This does not identify a running process.' : ' Update DSH Desktop to the required version, then fully quit and reopen it.'}`,
-      `所选运行时：DSH ${installed.version}；需要：${SUPPORTED_DSH_VERSION}。${match ? '此结果不代表已识别正在运行的进程。' : '请将 DSH 桌面端更新至所需版本，然后完全退出并重新打开。'}`, hostManifest);
+      `Selected runtime: DSH ${installed.version}; supported: ${SUPPORTED_DSH_VERSION_LABEL}.${match ? ' This does not identify a running process.' : ' Install a supported DSH Desktop version, then fully quit and reopen it.'}`,
+      `所选运行时：DSH ${installed.version}；支持：${SUPPORTED_DSH_VERSION_LABEL}。${match ? '此结果不代表已识别正在运行的进程。' : '请使用支持的 DSH 桌面端版本，然后完全退出并重新打开。'}`, hostManifest);
   } catch {
     report.host.source = 'unresolved';
     add('host-version', options.runtimeRoot === undefined ? 'warn' : 'fail', 'host-runtime-unresolved',

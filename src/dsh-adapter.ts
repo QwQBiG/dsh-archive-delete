@@ -7,7 +7,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { lstat, mkdir, open, readFile, readdir, realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep, win32 } from 'node:path';
 import {
-  ArchiveError, SUPPORTED_DSH_VERSION,
+  ArchiveError, SUPPORTED_DSH_VERSION_LABEL, isSupportedDshVersion,
   type Activity, type ArchivedSession, type DataIssue, type DshAdapter, type JsonObject,
   type Lease, type LeaseResult, type SessionGroup, type SessionMember, type StorageWorkspace, type SupportStatus,
 } from './contracts.js';
@@ -108,7 +108,7 @@ function encodeId(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]/g, (character) => `~${character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`);
 }
 function cloneHeader(header: Header): JsonObject { return JSON.parse(JSON.stringify(header)) as JsonObject; }
-/** rc.3 writes an omitted live delegation depth as zero in its JSONL header. */
+/** Supported JSONL backends persist an omitted live delegation depth as zero. */
 function sameSessionHeader(live: JsonObject, persisted: JsonObject): boolean {
   return isDeepStrictEqual({ ...live, delegationDepth: live.delegationDepth === undefined ? 0 : live.delegationDepth },
     { ...persisted, delegationDepth: persisted.delegationDepth === undefined ? 0 : persisted.delegationDepth });
@@ -299,7 +299,7 @@ export async function getStorageSources(ctx: HostContext, workspaceId?: string):
       if (object(manifest) && manifest.name === '@deepseek-ai/dsh' && typeof manifest.version === 'string') version = manifest.version;
     } catch { /* Unknown layouts are not an invitation to guess storage roots. */ }
   }
-  if (version !== SUPPORTED_DSH_VERSION) throw new ArchiveError('unsupported-host', `Storage inspection requires DSH ${SUPPORTED_DSH_VERSION}; the current runtime is ${version}.`);
+  if (!isSupportedDshVersion(version)) throw new ArchiveError('unsupported-host', `Storage inspection requires DSH ${SUPPORTED_DSH_VERSION_LABEL}; the current runtime is ${version}.`);
   let home: string | undefined;
   const homeResolver = storageService(ctx, 'dshHomePath');
   if (typeof homeResolver === 'function') { try { home = storagePath(homeResolver()); } catch { /* Report unavailable below. */ } }
@@ -422,7 +422,7 @@ class NativeAdapter implements DshAdapter {
   async capabilities(): Promise<SupportStatus> {
     let reason: string | undefined;
     if (this.platform !== 'darwin' && this.platform !== 'win32') reason = 'Only macOS and Windows Desktop are supported in this release.';
-    else if (this.version !== SUPPORTED_DSH_VERSION) reason = `DSH Desktop ${SUPPORTED_DSH_VERSION} is required; the current runtime is ${this.version}. Update DSH Desktop to the required version, then restart this plugin.`;
+    else if (!isSupportedDshVersion(this.version)) reason = `DSH Desktop ${SUPPORTED_DSH_VERSION_LABEL} is required; the current runtime is ${this.version}. Update DSH Desktop to a supported version, then restart this plugin.`;
     else if (this.persistence?.name !== 'session-persistence-jsonl' || !isAbsolute(this.persistence.root)) reason = 'The official JSONL session backend is required.';
     else if (!this.sessions || typeof this.sessions.get !== 'function' || !this.ctx.waterfall || !this.ctx.emit) reason = 'Session activity and lifecycle services are unavailable.';
     else if (!this.registry || !['requireState', 'requireTable', 'enqueueOperation', 'setState', 'indexHeader'].every((key) => typeof (this.registry as unknown as Record<string, unknown>)[key] === 'function')
@@ -455,7 +455,7 @@ class NativeAdapter implements DshAdapter {
       return { effect: symbols.effect, ...(typeof symbols.original === 'symbol' ? { original: symbols.original } : {}) };
     } catch { return undefined; }
   }
-  /** Invoke only the exact rc.3 owner teardown; never close a borrowed writer or edit registries. */
+  /** Invoke the supported host's exact owner teardown after identity and activity checks. */
   async releaseIdle(group: SessionGroup): Promise<boolean> {
     await this.requireSupported();
     if (group.members.every(member => this.sessions!.get(member.id) === undefined)) return true;

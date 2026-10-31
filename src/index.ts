@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { ArchiveError, PACKAGE_NAME, SUPPORTED_DSH_VERSION, type ArchiveApi, type DshAdapter, type Lease, type SupportStatus } from './contracts.js';
+import { ArchiveError, PACKAGE_NAME, SUPPORTED_DSH_VERSION_LABEL, type ArchiveApi, type DshAdapter, type Lease, type SupportStatus } from './contracts.js';
 import { acquirePluginLease, createDshAdapter, getHostPaths, getNativeLockExclusive, getNativeWindowsLock, getStorageSources, getStorageWorkspaces, type HostContext } from './dsh-adapter.js';
 import { registerHostRoutes } from './host-routes.js';
 import { ArchiveService } from './service.js';
@@ -71,7 +71,7 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
     updater?.start();
     // A diagnostic exporter failure must not tear down an admitted API route.
     try {
-      if (loaded) ctx.logger?.info?.(`[archive-delete] v${PLUGIN_VERSION} loaded · target DSH ${SUPPORTED_DSH_VERSION} (host ${loaded.version}) · trash ${JSON.stringify(loaded.trash)}`);
+      if (loaded) ctx.logger?.info?.(`[archive-delete] v${PLUGIN_VERSION} loaded · target DSH ${SUPPORTED_DSH_VERSION_LABEL} (host ${loaded.version}) · trash ${JSON.stringify(loaded.trash)}`);
     } catch { /* The host owns its logging transport. */ }
     return async () => { unmount(); await updater?.close(); await inspector?.close(); await archive?.close(); await lease?.release(); };
   }

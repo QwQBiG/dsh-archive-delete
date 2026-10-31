@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeF
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
-import { PACKAGE_NAME, SUPPORTED_DSH_VERSION } from '../src/contracts.js';
+import { PACKAGE_NAME, SUPPORTED_DSH_VERSION, SUPPORTED_DSH_VERSIONS, SUPPORTED_DSH_VERSION_LABEL } from '../src/contracts.js';
 import { formatDoctorReport, runDoctor, type DoctorOptions, type DoctorReport } from '../src/doctor.js';
 import { PLUGIN_VERSION } from '../src/version.js';
 
@@ -143,4 +143,27 @@ test('doctor output follows the selected language and retains stable machine fie
   assert.match(formatted, /只读自检/); assert.match(formatted, /无法证明/);
   assert.equal(report.runtimeState, 'unverified'); assert.equal(report.schemaVersion, 1);
   assert.match(check(report, 'bundle-registration').message, /登记一次/);
+});
+
+test('doctor admits each declared host exactly and reports the actual runtime and supported list', async t => {
+  const f = await fixture(t);
+  for (const hostVersion of SUPPORTED_DSH_VERSIONS) for (const language of ['en', 'zh'] as const) {
+    await writeFile(f.hostManifest, JSON.stringify({ name: '@deepseek-ai/dsh', version: hostVersion }));
+    const report = await runDoctor({ ...f.options, language });
+    assert.equal(report.ok, true);
+    assert.equal(report.host.version, hostVersion);
+    assert.equal(check(report, 'host-version').status, 'pass');
+    assert.deepEqual(report.supportedDshVersions, ['0.2.1-rc.3', '0.2.1-rc.5']);
+    assert.equal(report.targetDshVersion, SUPPORTED_DSH_VERSION_LABEL);
+    for (const supported of SUPPORTED_DSH_VERSIONS) assert.ok(check(report, 'host-version').message.includes(supported));
+    assert.equal(report.runtimeState, 'unverified');
+  }
+  for (const hostVersion of ['0.2.1-rc.4', '0.2.1-rc.6', '0.2.1', 'unknown']) {
+    await writeFile(f.hostManifest, JSON.stringify({ name: '@deepseek-ai/dsh', version: hostVersion }));
+    const report = await runDoctor(f.options);
+    assert.equal(report.ok, false);
+    assert.equal(check(report, 'host-version').code, 'host-version-mismatch');
+    assert.equal(report.host.version, hostVersion);
+  }
+  assert.equal(await readFile(f.retained, 'utf8'), 'Must remain byte-identical.');
 });

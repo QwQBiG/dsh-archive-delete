@@ -4,9 +4,10 @@ import { createRequire } from 'node:module';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ArchiveError, PACKAGE_NAME, SUPPORTED_DSH_VERSION } from './contracts.js';
+import { ArchiveError, PACKAGE_NAME, isSupportedDshVersion } from './contracts.js';
 import type { HostContext } from './dsh-adapter.js';
 import { assertCanonicalStoragePath, assertLocalStoragePath, assertPrivateDirectory, isWithin, readBoundedJson, samePath } from './filesystem.js';
+import { readHostManifest } from './host-manifest.js';
 import { PLUGIN_VERSION } from './version.js';
 import type { HostUpdateResult, InstalledUpdateTarget, UpdateHost } from './update-host-types.js';
 import { validateUpdatePackage } from './update-source.js';
@@ -21,8 +22,8 @@ const UUID = /^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function get(ctx: HostContext, name: string): unknown { try { return ctx.get?.(name) ?? ctx[name]; } catch { return undefined; } }
-// rc.3 returns a fresh trace proxy for a service read. Compare its native
-// original target so proxy allocation cannot look like a manager replacement.
+// Service reads may return fresh Cordis trace proxies. Compare their native
+// target when checking manager identity.
 function original(value: unknown): unknown {
   if (!object(value) && typeof value !== 'function') return value;
   try { return (value as Record<symbol, unknown>)[Symbol.for('cordis.original')] ?? value; } catch { return value; }
@@ -41,21 +42,21 @@ function sameProfile(left: Profile, right: Profile): boolean {
 const unavailable = () => new ArchiveError('update-host-unavailable', 'The current profile does not provide a supported native plugin update capability.');
 const invalidTarget = () => new ArchiveError('update-target-invalid', 'This plugin is not an unambiguous profile-owned installation.');
 
-/** Resolves only the live profile's exact rc.3 manager; no package runner or unload is replaced. */
+/** Resolves the live profile's admitted native manager. */
 export async function createUpdateHost(ctx: HostContext): Promise<UpdateHost> {
   const suppliedProfile = profileOf(get(ctx, 'profileContext'));
   const profile = suppliedProfile ? { name: suppliedProfile.name, dir: suppliedProfile.dir, home: suppliedProfile.home, installAnchor: suppliedProfile.installAnchor } : undefined;
   let hostVersion = 'unknown'; let manager: Manager | undefined;
   try {
     if (!profile) throw unavailable();
-    const manifest = await readBoundedJson(profile.installAnchor);
+    const manifest = await readHostManifest(profile.installAnchor);
     if (!object(manifest) || manifest.name !== '@deepseek-ai/dsh' || typeof manifest.version !== 'string') throw unavailable();
     hostVersion = manifest.version;
-    if (hostVersion !== SUPPORTED_DSH_VERSION || (object(manifest.dependencies) && Object.hasOwn(manifest.dependencies, PACKAGE_NAME))) throw unavailable();
+    if (!isSupportedDshVersion(hostVersion) || (object(manifest.dependencies) && Object.hasOwn(manifest.dependencies, PACKAGE_NAME))) throw unavailable();
     const nativeRequire = createRequire(profile.installAnchor);
     const managerFile = nativeRequire.resolve('@deepseek-ai/dsh-plugin-manager');
-    const managerManifest = await readBoundedJson(join(dirname(managerFile), '..', 'package.json'));
-    if (!object(managerManifest) || managerManifest.name !== '@deepseek-ai/dsh-plugin-manager' || managerManifest.version !== SUPPORTED_DSH_VERSION) throw unavailable();
+    const managerManifest = await readHostManifest(join(dirname(managerFile), '..', 'package.json'));
+    if (!object(managerManifest) || managerManifest.name !== '@deepseek-ai/dsh-plugin-manager' || managerManifest.version !== hostVersion) throw unavailable();
     const native = await import(pathToFileURL(managerFile).href) as Record<string, unknown>;
     const found = original(get(ctx, 'pluginManager'));
     if (typeof native.PluginManager !== 'function' || !(found instanceof native.PluginManager)) throw unavailable();
@@ -65,7 +66,7 @@ export async function createUpdateHost(ctx: HostContext): Promise<UpdateHost> {
   } catch { /* Checks and update notices remain available without an install capability. */ }
 
   const installed = async (): Promise<InstalledUpdateTarget> => {
-    if (!profile || !manager || hostVersion !== SUPPORTED_DSH_VERSION) throw unavailable();
+    if (!profile || !manager || !isSupportedDshVersion(hostVersion)) throw unavailable();
     const current = profileOf(get(ctx, 'profileContext')); const owner = profileOf(manager.profile);
     if (!current || !owner || !sameProfile(profile, current) || !sameProfile(profile, owner) || original(get(ctx, 'pluginManager')) !== manager) throw unavailable();
     assertLocalStoragePath(profile.dir); assertLocalStoragePath(profile.home);
