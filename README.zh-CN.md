@@ -34,7 +34,9 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh
 
 ## 更新
 
-版本栏每天检查 GitHub。选择 **查看并升级**，再 **确认升级**；提示重启时，完整退出 DSH 后重新打开，加载已安装版本。手动升级可在同一插件管理器中添加新版 Release URL。
+**v0.0.1** 用户请先在 **添加插件** 中粘贴上方安装 URL，升至 v0.0.2。
+
+版本栏每天检查 GitHub。选择 **查看并升级**，再 **确认升级**；提示重启时，完整退出 DSH 后重新打开，加载已安装版本。也可在同一插件管理器中添加新版 Release URL。
 
 ## 开发
 

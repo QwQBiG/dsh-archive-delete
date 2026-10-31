@@ -15,7 +15,7 @@ import { registerHostRoutes } from '../../src/host-routes.js';
 import { apply as applyPlugin } from '../../src/index.js';
 import { PLUGIN_VERSION } from '../../src/version.js';
 import type { JsonObject, StorageOverview } from '../../src/contracts.js';
-import { PACKAGE_NAME, SUPPORTED_DSH_VERSION_LABEL, isSupportedDshVersion } from '../../src/contracts.js';
+import { PACKAGE_NAME, SUPPORTED_DSH_VERSION_LABEL, SUPPORTED_DSH_VERSIONS, isSupportedDshVersion } from '../../src/contracts.js';
 import { createUpdateHost } from '../../src/update-host.js';
 
 const runtimeRoot = process.env.DSH_RUNTIME_ROOT ?? '/Applications/DeepSeek Harness.app/Contents/Resources/app/dsh';
@@ -599,7 +599,7 @@ async function updateManagerFixture(t: TestContext) {
   async function pack(version: string, bundle = true) {
     const source = join(root, `source-${version}`); await mkdir(join(source, 'lib'), { recursive: true });
     await writeFile(join(source, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version, type: 'module', main: './lib/index.js', license: 'Apache-2.0',
-      engines: { node: '>=24', dsh: runtimeVersion }, dshArchiveDelete: { supportedDshVersions: [runtimeVersion] }, ...(bundle ? { dsh: { manifestVersion: 1, bundle: { patch: './cordis.patch.yml' } } } : {}) }));
+      engines: { node: '>=24', dsh: SUPPORTED_DSH_VERSIONS.join(' || ') }, ...(bundle ? { dsh: { manifestVersion: 1, bundle: { patch: './cordis.patch.yml' } } } : {}) }));
     await writeFile(join(source, 'cordis.patch.yml'), '[]\n');
     await writeFile(join(source, 'lib', 'index.js'), `export const name = 'synthetic-updater'; export const version = '${version}';`);
     await writeFile(join(source, 'lib', 'client.js'), '/* synthetic updater fixture */');

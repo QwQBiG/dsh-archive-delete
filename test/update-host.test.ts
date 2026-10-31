@@ -13,7 +13,7 @@ import type { HostContext } from '../src/dsh-adapter.js';
 
 function packedFixture(version: string, hosts?: readonly string[]): Buffer {
   const manifest = { name: PACKAGE_NAME, version, type: 'module', main: './lib/index.js',
-    engines: { node: '>=24', dsh: SUPPORTED_DSH_VERSION }, ...(hosts ? { dshArchiveDelete: { supportedDshVersions: hosts } } : {}),
+    engines: { node: '>=24', dsh: (hosts ?? [SUPPORTED_DSH_VERSION]).join(' || ') },
     dsh: { manifestVersion: 1, bundle: { patch: './cordis.patch.yml' } } };
   const files = new Map([['package/package.json', JSON.stringify(manifest)], ['package/lib/index.js', 'export const name="synthetic";'],
     ['package/lib/client.js', '/* synthetic */'], ['package/cordis.patch.yml', '[]\n']]);

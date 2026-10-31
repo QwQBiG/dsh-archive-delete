@@ -35,15 +35,14 @@ function exactVersion(value: unknown): value is string {
     && value.split(/[-+]/, 1)[0]!.split('.').every(part => Number.isSafeInteger(Number(part)));
 }
 
-/** Exact package declarations supplement the legacy primary engine field. */
+/** Accept a bounded union of exact versions understood by the host's SemVer gate. */
 export function supportedPackageDshVersions(manifest: unknown): string[] {
-  if (!object(manifest) || !object(manifest.engines) || !exactVersion(manifest.engines.dsh)) throw packageInvalid();
-  const primary = manifest.engines.dsh;
-  if (manifest.dshArchiveDelete === undefined) return [primary];
-  const declared = object(manifest.dshArchiveDelete) ? manifest.dshArchiveDelete.supportedDshVersions : undefined;
-  if (!Array.isArray(declared) || declared.length < 1 || declared.length > 8 || !declared.every(exactVersion)
-    || new Set(declared).size !== declared.length || !declared.includes(primary)) throw packageInvalid();
-  return [...declared] as string[];
+  if (!object(manifest) || !object(manifest.engines) || typeof manifest.engines.dsh !== 'string'
+    || manifest.engines.dsh.length > 824) throw packageInvalid();
+  const versions = manifest.engines.dsh.split(' || ');
+  if (versions.length < 1 || versions.length > 8 || !versions.every(exactVersion)
+    || new Set(versions).size !== versions.length) throw packageInvalid();
+  return versions;
 }
 function compare(left: string, right: string): number {
   const a = stable(left)!; const b = stable(right)!;
@@ -238,7 +237,7 @@ function text(header: Buffer, start: number, length: number): string {
   const field = header.subarray(start, start + length); const end = field.indexOf(0);
   try { return new TextDecoder('utf-8', { fatal: true }).decode(end < 0 ? field : field.subarray(0, end)); } catch { throw packageInvalid(); }
 }
-interface PackageCompatibility { primaryDshVersion: string; supportedDshVersions: string[] }
+interface PackageCompatibility { dshEngine: string; supportedDshVersions: string[] }
 async function validatePackage(bytes: Uint8Array, version: string, hostVersion: string, limits: Limits): Promise<PackageCompatibility> {
   if (!stable(version) || !SEMVER.test(hostVersion) || !bytes.byteLength || bytes.byteLength > limits.assetBytes) throw packageInvalid();
   let tar: Buffer;
@@ -288,7 +287,7 @@ async function validatePackage(bytes: Uint8Array, version: string, hostVersion: 
         || !object(meta) || meta.optional !== true) throw packageInvalid();
     }
   }
-  return { primaryDshVersion: (pkg.engines as Record<string, unknown>).dsh as string, supportedDshVersions: supportedPackageDshVersions(pkg) };
+  return { dshEngine: (pkg.engines as Record<string, unknown>).dsh as string, supportedDshVersions: supportedPackageDshVersions(pkg) };
 }
 
 /** Reusable immediately before native installation; no extraction or execution. */

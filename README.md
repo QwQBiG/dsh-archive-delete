@@ -34,7 +34,9 @@ A pending move stays in **Archived**. **Cancel waiting and review** opens a new 
 
 ## Updates
 
-The version row checks GitHub daily. Choose **Review update**, then **Confirm upgrade**. When prompted, fully quit DSH and reopen it to load the installed version. For manual upgrades, add the new version's Release URL through the same plugin manager.
+For **v0.0.1**, paste the installation URL above into **Add plugin** once to upgrade to v0.0.2.
+
+The version row checks GitHub daily. Choose **Review update**, then **Confirm upgrade**. When prompted, fully quit DSH and reopen it to load the installed version. You can also add a newer Release URL through the same plugin manager.
 
 ## Development
 

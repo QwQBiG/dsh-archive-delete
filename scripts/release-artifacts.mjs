@@ -15,8 +15,8 @@ function validVersion(value, stable = false) {
 }
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-if (pkg.name !== '@qwqbig/dsh-archive-delete' || !validVersion(pkg.version, true) || !validVersion(pkg.engines?.dsh))
-  throw new Error('Update artifacts require the fixed package name, a stable version, and an exact DSH version.');
+if (pkg.name !== '@qwqbig/dsh-archive-delete' || !validVersion(pkg.version, true))
+  throw new Error('Update artifacts require the fixed package name and a stable version.');
 const filename = `${pkg.name.replace(/^@/, '').replaceAll('/', '-')}-${pkg.version}.tgz`;
 const path = join(resolve(process.argv[2] ?? 'artifacts'), filename);
 const before = await lstat(path, { bigint: true });
@@ -43,13 +43,13 @@ if (BigInt(bytes.length) !== before.size || before.dev !== after.dev || before.i
 // This is the exact bounded admission path used by an installed updater.
 const { validateUpdatePackage, supportedPackageDshVersions, inspectUpdatePackageCompatibility } = await tsImport('../src/update-source.ts', import.meta.url);
 const hosts = supportedPackageDshVersions(pkg);
-const packed = await inspectUpdatePackageCompatibility(bytes, pkg.version, pkg.engines.dsh);
-assert.equal(packed.primaryDshVersion, pkg.engines.dsh, 'The packed legacy engine must match the release primary.');
+const packed = await inspectUpdatePackageCompatibility(bytes, pkg.version, hosts[0]);
+assert.equal(packed.dshEngine, pkg.engines.dsh, 'The packed host engine must match the release manifest.');
 assert.deepEqual(packed.supportedDshVersions.toSorted(), hosts.toSorted(), 'The packed host declarations must match the release manifest.');
 for (const host of hosts) await validateUpdatePackage(bytes, pkg.version, host);
 const sha256 = createHash('sha256').update(bytes).digest('hex');
 const metadataFilename = filename.replace(/\.tgz$/, '.update.json');
-const metadataFiles = hosts.map(host => ({ name: host === pkg.engines.dsh ? metadataFilename : filename.replace(/\.tgz$/, `.dsh-${host}.update.json`),
+const metadataFiles = hosts.map((host, index) => ({ name: index === 0 ? metadataFilename : filename.replace(/\.tgz$/, `.dsh-${host}.update.json`),
   metadata: { schema: 1, packageName: pkg.name, version: pkg.version, requiredDshVersion: host,
     platforms: ['darwin', 'win32'], asset: { name: filename, bytes: bytes.length, sha256 } } }));
 await writeFile(`${path}.sha256`, `${sha256}  ${filename}\n`);

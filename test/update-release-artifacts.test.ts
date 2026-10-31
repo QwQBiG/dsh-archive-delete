@@ -11,8 +11,8 @@ const exec = promisify(execFile);
 const root = new URL('../', import.meta.url);
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const name = `qwqbig-dsh-archive-delete-${pkg.version}.tgz`;
-function packed(hook = false, compatibility = pkg.dshArchiveDelete, primary = pkg.engines.dsh): Buffer {
-  const manifest = { ...pkg, engines: { ...pkg.engines, dsh: primary }, dshArchiveDelete: compatibility, ...(hook ? { scripts: { postinstall: 'unexpected install hook' } } : {}) };
+function packed(hook = false, requirement = pkg.engines.dsh): Buffer {
+  const manifest = { ...pkg, engines: { ...pkg.engines, dsh: requirement }, ...(hook ? { scripts: { postinstall: 'unexpected install hook' } } : {}) };
   const parts: Buffer[] = [];
   for (const [path, content] of [['package/package.json', JSON.stringify(manifest)], ['package/cordis.patch.yml', '- insert: archive-delete'],
     ['package/lib/index.js', 'export const apply = () => {};'], ['package/lib/client.js', 'export const startClient = () => {};']]) {
@@ -44,7 +44,7 @@ test('release package checker binds the human checksum and updater metadata to t
   const secondary = JSON.parse(await readFile(join(directory, specificName), 'utf8'));
   assert.equal(primary.requiredDshVersion, '0.2.1-rc.3'); assert.equal(secondary.requiredDshVersion, '0.2.1-rc.5');
   assert.deepEqual(primary.asset, secondary.asset, 'both hosts install the same packed bytes');
-  assert.deepEqual(Object.keys(primary).sort(), ['schema', 'packageName', 'version', 'requiredDshVersion', 'platforms', 'asset'].sort(), 'legacy metadata shape remains unchanged');
+  assert.deepEqual(Object.keys(primary).sort(), ['schema', 'packageName', 'version', 'requiredDshVersion', 'platforms', 'asset'].sort(), 'metadata retains an exact host gate');
   await exec(process.execPath, ['--import', 'tsx', 'scripts/check-update-package.mjs', directory], { cwd: root });
   const checksum = await readFile(join(directory, `${name}.sha256`));
   await writeFile(join(directory, `${name}.sha256`), `${'ab'.repeat(32)}  ${name}\n`);
@@ -60,10 +60,10 @@ test('release package checker binds the human checksum and updater metadata to t
 
 test('release generation validates every declared host before writing metadata', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'archive-release-hosts-')); t.after(() => rm(directory, { recursive: true, force: true }));
-  await writeFile(join(directory, name), packed(false, { supportedDshVersions: [pkg.engines.dsh] }));
+  await writeFile(join(directory, name), packed(false, '0.2.1-rc.3'));
   await assert.rejects(exec(process.execPath, ['scripts/release-artifacts.mjs', directory], { cwd: root }));
   assert.deepEqual(await readdir(directory), [name]);
-  await writeFile(join(directory, name), packed(false, pkg.dshArchiveDelete, '0.2.1-rc.5'));
+  await writeFile(join(directory, name), packed(false, '0.2.1-rc.5'));
   await assert.rejects(exec(process.execPath, ['scripts/release-artifacts.mjs', directory], { cwd: root }));
-  assert.deepEqual(await readdir(directory), [name], 'a changed packed primary cannot masquerade as a legacy rc.3 release');
+  assert.deepEqual(await readdir(directory), [name], 'the packed engine must agree with the release manifest');
 });

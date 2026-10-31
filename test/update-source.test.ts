@@ -203,7 +203,7 @@ test('one discovery budget covers the release list and every metadata request', 
 });
 
 function dualHostArtifact() {
-  const pkg = manifest(); pkg.dshArchiveDelete = { supportedDshVersions: [HOST, '0.2.1-rc.5'] };
+  const pkg = manifest(); pkg.engines.dsh = `${HOST} || 0.2.1-rc.5`;
   const item = artifact(VERSION, 1, gzipSync(tar(entries(pkg))));
   const name = item.release.assets[1]!.name.replace(/\.update\.json$/, '.dsh-0.2.1-rc.5.update.json');
   const info = { ...structuredClone(item.info), requiredDshVersion: '0.2.1-rc.5' };
@@ -213,20 +213,23 @@ function dualHostArtifact() {
   metadataBytes(); return { item, info, specific, metadataBytes };
 }
 
-test('one prebuilt package declares exact compatibility while retaining the legacy primary engine', async () => {
+test('one prebuilt package declares a bounded union of exact host versions through the standard engine', async () => {
   const pkg = manifest(); const legacy = gzipSync(tar(entries(pkg)));
   assert.deepEqual(supportedPackageDshVersions(pkg), [HOST]); await validateUpdatePackage(legacy, VERSION, HOST);
   await assert.rejects(validateUpdatePackage(legacy, VERSION, '0.2.1-rc.5'), { code: 'update-package-invalid' });
-  pkg.dshArchiveDelete = { supportedDshVersions: [HOST, '0.2.1-rc.5'] }; const compatible = gzipSync(tar(entries(pkg)));
+  pkg.engines.dsh = `${HOST} || 0.2.1-rc.5`; const compatible = gzipSync(tar(entries(pkg)));
+  assert.deepEqual(supportedPackageDshVersions(pkg), [HOST, '0.2.1-rc.5']);
   for (const host of [HOST, '0.2.1-rc.5']) await validateUpdatePackage(compatible, VERSION, host);
   for (const host of ['0.2.1-rc.2', '0.2.1-rc.4', '0.2.1']) await assert.rejects(validateUpdatePackage(compatible, VERSION, host), { code: 'update-package-invalid' });
-  for (const declaration of [null, {}, { supportedDshVersions: [] }, { supportedDshVersions: [HOST, HOST] },
-    { supportedDshVersions: ['0.2.1-rc.5'] }, { supportedDshVersions: [HOST, '^0.2.1'] }, { supportedDshVersions: [HOST, ['0.2.1-rc.5']] },
-    { supportedDshVersions: [HOST, '0.2.1-rc.05'] }, { supportedDshVersions: [HOST, '999999999999999999.0.0'] },
-    { supportedDshVersions: [HOST, ...Array.from({ length: 8 }, (_, i) => `0.2.${i}`)] }]) {
-    const invalid = manifest(); invalid.dshArchiveDelete = declaration;
+  for (const declaration of [null, {}, [], '', `${HOST} || ${HOST}`, `${HOST} || ^0.2.1`, `${HOST} || 0.2.1-rc.05`,
+    `${HOST} || 999999999999999999.0.0`, `${HOST} ||`, `${HOST}||0.2.1-rc.5`, ` ${HOST}`, `${HOST} `,
+    `${HOST} || >0.2.1-rc.3`, `${HOST} || *`, `${HOST} || 0.2.1-rc.3 - 0.2.1-rc.5`,
+    [HOST, ...Array.from({ length: 8 }, (_, i) => `0.2.${i}`)].join(' || ')]) {
+    const invalid = manifest(); invalid.engines.dsh = declaration;
     await assert.rejects(validateUpdatePackage(gzipSync(tar(entries(invalid))), VERSION, HOST), { code: 'update-package-invalid' });
   }
+  const custom = manifest(); custom.dshArchiveDelete = { supportedDshVersions: [HOST, '0.2.1-rc.5'] };
+  await assert.rejects(validateUpdatePackage(gzipSync(tar(entries(custom))), VERSION, '0.2.1-rc.5'), { code: 'update-package-invalid' });
   for (const change of [(value: Record<string, any>) => { value.name = 'other'; },
     (value: Record<string, any>) => { value.scripts.postinstall = 'unexpected hook'; },
     (value: Record<string, any>) => { value.dependencies = { arbitrary: '*' }; },

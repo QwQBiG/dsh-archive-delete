@@ -51,7 +51,7 @@ Keep test data independent of real history. Issue reports should include plugin/
 
 ## Release
 
-Publish the versioned `.tgz`, its `.tgz.sha256` and matching `.update.json` together on GitHub Releases. The artifact generator validates package contents; the checker verifies the checksum, metadata and updater flow. The package includes compiled host/client/Doctor files from the `files` allowlist.
+Publish the versioned `.tgz`, its `.tgz.sha256`, the default `.update.json` and the `.dsh-0.2.1-rc.5.update.json` together on GitHub Releases. Both metadata files select the same package. The artifact generator validates package contents; the checker verifies the checksum, metadata and updater flow. The package includes compiled host/client/Doctor files from the `files` allowlist.
 
 Each release gets a new tag and asset URL. The updater accepts newer stable versions for the exact supported host. Verified packages remain in `updates/packages/` because profile lockfiles can reference them. Installation uses the profile's native DSH manager.
 

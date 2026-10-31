@@ -51,7 +51,7 @@ pnpm test:integration
 
 ## 发布
 
-将固定版本 `.tgz`、`.tgz.sha256` 及对应 `.update.json` 一起发布到 GitHub Releases。产物脚本校验包内容，检查脚本验证校验和、元数据与更新流程。安装包使用 `files` 白名单，包含编译后的宿主、客户端和 Doctor 文件。
+将固定版本 `.tgz`、`.tgz.sha256`、默认 `.update.json` 及 `.dsh-0.2.1-rc.5.update.json` 一起发布到 GitHub Releases。两份元数据对应同一个安装包。产物脚本校验包内容，检查脚本验证校验和、元数据与更新流程。安装包使用 `files` 白名单，包含编译后的宿主、客户端和 Doctor 文件。
 
 每个版本使用新的 tag 和资产 URL。更新器接受符合精确宿主要求的更高稳定版本。已校验安装包保留在 `updates/packages/`，供 profile 锁文件引用；安装由当前 profile 的 DSH 原生管理器完成。
 

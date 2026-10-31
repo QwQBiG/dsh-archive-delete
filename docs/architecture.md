@@ -84,7 +84,7 @@ Confirmed bytes are retained in `updates/packages/`. DSH's manager replaces the 
 
 Disposal cancels discovery/preflight. A delegated native installation keeps its own lifetime. Same-request rechecks inspect native installation state without replaying a recorded install. Observation intervals back off from 3 to 15 to 60 seconds. Running and installed versions determine activation/restart state.
 
-The package declares its primary DSH version and the exact supported versions in `dshArchiveDelete.supportedDshVersions`. Release metadata has a default asset for the primary version and an exact-host asset for each additional version. Both select the same package and checksum. Installed ASAR runtime manifests use a reader that validates the containing archive.
+The package declares supported hosts through `engines.dsh`: `0.2.1-rc.3 || 0.2.1-rc.5`. Package admission accepts a bounded list of exact versions. Release metadata provides the default rc.3 asset and an exact-host rc.5 asset; both select the same package and checksum. Installed ASAR runtime manifests use a reader that validates the containing archive.
 
 ## Package and diagnostics
 

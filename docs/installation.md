@@ -47,6 +47,8 @@ Sizes are logical file bytes. The main total deduplicates verified paths and har
 
 ## Updates
 
+To upgrade from **v0.0.1**, enter the v0.0.2 URL at the top of this guide in **Plugins → Add plugin**. The manager replaces the existing installation. Subsequent upgrades use the version row.
+
 The version row provides **Check**, **Review update** and **Details**. GitHub checks run daily, with a one-minute manual interval. Failed checks retry after at least one hour and follow longer GitHub rate-limit windows.
 
 Choose **Review update**, read the notes, then **Confirm upgrade**. The plugin verifies the package and delegates replacement to DSH's manager in the current profile. When the running and installed versions differ, fully quit and reopen DSH.

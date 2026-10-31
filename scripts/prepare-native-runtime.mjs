@@ -2,13 +2,12 @@ import { spawn } from 'node:child_process';
 import { access, appendFile, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { tsImport } from 'tsx/esm/api';
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-const supported = pkg.dshArchiveDelete?.supportedDshVersions;
-if (!Array.isArray(supported) || !supported.length || new Set(supported).size !== supported.length
-  || !supported.every(value => typeof value === 'string' && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value))
-  || !supported.includes(pkg.engines?.dsh)) throw new Error('The package must declare its supported native test versions / 安装包必须声明支持的原生测试版本');
-const version = process.env.DSH_TEST_VERSION ?? pkg.engines.dsh;
+const { supportedPackageDshVersions } = await tsImport('../src/update-source.ts', import.meta.url);
+const supported = supportedPackageDshVersions(pkg);
+const version = process.env.DSH_TEST_VERSION ?? supported[0];
 if (!supported.includes(version)) throw new Error(`Unsupported DSH_TEST_VERSION=${version}; supported: ${supported.join(' / ')} / 不支持所选原生测试版本`);
 async function announce(root) {
   const manifest = JSON.parse(await readFile(join(root, 'node_modules/@deepseek-ai/dsh/package.json'), 'utf8'));

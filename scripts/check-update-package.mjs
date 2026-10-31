@@ -11,10 +11,10 @@ const bytes = await readFile(join(directory, name));
 const digest = createHash('sha256').update(bytes).digest('hex');
 assert.equal(await readFile(join(directory, `${name}.sha256`), 'utf8'), `${digest}  ${name}\n`, 'The public checksum must match the exact release package.');
 const hosts = supportedPackageDshVersions(pkg);
-const packed = await inspectUpdatePackageCompatibility(bytes, pkg.version, pkg.engines.dsh);
-assert.equal(packed.primaryDshVersion, pkg.engines.dsh); assert.deepEqual(packed.supportedDshVersions.toSorted(), hosts.toSorted());
-const metadata = await Promise.all(hosts.map(async hostVersion => {
-  const metaName = name.replace(/\.tgz$/, hostVersion === pkg.engines.dsh ? '.update.json' : `.dsh-${hostVersion}.update.json`);
+const packed = await inspectUpdatePackageCompatibility(bytes, pkg.version, hosts[0]);
+assert.equal(packed.dshEngine, pkg.engines.dsh); assert.deepEqual(packed.supportedDshVersions.toSorted(), hosts.toSorted());
+const metadata = await Promise.all(hosts.map(async (hostVersion, index) => {
+  const metaName = name.replace(/\.tgz$/, index === 0 ? '.update.json' : `.dsh-${hostVersion}.update.json`);
   const data = await readFile(join(directory, metaName)); const parsed = JSON.parse(data.toString('utf8'));
   assert.equal(parsed.requiredDshVersion, hostVersion, 'Each metadata asset must target its exact host.');
   assert.equal(parsed.asset?.sha256, digest, 'Update metadata and the public checksum must agree.');

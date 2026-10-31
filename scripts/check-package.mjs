@@ -5,9 +5,10 @@ import { tsImport } from 'tsx/esm/api';
 import assert from 'node:assert/strict';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-const { PACKAGE_NAME, SUPPORTED_DSH_VERSION, SUPPORTED_DSH_VERSIONS } = await tsImport('../src/contracts.ts', import.meta.url);
-if (pkg.name !== PACKAGE_NAME || pkg.engines.dsh !== SUPPORTED_DSH_VERSION) throw new Error('Package identity or compatibility gate drifted.');
-assert.deepEqual(pkg.dshArchiveDelete?.supportedDshVersions, SUPPORTED_DSH_VERSIONS, 'Declared and tested DSH versions must agree.');
+const { PACKAGE_NAME, SUPPORTED_DSH_VERSIONS } = await tsImport('../src/contracts.ts', import.meta.url);
+const { supportedPackageDshVersions } = await tsImport('../src/update-source.ts', import.meta.url);
+if (pkg.name !== PACKAGE_NAME || pkg.engines.dsh !== SUPPORTED_DSH_VERSIONS.join(' || ')) throw new Error('Package identity or compatibility gate drifted.');
+assert.deepEqual(supportedPackageDshVersions(pkg), SUPPORTED_DSH_VERSIONS, 'Declared and tested DSH versions must agree.');
 if (!pkg.files.includes('docs')) throw new Error('The installable package must retain the linked documentation.');
 for (const name of Object.keys(pkg.peerDependencies ?? {})) {
   if (pkg.peerDependenciesMeta?.[name]?.optional !== true) throw new Error(`Host-provided peer ${name} must be optional.`);
