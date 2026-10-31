@@ -26,6 +26,13 @@ test('Windows lexical storage admission excludes network, device and ambiguous a
   ]) assert.throws(() => assertLocalStoragePath(path, 'win32'), { code: 'unsafe-path' }, path);
 });
 
+test('Windows canonical admission seam compares Windows paths on every test platform', async () => {
+  await assertCanonicalStoragePath(String.raw`C:\DSH\Sessions`, String.raw`c:\dsh\sessions`, 'win32');
+  await assertCanonicalStoragePath('C:/DSH/Sessions', String.raw`C:\DSH\Sessions`, 'win32');
+  for (const canonical of [String.raw`C:\other\sessions`, String.raw`D:\DSH\Sessions`, String.raw`\\server\share\Sessions`])
+    await assert.rejects(assertCanonicalStoragePath(String.raw`C:\DSH\Sessions`, canonical, 'win32'), { code: 'unsafe-path' });
+});
+
 test('bounded recovery JSON admits regular data and refuses corrupt or oversized data', async t => {
   const root = await fixture(t); const path = join(root, 'record.json');
   await writeFile(path, '{"schema":1}'); assert.deepEqual(await readBoundedJson(path), { schema: 1 });

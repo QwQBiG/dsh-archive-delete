@@ -3,6 +3,7 @@ import { gunzip } from 'node:zlib';
 import { ArchiveError, PACKAGE_NAME } from './contracts.js';
 import type { ReleaseUpdateMetadata, UpdateCandidate } from './update-contracts.js';
 import type { PinnedUpdate, ReleaseCheck, UpdateSource } from './update-source-types.js';
+import { UpdateRateLimitError } from './update-source-types.js';
 
 const REPOSITORY = 'QwQBiG/dsh-archive-delete';
 const API = `https://api.github.com/repos/${REPOSITORY}/releases`;
@@ -28,6 +29,20 @@ const integer = (value: unknown): value is number => Number.isSafeInteger(value)
 function stable(value: unknown): number[] | undefined {
   if (typeof value !== 'string' || value.length > 64 || !STABLE.test(value)) return;
   const parts = value.split('.').map(Number); return parts.every(Number.isSafeInteger) ? parts : undefined;
+}
+function exactVersion(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 100 && SEMVER.test(value)
+    && value.split(/[-+]/, 1)[0]!.split('.').every(part => Number.isSafeInteger(Number(part)));
+}
+
+/** Accept a bounded union of exact versions understood by the host's SemVer gate. */
+export function supportedPackageDshVersions(manifest: unknown): string[] {
+  if (!object(manifest) || !object(manifest.engines) || typeof manifest.engines.dsh !== 'string'
+    || manifest.engines.dsh.length > 824) throw packageInvalid();
+  const versions = manifest.engines.dsh.split(' || ');
+  if (versions.length < 1 || versions.length > 8 || !versions.every(exactVersion)
+    || new Set(versions).size !== versions.length) throw packageInvalid();
+  return versions;
 }
 function compare(left: string, right: string): number {
   const a = stable(left)!; const b = stable(right)!;
@@ -66,6 +81,7 @@ function samePin(left: PinnedUpdate, right: PinnedUpdate): boolean {
 /** Fixed public repository only. This source never accepts browser URLs, tokens or paths. */
 export function createGithubUpdateSource(options: GithubUpdateSourceOptions): UpdateSource {
   if (!stable(options.currentVersion)) throw new TypeError('The current plugin version must be stable SemVer.');
+  if (!exactVersion(options.hostVersion)) throw new TypeError('The host version must be exact SemVer.');
   const limits = { ...MAX };
   for (const name of Object.keys(MAX) as (keyof Limits)[]) if (options.limits?.[name] !== undefined) {
     const value = options.limits[name]!;
@@ -76,12 +92,22 @@ export function createGithubUpdateSource(options: GithubUpdateSourceOptions): Up
   if (!integer(timeoutMs) || timeoutMs > 30_000) throw new RangeError('Invalid update request timeout.');
   const fetcher = options.fetch ?? globalThis.fetch;
   const known = new Map<string, Resolved>();
+  let retryAt = 0;
+  const withBudget = async <T>(signal: AbortSignal | undefined, operation: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+    const controller = new AbortController();
+    const cancel = () => controller.abort(signal?.reason);
+    signal?.addEventListener('abort', cancel, { once: true }); if (signal?.aborted) cancel();
+    const timer = setTimeout(() => controller.abort(error('update-timeout', 'The GitHub update operation timed out.')), timeoutMs);
+    try { return await operation(controller.signal); }
+    finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
+  };
   async function read(url: string, maximum: number, signal?: AbortSignal): Promise<Uint8Array> {
+    if (Date.now() < retryAt) throw new UpdateRateLimitError(retryAt);
     const controller = new AbortController(); let timedOut = false; let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     const cancelled = () => error(timedOut ? 'update-timeout' : 'update-cancelled', timedOut ? 'The GitHub update request timed out.' : 'The update request was cancelled.');
-    const cancel = () => controller.abort();
+    const cancel = () => { timedOut = signal?.reason instanceof ArchiveError && signal.reason.code === 'update-timeout'; controller.abort(); };
     const abort = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(cancelled()), { once: true }));
-    signal?.addEventListener('abort', cancel, { once: true }); if (signal?.aborted) controller.abort();
+    signal?.addEventListener('abort', cancel, { once: true }); if (signal?.aborted) cancel();
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     const execute = async (): Promise<Uint8Array> => {
       let current = url;
@@ -102,7 +128,15 @@ export function createGithubUpdateSource(options: GithubUpdateSourceOptions): Up
         }
         if (!response.ok) {
           void response.body?.cancel().catch(() => {});
-          if (response.status === 403 || response.status === 429) throw error('update-rate-limited', 'GitHub rate-limited update checks. Try again later.');
+          if (response.status === 403 || response.status === 429) {
+            const now = Date.now(); const header = response.headers.get('retry-after');
+            const reset = response.headers.get('x-ratelimit-reset');
+            const after = header && /^\d+$/.test(header) ? now + Number(header) * 1000 : header ? Date.parse(header) : NaN;
+            const limitReset = reset && /^\d+$/.test(reset) ? Number(reset) * 1000 : NaN;
+            const requested = [after, limitReset].filter(value => Number.isSafeInteger(value) && value > now);
+            retryAt = Math.min(now + 7 * 86_400_000, Math.max(now + 60_000, ...requested));
+            throw new UpdateRateLimitError(retryAt);
+          }
           throw error(response.status === 404 ? 'update-release-unavailable' : 'update-network', 'The GitHub release could not be downloaded.');
         }
         const length = response.headers.get('content-length');
@@ -127,7 +161,9 @@ export function createGithubUpdateSource(options: GithubUpdateSourceOptions): Up
     finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); void reader?.cancel().catch(() => {}); }
   }
   async function resolveRelease(item: Release, signal?: AbortSignal): Promise<Resolved | undefined> {
-    const name = `qwqbig-dsh-archive-delete-${item.version}.tgz`; const metadataName = name.replace(/\.tgz$/, '.update.json');
+    const name = `qwqbig-dsh-archive-delete-${item.version}.tgz`;
+    const specificName = name.replace(/\.tgz$/, `.dsh-${options.hostVersion}.update.json`);
+    const metadataName = item.assets.some(value => value.name === specificName) ? specificName : name.replace(/\.tgz$/, '.update.json');
     const asset = item.assets.filter(value => value.name === name); const meta = item.assets.filter(value => value.name === metadataName);
     if (!asset.length || !meta.length) return;
     if (asset.length !== 1 || meta.length !== 1) throw invalid();
@@ -154,34 +190,40 @@ export function createGithubUpdateSource(options: GithubUpdateSourceOptions): Up
   };
   return {
     async check(signal): Promise<ReleaseCheck> {
-      const response = json(await read(`${API}?per_page=20`, limits.releasesBytes, signal)); if (!Array.isArray(response)) throw invalid();
-      const newer = response.slice(0, 20).flatMap(value => { const item = release(value); return item && compare(item.version, options.currentVersion) > 0 ? [item] : []; })
-        .sort((a, b) => compare(b.version, a.version)).slice(0, 5);
-      let failure: ArchiveError | undefined;
-      for (const item of newer) {
-        try {
-          const resolved = await resolveRelease(item, signal); if (!resolved) continue;
-          known.set(resolved.pin.candidate.id, structuredClone(resolved));
-          while (known.size > 8) known.delete(known.keys().next().value!);
-          return { availability: 'available', candidate: structuredClone(resolved.pin.candidate), pinned: structuredClone(resolved.pin) };
-        } catch (caught) { if (caught instanceof ArchiveError && caught.code === 'update-metadata-invalid') failure = caught; else throw caught; }
-      }
-      if (failure) throw failure;
-      return newer.length ? { availability: 'incompatible', code: 'update-incompatible' } : { availability: 'current' };
+      return withBudget(signal, async signal => {
+        const response = json(await read(`${API}?per_page=20`, limits.releasesBytes, signal)); if (!Array.isArray(response)) throw invalid();
+        const newer = response.slice(0, 20).flatMap(value => { const item = release(value); return item && compare(item.version, options.currentVersion) > 0 ? [item] : []; })
+          .sort((a, b) => compare(b.version, a.version)).slice(0, 5);
+        let failure: ArchiveError | undefined;
+        for (const item of newer) {
+          try {
+            const resolved = await resolveRelease(item, signal); if (!resolved) continue;
+            known.set(resolved.pin.candidate.id, structuredClone(resolved));
+            while (known.size > 8) known.delete(known.keys().next().value!);
+            return { availability: 'available', candidate: structuredClone(resolved.pin.candidate), pinned: structuredClone(resolved.pin) };
+          } catch (caught) { if (caught instanceof ArchiveError && caught.code === 'update-metadata-invalid') failure = caught; else throw caught; }
+        }
+        if (failure) throw failure;
+        return newer.length ? { availability: 'incompatible', code: 'update-incompatible' } : { availability: 'current' };
+      });
     },
     async revalidate(pin, signal): Promise<void> {
-      const record = trusted(pin); const item = release(json(await read(`${API}/${record.releaseId}`, limits.releasesBytes, signal)));
-      if (!item || item.id !== record.releaseId || compare(item.version, options.currentVersion) <= 0) throw error('update-source-changed', 'The confirmed release is no longer available.');
-      const current = await resolveRelease(item, signal);
-      if (!current || !samePin(current.pin, record.pin)) throw error('update-source-changed', 'The confirmed update changed. Check for updates again.');
+      return withBudget(signal, async signal => {
+        const record = trusted(pin); const item = release(json(await read(`${API}/${record.releaseId}`, limits.releasesBytes, signal)));
+        if (!item || item.id !== record.releaseId || compare(item.version, options.currentVersion) <= 0) throw error('update-source-changed', 'The confirmed release is no longer available.');
+        const current = await resolveRelease(item, signal);
+        if (!current || !samePin(current.pin, record.pin)) throw error('update-source-changed', 'The confirmed update changed. Check for updates again.');
+      });
     },
     async download(pin, signal): Promise<Uint8Array> {
-      const record = trusted(pin);
-      const bytes = await read(record.pin.assetUrl, Math.min(limits.assetBytes, record.pin.candidate.assetBytes), signal);
-      if (bytes.byteLength !== record.pin.candidate.assetBytes || createHash('sha256').update(bytes).digest('hex') !== record.pin.sha256)
-        throw error('update-checksum', 'The downloaded update does not match its confirmed SHA-256 checksum.');
-      await validatePackage(bytes, record.pin.candidate.version, options.hostVersion, limits); if (signal?.aborted) throw error('update-cancelled', 'The update request was cancelled.');
-      return bytes;
+      return withBudget(signal, async signal => {
+        const record = trusted(pin);
+        const bytes = await read(record.pin.assetUrl, Math.min(limits.assetBytes, record.pin.candidate.assetBytes), signal);
+        if (bytes.byteLength !== record.pin.candidate.assetBytes || createHash('sha256').update(bytes).digest('hex') !== record.pin.sha256)
+          throw error('update-checksum', 'The downloaded update does not match its confirmed SHA-256 checksum.');
+        await validatePackage(bytes, record.pin.candidate.version, options.hostVersion, limits); if (signal?.aborted) throw error('update-cancelled', 'The update request was cancelled.');
+        return bytes;
+      });
     },
   };
 }
@@ -195,7 +237,8 @@ function text(header: Buffer, start: number, length: number): string {
   const field = header.subarray(start, start + length); const end = field.indexOf(0);
   try { return new TextDecoder('utf-8', { fatal: true }).decode(end < 0 ? field : field.subarray(0, end)); } catch { throw packageInvalid(); }
 }
-async function validatePackage(bytes: Uint8Array, version: string, hostVersion: string, limits: Limits): Promise<void> {
+interface PackageCompatibility { dshEngine: string; supportedDshVersions: string[] }
+async function validatePackage(bytes: Uint8Array, version: string, hostVersion: string, limits: Limits): Promise<PackageCompatibility> {
   if (!stable(version) || !SEMVER.test(hostVersion) || !bytes.byteLength || bytes.byteLength > limits.assetBytes) throw packageInvalid();
   let tar: Buffer;
   try { tar = await new Promise<Buffer>((resolve, reject) => gunzip(bytes, { maxOutputLength: limits.expandedBytes }, (caught, value) => caught ? reject(caught) : resolve(value))); }
@@ -227,7 +270,7 @@ async function validatePackage(bytes: Uint8Array, version: string, hostVersion: 
   if (!terminated) throw packageInvalid();
   const manifest = files.get('package/package.json'); if (!manifest || manifest.length > 64 * 1024) throw packageInvalid();
   let pkg: unknown; try { pkg = json(manifest); } catch { throw packageInvalid(); }
-  if (!object(pkg) || pkg.name !== PACKAGE_NAME || pkg.version !== version || !object(pkg.engines) || pkg.engines.dsh !== hostVersion
+  if (!object(pkg) || pkg.name !== PACKAGE_NAME || pkg.version !== version || !supportedPackageDshVersions(pkg).includes(hostVersion)
     || pkg.main !== './lib/index.js' || !object(pkg.dsh) || pkg.dsh.manifestVersion !== 1 || !object(pkg.dsh.bundle) || pkg.dsh.bundle.patch !== './cordis.patch.yml') throw packageInvalid();
   for (const path of ['package/cordis.patch.yml', 'package/lib/index.js', 'package/lib/client.js']) if (!files.get(path)?.length) throw packageInvalid();
   for (const key of ['dependencies', 'optionalDependencies']) {
@@ -244,9 +287,15 @@ async function validatePackage(bytes: Uint8Array, version: string, hostVersion: 
         || !object(meta) || meta.optional !== true) throw packageInvalid();
     }
   }
+  return { dshEngine: (pkg.engines as Record<string, unknown>).dsh as string, supportedDshVersions: supportedPackageDshVersions(pkg) };
 }
 
 /** Reusable immediately before native installation; no extraction or execution. */
 export async function validateUpdatePackage(bytes: Uint8Array, version: string, requiredDshVersion: string): Promise<void> {
   await validatePackage(bytes, version, requiredDshVersion, MAX);
+}
+
+/** Release tooling reads compatibility only after full package admission. */
+export async function inspectUpdatePackageCompatibility(bytes: Uint8Array, version: string, requiredDshVersion: string): Promise<PackageCompatibility> {
+  return validatePackage(bytes, version, requiredDshVersion, MAX);
 }

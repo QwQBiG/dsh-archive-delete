@@ -71,6 +71,8 @@ function validate(value: unknown, id: string): asserts value is RequestRecord {
 export class RequestJournal {
   private readonly directory: string;
   private tail: Promise<unknown> = Promise.resolve();
+  private recentIndex: { id: string; mtime: number }[] | undefined;
+  private indexedDirectory: string | undefined;
   constructor(root: string) { this.directory = join(resolve(root), 'receipts'); }
   private path(id: string): string { return join(this.directory, `${requestId(id)}.json`); }
   private serialize<T>(work: () => Promise<T>): Promise<T> {
@@ -97,6 +99,7 @@ export class RequestJournal {
       throw new ArchiveError('metadata-too-large', 'Recovery metadata is too large. Select a smaller batch.');
     const path = this.path(record.requestId);
     const temporary = `${path}.${randomUUID()}.tmp`;
+    const updateIndex = this.indexedDirectory !== undefined && this.indexedDirectory === await this.directoryIdentity();
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     try {
       handle = await open(temporary, 'wx', 0o600);
@@ -104,6 +107,12 @@ export class RequestJournal {
       await handle.close(); handle = undefined;
       await rename(temporary, path);
       await syncDirectory(this.directory);
+      if (updateIndex && this.recentIndex) {
+        const remaining = this.recentIndex.filter(item => item.id !== record.requestId);
+        if (record.complete) remaining.push({ id: record.requestId, mtime: (await lstat(path)).mtimeMs });
+        this.recentIndex = this.newest(remaining);
+        this.indexedDirectory = await this.directoryIdentity();
+      } else this.indexedDirectory = undefined;
     } catch (error) {
       if (handle) await handle.close().catch(() => {});
       await unlink(temporary).catch(() => {});
@@ -174,8 +183,6 @@ export class RequestJournal {
   }
   private async records(): Promise<RequestRecord[]> {
     await this.directorySafe();
-    // Atomic-write remnants never supersede a canonical record or authorize a transition.
-    await this.discardTemps();
     const result: RequestRecord[] = [];
     for (const name of (await readdir(this.directory)).sort()) {
       if (!name.endsWith('.json')) continue;
@@ -184,14 +191,53 @@ export class RequestJournal {
     }
     return result;
   }
+  /** Startup cleanup is explicit. Listing receipts never removes filesystem entries. */
+  async cleanTemporaryFiles(): Promise<void> {
+    return this.serialize(async () => { await this.directorySafe(); await this.discardTemps(); });
+  }
   async incomplete(): Promise<RequestRecord[]> {
     return this.serialize(async () => (await this.records()).filter(record => !record.complete));
   }
   async recent(): Promise<BatchResult[]> {
     return this.serialize(async () => {
-      const records = (await this.records()).filter(record => record.complete);
-      const dated = await Promise.all(records.map(async record => ({ record, mtime: (await lstat(this.path(record.requestId))).mtimeMs })));
-      return dated.sort((a, b) => b.mtime - a.mtime).slice(0, 10).map(value => value.record.result);
+      await this.directorySafe();
+      const before = await this.directoryIdentity();
+      if (!this.recentIndex || this.indexedDirectory !== before) {
+        const names = (await readdir(this.directory)).filter(name => name.endsWith('.json'));
+        const dated: { id: string; mtime: number }[] = [];
+        // Bound filesystem concurrency; old completed receipts remain durable for idempotency.
+        for (let start = 0; start < names.length; start += 32) {
+          const batch = await Promise.all(names.slice(start, start + 32).map(async name => {
+            const id = requestId(name.slice(0, -5));
+            try { return { id, mtime: (await lstat(this.path(id))).mtimeMs }; }
+            catch (error) { if (missing(error)) return undefined; throw error; }
+          }));
+          for (const item of batch) if (item) dated.push(item);
+        }
+        dated.sort((a, b) => b.mtime - a.mtime || a.id.localeCompare(b.id));
+        const completed: { id: string; mtime: number }[] = [];
+        for (const item of dated) {
+          const record = await this.read(item.id);
+          if (record?.complete) completed.push(item);
+          if (completed.length === 10) break;
+        }
+        this.recentIndex = completed;
+        this.indexedDirectory = before === await this.directoryIdentity() ? before : undefined;
+      }
+      const recent: BatchResult[] = [];
+      // Always validate the actual displayed receipts, including after external edits.
+      for (const item of this.recentIndex) {
+        const record = await this.read(item.id);
+        if (record?.complete) recent.push(record.result);
+      }
+      return recent;
     });
+  }
+  private async directoryIdentity(): Promise<string> {
+    const stat = await lstat(this.directory, { bigint: true });
+    return `${stat.dev}:${stat.ino}:${stat.mtimeNs}:${stat.ctimeNs}`;
+  }
+  private newest(items: { id: string; mtime: number }[]): { id: string; mtime: number }[] {
+    return items.sort((a, b) => b.mtime - a.mtime || a.id.localeCompare(b.id)).slice(0, 10);
   }
 }

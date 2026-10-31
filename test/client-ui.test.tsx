@@ -6,6 +6,7 @@ import { createArchiveApi, startClient } from '../src/client.js';
 import { ArchiveClientController, ClientTransportError, type ClientState } from '../src/client-state.js';
 import { UpdateClientController } from '../src/update-client.js';
 import { ArchiveDialogView, PreviewContent, ResultContent, StorageResultContent, en, zh, translator, localizeReason, type NativePrimitives } from '../src/client-ui.js';
+import { FILE_KINDS } from '../src/storage-classification.js';
 import { ArchiveError, PACKAGE_NAME, type ArchiveApi, type BatchResult, type Overview, type Preview, type StorageOverview } from '../src/contracts.js';
 
 const overview: Overview = {
@@ -93,7 +94,7 @@ test('storage refusals explain the available next step in either language', asyn
   controller.dispose();
 });
 
-test('partial storage reports show unknown bytes, limits, relative files and unknown origin without cleanup actions', () => {
+test('partial storage reports retain unknown bytes and scan notes without per-file origin warnings or cleanup actions', () => {
   for (const language of ['en', 'zh'] as const) {
     const t = translator(language);
     const html = renderToStaticMarkup(<StorageResultContent result={storageResult()} t={t} />);
@@ -103,7 +104,7 @@ test('partial storage reports show unknown bytes, limits, relative files and unk
     assert.ok(html.includes(t('storagePartial')));
     assert.ok(html.includes(t('storageIssueTime')));
     assert.ok(html.includes(t('storageIssueLink')));
-    assert.ok(html.includes(t('storageSource')));
+    assert.ok(!html.includes(t('storageSource')));
     assert.ok(html.includes(t('storageProvenance')));
     assert.ok(html.includes(t('storageMetric')));
     assert.ok(html.includes(t('storageOverlap')));
@@ -185,7 +186,7 @@ test('confirmation explains descendants, delayed movement, and retained data in 
     const html = renderToStaticMarkup(<PreviewContent preview={preview} t={translator(language)} />);
     assert.match(html, /A sample conversation/);
     assert.match(html, /3/);
-    assert.ok(html.includes(language === 'en' ? 'No disk space has been freed yet' : '目前尚未释放磁盘空间'));
+    assert.ok(html.includes(translator(language)('pendingHint')));
     assert.ok(html.includes(language === 'en' ? 'Shared attachments' : '共享附件'));
     assert.ok(html.includes(language === 'en' ? 'project files' : '项目文件'));
   }
@@ -201,7 +202,7 @@ test('pending rows expose explicit cancellation-and-review while staying outside
     assert.ok(html.includes(language === 'en' ? 'Cancel waiting and review' : '取消等待并重新核对'));
     assert.ok(html.includes(language === 'en' ? 'Cancel pending move' : '取消待处理'));
     assert.match(html, /<label><input[^>]*disabled=""[^>]*\/>A sample conversation<\/label>/);
-    assert.ok(html.includes(language === 'en' ? 'without restarting' : '无需重启'));
+    assert.ok(html.includes(translator(language)('pendingHint')));
   }
   controller.dispose();
 });
@@ -295,4 +296,207 @@ test('client registers native slots and disposes every contribution without a ne
   assert.equal(reads, 0);
   for (const dispose of effects.reverse()) dispose();
   assert.equal(disposedSlots, 3);
+});
+
+test('gateway rejects malformed optional diagnostics before they can reach React', async () => {
+  const send = (value: unknown) => createArchiveApi(async () => new Response(JSON.stringify({ ok: true, value })), 'https://example.test/');
+  const badText = [{ text: 'object' }, ['array'], 12, true, null];
+  for (const field of ['code', 'message']) for (const bad of badText) {
+    const item = { ...preview.items[0]!, [field]: bad };
+    await assert.rejects(send({ ...preview, items: [item] }).preview('trash', ['session-1']), ClientTransportError);
+    const outcome = { ...result.items[0]!, [field]: bad };
+    await assert.rejects(send({ ...result, items: [outcome] }).execute('preview-1', 'request-1'), ClientTransportError);
+    await assert.rejects(send({ ...overview, recentResults: [{ ...result, items: [outcome] }] }).list(), ClientTransportError);
+  }
+  for (const invalid of [
+    { ...overview, support: { ...overview.support, reason: {} } },
+    { ...overview, archived: [{ ...overview.archived[0]!, pendingReason: {} }] },
+    { ...overview, archived: [{ ...overview.archived[0]!, pending: 'true' }] },
+    { ...overview, issues: [{ scope: 'archive', code: 'invalid-session', message: {} }] },
+    { ...overview, issues: [{ scope: 'disk', code: 'invalid-session', message: 'bad' }] },
+  ]) await assert.rejects(send(invalid).list(), ClientTransportError);
+  assert.equal((await send(preview).preview('trash', ['session-1'])).id, preview.id);
+});
+
+test('diagnostic warnings preserve healthy list controls and localize known corruption and transport errors', async () => {
+  const current = { ...overview, issues: [{ scope: 'archive' as const, id: 'bad-record', code: 'invalid-session', message: 'raw host diagnostic' }] };
+  const controller = new ArchiveClientController({ ...api, list: async () => current }); await controller.open();
+  for (const language of ['en', 'zh'] as const) {
+    const t = translator(language);
+    const html = renderToStaticMarkup(<ArchiveDialogView state={controller.getSnapshot()} controller={controller} primitives={primitives} t={t} />);
+    assert.ok(html.includes(t('dataIssues', { n: 1 })));
+    assert.ok(html.includes('bad-record'));
+    assert.ok(html.includes(t('reasonDamaged')));
+    assert.ok(!html.includes('raw host diagnostic'));
+    assert.ok(html.includes('A sample conversation'));
+    assert.ok(html.includes(t('moveSelected')));
+    assert.equal(localizeReason('request-failed', 'Hardcoded English transport diagnostic', t), t('reasonTransport'));
+  }
+  controller.dispose();
+});
+
+test('confirmation separates eligible and protected targets and visibly marks permanent deletion', async () => {
+  const controller = new ArchiveClientController(api); await controller.open();
+  const mixed: Preview = { ...preview, action: 'purge', items: [
+    { ...preview.items[0]!, disposition: 'ready' },
+    { ...preview.items[0]!, id: 'second', disposition: 'pending' },
+    { ...preview.items[0]!, id: 'third', disposition: 'blocked' },
+  ] };
+  for (const language of ['en', 'zh'] as const) {
+    const t = translator(language);
+    const html = renderToStaticMarkup(<ArchiveDialogView state={{ ...controller.getSnapshot(), preview: mixed }} controller={controller} primitives={primitives} t={t} />);
+    assert.ok(html.includes(t('previewDisposition', { ready: 1, pending: 1, blocked: 1 })));
+    assert.match(html, /class="dad-danger-confirm"/);
+    const expired = renderToStaticMarkup(<ArchiveDialogView state={{ ...controller.getSnapshot(), preview: { ...mixed, expiresAt: 0 } }} controller={controller} primitives={primitives} t={t} />);
+    assert.ok(expired.includes(t('previewExpired')));
+    assert.match(expired, /class="dad-danger-confirm" disabled=""/);
+  }
+  controller.dispose();
+});
+
+test('scan refresh keeps the previous observation visibly labelled while updating or after failure', async () => {
+  const controller = new ArchiveClientController({ ...api, list: async () => ({ ...overview, storageWorkspaces: storageResult().workspaces }), storage: async () => storageResult() });
+  await controller.open(); controller.setTab('storage'); controller.setStorageWorkspace('project-1'); await controller.scanStorage('workspace');
+  const state = controller.getSnapshot();
+  for (const language of ['en', 'zh'] as const) for (const patch of [
+    { scanning: true }, { error: { code: 'scan-busy', message: 'raw host diagnostic', uncertain: false } }, { cancelled: true },
+  ]) {
+    const t = translator(language);
+    const html = renderToStaticMarkup(<ArchiveDialogView state={{ ...state, storage: { ...state.storage, ...patch } }} controller={controller} primitives={primitives} t={t} />);
+    assert.ok(html.includes(t('storagePrevious')));
+    assert.ok(html.includes('2.0 KiB'));
+    assert.ok(html.includes(t('storageObserved', { time: new Date(120).toLocaleString(t('dateLocale')), duration: 20 })));
+  }
+  controller.dispose();
+});
+
+test('response enum fields reject array coercions and counters require nonnegative integer numbers', async () => {
+  const send = (value: unknown) => createArchiveApi(async () => new Response(JSON.stringify({ ok: true, value })), 'https://example.test/');
+  for (const action of [['trash'], ['restore'], ['purge']]) {
+    await assert.rejects(send({ ...preview, action }).preview('trash', ['session-1']), ClientTransportError);
+    await assert.rejects(send({ ...result, action }).execute('preview-1', 'request-1'), ClientTransportError);
+  }
+  await assert.rejects(send({ ...preview, items: [{ ...preview.items[0]!, disposition: ['ready'] }] }).preview('trash', ['session-1']), ClientTransportError);
+  await assert.rejects(send({ ...result, items: [{ ...result.items[0]!, status: ['failed'] }] }).execute('preview-1', 'request-1'), ClientTransportError);
+  await assert.rejects(send({ ...overview, issues: [{ scope: ['archive'], code: 'invalid-session', message: 'Invalid' }] }).list(), ClientTransportError);
+  const storage = storageResult();
+  await assert.rejects(send({ ...storage, scope: ['host'], workspaceId: undefined }).storage!(), ClientTransportError);
+  await assert.rejects(send({ ...storage, categories: [{ ...storage.categories[0]!, status: ['partial'] }] }).storage!('project-1'), ClientTransportError);
+  const update = { currentVersion: '0.0.1', installedVersion: '0.0.1', hostVersion: '0.2.1-rc.3', availability: 'current', canInstall: true };
+  await assert.rejects(send({ ...update, availability: ['current'] }).updates!(), ClientTransportError);
+  await assert.rejects(send({ ...update, installation: { requestId: 'request-1', version: '0.0.2', status: ['installing'] } }).updates!(), ClientTransportError);
+  for (const invalid of ['1', -1, 0.5, true, null, {}, [1]]) {
+    await assert.rejects(send({ ...result, counts: { ...result.counts, succeeded: invalid } }).execute('preview-1', 'request-1'), ClientTransportError);
+    await assert.rejects(send({ ...overview, archived: [{ ...overview.archived[0]!, sizeBytes: invalid }] }).list(), ClientTransportError);
+  }
+});
+
+test('response identifiers are bounded nonempty strings without nul characters', async () => {
+  const send = (value: unknown) => createArchiveApi(async () => new Response(JSON.stringify({ ok: true, value })), 'https://example.test/');
+  for (const invalid of ['', '\0', 'x'.repeat(513), ['session-1'], {}]) {
+    await assert.rejects(send({ ...overview, archived: [{ ...overview.archived[0]!, id: invalid }] }).list(), ClientTransportError);
+    await assert.rejects(send({ ...overview, issues: [{ scope: 'archive', id: invalid, code: 'invalid-session', message: 'Invalid' }] }).list(), ClientTransportError);
+    await assert.rejects(send({ ...preview, items: [{ ...preview.items[0]!, sessionId: invalid }] }).preview('trash', ['session-1']), ClientTransportError);
+    await assert.rejects(send({ ...preview, items: [{ ...preview.items[0]!, memberIds: [invalid] }] }).preview('trash', ['session-1']), ClientTransportError);
+    await assert.rejects(send({ ...storageResult(), workspaces: [{ id: invalid, title: 'Project' }] }).storage!('project-1'), ClientTransportError);
+  }
+  for (const invalid of ['', '\0', 'x'.repeat(101)]) {
+    await assert.rejects(send({ ...preview, id: invalid }).preview('trash', ['session-1']), ClientTransportError);
+    await assert.rejects(send({ ...result, operationId: invalid }).execute('preview-1', 'request-1'), ClientTransportError);
+  }
+});
+
+test('repeated diagnostic occurrences retain their count, details and translated unavailable reason', async () => {
+  const issue = { scope: 'archive' as const, id: 'duplicate-record', code: 'invalid-session', message: 'Invalid header' };
+  const unavailable = { scope: 'trash' as const, code: 'entry-unavailable', message: 'Raw English unavailable diagnostic' };
+  const current = { ...overview, issues: [issue, { ...issue }, unavailable, { ...unavailable }] };
+  const controller = new ArchiveClientController({ ...api, list: async () => current }); await controller.open();
+  for (const language of ['en', 'zh'] as const) {
+    const t = translator(language);
+    const html = renderToStaticMarkup(<ArchiveDialogView state={controller.getSnapshot()} controller={controller} primitives={primitives} t={t} />);
+    assert.ok(html.includes(t('dataIssues', { n: 4 })));
+    assert.equal((html.match(/<code>duplicate-record<\/code>/g) ?? []).length, 2);
+    assert.equal((html.match(/<code>entry-unavailable<\/code>/g) ?? []).length, 2);
+    assert.ok(!html.includes('Raw English unavailable diagnostic'));
+    assert.equal(localizeReason('entry-unavailable', 'Raw English unavailable diagnostic', t), t('reasonDamaged'));
+  }
+  controller.dispose();
+});
+
+function classifiedStorage(): StorageOverview {
+  const current = storageResult();
+  const kinds = FILE_KINDS.map((kind, index) => ({ kind, fileBytes: (FILE_KINDS.length - index) * 1024, fileCount: 1 }));
+  const bytes = kinds.reduce((sum, kind) => sum + kind.fileBytes, 0);
+  const category = { ...current.categories[0]!, status: 'complete' as const, fileBytes: bytes, referencedBytes: bytes, fileCount: kinds.length, uniqueFileCount: kinds.length,
+    counters: { ...current.categories[0]!.counters, files: kinds.length }, issues: [], overlaps: [], fileKinds: kinds,
+    largestFiles: kinds.map((entry, index) => ({ relativePath: `folder-${index}/sample.bin`, sizeBytes: entry.fileBytes, source: 'unknown' as const, kind: entry.kind })),
+    directories: [{ relativePath: 'folder-0', fileBytes: kinds[0]!.fileBytes, fileCount: 1 }] };
+  return { ...current, complete: true, fileBytes: bytes, referencedBytes: bytes, fileCount: kinds.length, uniqueFileCount: kinds.length,
+    duplicateHardlinks: 0, duplicatePaths: 0, identityUnknown: 0, categories: [category] };
+}
+
+test('workspace storage highlights recognized file types and large files, with detailed metrics collapsed', () => {
+  for (const language of ['en', 'zh'] as const) {
+    const t = translator(language); const current = classifiedStorage();
+    const html = renderToStaticMarkup(<StorageResultContent result={current} t={t} />);
+    assert.ok(html.includes(t('storageTypeBreakdown')));
+    for (const key of ['storageKindDependencies', 'storageKindBuild', 'storageKindVersionControl', 'storageKindLogs', 'storageKindMedia', 'storageKindArchives', 'storageKindCode', 'storageKindDocuments', 'storageKindOther'] as const) assert.ok(html.includes(t(key).replaceAll('&', '&amp;')));
+    assert.ok(html.includes(t('storageFileCount', { n: 9 })));
+    assert.ok(html.indexOf('dad-storage-kinds') < html.indexOf('dad-storage-scan-details'));
+    assert.ok(html.includes('folder-0/sample.bin'));
+    assert.ok(html.includes(t('storageMoreFiles', { n: 4 })));
+    assert.match(html, /<details class="dad-storage-scan-details dad-storage-details"><summary>/);
+    assert.ok(html.indexOf(t('storageMetric')) > html.indexOf('dad-storage-scan-details'));
+    assert.ok(!html.includes(t('storageSource')));
+    assert.ok(!html.includes('dad-storage-bar'));
+    assert.ok(!html.includes('<button'));
+  }
+  const zeroFiles = classifiedStorage(); zeroFiles.categories[0]!.fileKinds = [{ kind: 'code', fileBytes: 0, fileCount: 1 }];
+  zeroFiles.categories[0]!.fileBytes = 0; zeroFiles.categories[0]!.uniqueFileCount = 1;
+  const zeroHtml = renderToStaticMarkup(<StorageResultContent result={zeroFiles} t={translator('en')} />);
+  assert.ok(zeroHtml.includes('dad-storage-kinds')); assert.ok(zeroHtml.includes('0 B'));
+});
+
+test('host storage keeps nonzero locations prominent and groups empty or unavailable locations with visible status', () => {
+  const base = storageResult(); const sample = base.categories[0]!;
+  const host: StorageOverview = { ...base, scope: 'host', fileBytes: 6144, categories: [
+    { ...sample, id: 'sessions', kind: 'sessions', fileBytes: 2048, status: 'complete', issues: [] },
+    { ...sample, id: 'attachments', kind: 'attachments', fileBytes: 4096, status: 'complete', issues: [] },
+    ...Array.from({ length: 10 }, (_, index) => ({ ...sample, id: `empty-${index}`, kind: 'cache', fileBytes: 0, status: 'complete' as const, uniqueFileCount: 0, fileCount: 0, largestFiles: [], directories: [], issues: [] })),
+    { ...sample, id: 'unavailable', kind: 'spill', fileBytes: null, status: 'unavailable', issues: [{ code: 'root-unresolved' }] },
+    { ...sample, id: 'missing', kind: 'settings', fileBytes: null, status: 'missing', issues: [{ code: 'ENOENT' }] },
+  ] };
+  delete host.workspaceId;
+  for (const language of ['en', 'zh'] as const) {
+    const t = translator(language); const html = renderToStaticMarkup(<StorageResultContent result={host} t={t} />);
+    const visible = html.slice(html.indexOf('class="dad-storage-categories"'), html.indexOf('class="dad-storage-other"'));
+    assert.ok(visible.indexOf('data-category="attachments"') < visible.indexOf('data-category="sessions"'));
+    assert.ok(!visible.includes('data-category="empty-'));
+    assert.match(html, /<details class="dad-storage-other"><summary>/);
+    assert.ok(html.includes(t('storageOtherLocations', { n: 12 })));
+    assert.ok(html.includes(t('storageUnavailableCount', { n: 2 })));
+    assert.ok(html.includes(t('storageCategoryUnavailable'))); assert.ok(html.includes(t('storageMissing')));
+    assert.ok(html.includes(t('storageIssueRoot')));
+    assert.ok(!html.includes('dad-storage-bar'));
+  }
+});
+
+test('storage purpose metadata is optional for older responses and strictly validated when supplied', async () => {
+  const send = (value: unknown) => createArchiveApi(async () => new Response(JSON.stringify({ ok: true, value })), 'https://example.test/');
+  assert.equal((await send(storageResult()).storage!('project-1')).categories[0]!.fileKinds, undefined);
+  const valid = classifiedStorage();
+  assert.equal((await send(valid).storage!('project-1')).categories[0]!.fileKinds?.length, 9);
+  const category = valid.categories[0]!;
+  const invalidKinds = [null, {}, [{ kind: 'ai-generated', fileBytes: 1, fileCount: 1 }], [{ kind: ['code'], fileBytes: 1, fileCount: 1 }],
+    [{ kind: 'code', fileBytes: -1, fileCount: 1 }], [{ kind: 'code', fileBytes: 1, fileCount: 0.5 }], [{ kind: 'code', fileBytes: '1', fileCount: 1 }],
+    [{ kind: 'code', fileBytes: category.fileBytes, fileCount: category.uniqueFileCount }, { kind: 'code', fileBytes: 0, fileCount: 0 }],
+    [{ kind: 'code', fileBytes: category.fileBytes, fileCount: 0 }, { kind: 'documents', fileBytes: 0, fileCount: category.uniqueFileCount }],
+    [{ kind: 'code', fileBytes: 1, fileCount: category.uniqueFileCount }], [{ kind: 'code', fileBytes: category.fileBytes, fileCount: 1 }]];
+  for (const fileKinds of invalidKinds) await assert.rejects(send({ ...valid, categories: [{ ...category, fileKinds }] }).storage!('project-1'), ClientTransportError);
+  for (const kind of ['ai-generated', ['code'], null, {}]) await assert.rejects(send({ ...valid, categories: [{ ...category, largestFiles: [{ ...category.largestFiles[0]!, kind }] }] }).storage!('project-1'), ClientTransportError);
+  const unavailable = { ...valid, categories: [{ ...category, fileBytes: null, fileKinds: category.fileKinds }] };
+  await assert.rejects(send(unavailable).storage!('project-1'), ClientTransportError);
+  await assert.rejects(send({ ...unavailable, categories: [{ ...unavailable.categories[0]!, fileKinds: [] }] }).storage!('project-1'), ClientTransportError);
+  const oldHtml = renderToStaticMarkup(<StorageResultContent result={storageResult()} t={translator('en')} />);
+  assert.ok(oldHtml.includes('output/ai-generated-cache.tmp')); assert.ok(!oldHtml.includes('dad-storage-kinds'));
 });

@@ -84,7 +84,8 @@ export class ArchiveClientController {
   getSnapshot = (): ClientState => this.state;
   get storageAvailable(): boolean { return typeof this.api.storage === 'function'; }
   setMaintenance = (maintenance: boolean): void => {
-    this.update({ maintenance, ...(maintenance ? { preview: null, selected: [] } : {}) });
+    if (maintenance) this.previewGeneration++;
+    this.update({ maintenance, ...(maintenance ? { preview: null, selected: [], loading: false } : {}) });
   };
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -103,7 +104,7 @@ export class ArchiveClientController {
     this.cancelStorage();
     this.update({ open: true, tab: 'archived', page: 0, selected: [], preview: null, error: this.uncertainMutation ? this.state.error : null });
     await this.refresh();
-    if (!sessionId || generation !== this.openGeneration || !this.state.open || this.state.busy || this.uncertainMutation || this.state.error || !this.state.overview?.support.supported) return;
+    if (!sessionId || generation !== this.openGeneration || !this.state.open || this.state.maintenance || this.state.busy || this.uncertainMutation || this.state.error || !this.state.overview?.support.supported) return;
     const index = sortedItems(this.state.overview.archived, this.state.sort).findIndex((item) => item.id === sessionId && !item.pending);
     if (index < 0) return;
     this.update({ page: Math.floor(index / PAGE_SIZE), selected: [sessionId] });
@@ -148,7 +149,9 @@ export class ArchiveClientController {
     const generation = ++this.scanGeneration;
     const abort = new AbortController();
     this.scanAbort = abort;
-    this.update({ storage: { ...this.state.storage, scanning: true, result: null, error: null, cancelled: false } });
+    const previous = this.state.storage.result;
+    const result = previous?.scope === scope && previous.workspaceId === workspaceId ? previous : null;
+    this.update({ storage: { ...this.state.storage, scanning: true, result, error: null, cancelled: false } });
     try {
       const result = await this.api.storage(workspaceId, abort.signal);
       if (generation !== this.scanGeneration || abort.signal.aborted || this.disposed || !this.state.open || this.state.tab !== 'storage') return;
@@ -226,7 +229,7 @@ export class ArchiveClientController {
     this.update({ loading: true, error: null, preview: null });
     try {
       const preview = await this.api.preview(action, [...new Set(ids)]);
-      if (generation !== this.previewGeneration || !this.state.open || this.disposed) return;
+      if (generation !== this.previewGeneration || !this.state.open || this.state.maintenance || this.disposed) return;
       for (const item of preview.items) if (item.title) this.knownTitles.set(item.id, item.title);
       this.update({ preview, loading: false });
     } catch (error) {

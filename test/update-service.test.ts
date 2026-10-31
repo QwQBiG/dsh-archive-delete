@@ -8,6 +8,7 @@ import { ArchiveError, SUPPORTED_DSH_VERSION } from '../src/contracts.js';
 import { UpdateService } from '../src/update-service.js';
 import type { HostUpdateResult, UpdateHost } from '../src/update-host-types.js';
 import type { ReleaseCheck, UpdateSource } from '../src/update-source-types.js';
+import { UpdateRateLimitError } from '../src/update-source-types.js';
 
 const DAY = 86_400_000;
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
@@ -18,7 +19,7 @@ async function fixture(t: TestContext) {
   const candidate = { id: 'verified-candidate', version: '0.1.9', requiredDshVersion: SUPPORTED_DSH_VERSION,
     publishedAt: '2026-10-29T00:00:00Z', releaseUrl: 'https://github.com/QwQBiG/dsh-archive-delete/releases/tag/v0.1.9', notes: 'Synthetic release', assetBytes: bytes.length };
   const pin = { candidate, assetUrl: 'https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.1.9/package.tgz', sha256: digest };
-  const calls = { checks: 0, revalidates: 0, downloads: 0, installs: [] as { path: string; version: string; requestId: string }[], releases: [] as boolean[], begins: 0 };
+  const calls = { checks: 0, reads: 0, revalidates: 0, downloads: 0, installs: [] as { path: string; version: string; requestId: string }[], releases: [] as boolean[], begins: 0 };
   const state: { now: number; installed: string; check?: (signal?: AbortSignal) => Promise<ReleaseCheck>;
     revalidate?: UpdateSource['revalidate']; download?: UpdateSource['download'];
     install?: UpdateHost['install']; begin?: () => Promise<(restart?: boolean) => void> } = { now: Date.UTC(2026, 9, 29), installed: '0.1.0' };
@@ -28,7 +29,7 @@ async function fixture(t: TestContext) {
     download: async (checked, signal) => { calls.downloads++; return state.download ? state.download(checked, signal) : bytes; },
   };
   const host: UpdateHost = { profileId: 'synthetic-desktop', loadedVersion: '0.1.0', hostVersion: SUPPORTED_DSH_VERSION, canInstall: true,
-    installed: async () => ({ version: state.installed, source: 'synthetic-current-source' }),
+    installed: async () => { calls.reads++; return { version: state.installed, source: 'synthetic-current-source' }; },
     install: async (path, version, requestId) => { calls.installs.push({ path, version, requestId });
       if (state.install) return state.install(path, version, requestId); state.installed = version; return { status: 'restart-required' }; } };
   const services: UpdateService[] = [];
@@ -214,4 +215,48 @@ test('linked update directories and linked persisted metadata are rejected witho
     if (scenario === 'directory') assert.deepEqual(await readdir(outside), []);
     else assert.equal(await readFile(join(outside, 'check.json'), 'utf8'), '{"retained":true}');
   }
+});
+
+test('same-request retry actively reconciles native disk state without replaying an uncertain install', async t => {
+  const f = await fixture(t); await f.service.info(); const requestId = randomUUID();
+  f.state.install = async () => ({ status: 'unknown', code: 'update-install-unknown' });
+  assert.equal((await f.service.install(f.candidate.id, requestId)).installation?.status, 'unknown');
+  const reads = f.calls.reads;
+  assert.equal((await f.service.install(f.candidate.id, requestId)).installation?.status, 'unknown');
+  assert.ok(f.calls.reads > reads, 'a repeated confirmation performs a fresh native status read');
+  assert.equal(f.calls.installs.length, 1);
+  f.state.installed = f.candidate.version;
+  const reconciled = await f.service.install(f.candidate.id, requestId);
+  assert.equal(reconciled.installation?.status, 'restart-required'); assert.equal(reconciled.installation?.code, undefined);
+  assert.equal(f.calls.installs.length, 1); assert.equal(f.calls.downloads, 1);
+  assert.equal((await f.service.info()).installation?.status, 'restart-required');
+});
+
+test('installation status checks discover a completed target after an initially unknown native reply', async t => {
+  const f = await fixture(t); await f.service.info(); f.state.install = async () => ({ status: 'unknown' });
+  await f.service.install(f.candidate.id, randomUUID()); f.state.installed = f.candidate.version;
+  assert.equal((await f.service.info(true)).installation?.status, 'restart-required');
+  assert.equal(f.calls.installs.length, 1); assert.equal(f.calls.checks, 2, 'reconciliation does not contact GitHub');
+});
+
+test('GitHub backoff survives restart and manual checks cannot bypass Retry-After', async t => {
+  const f = await fixture(t); const retryAt = f.state.now + 2 * DAY;
+  f.state.check = async () => { throw new UpdateRateLimitError(retryAt); };
+  assert.equal((await f.service.info()).nextCheckAt, retryAt);
+  f.state.now += 60_000; await f.service.info(true); assert.equal(f.calls.checks, 1);
+  await f.service.close(); const next = f.create(); await next.initialize(); await next.info(true); assert.equal(f.calls.checks, 1);
+  f.state.now = retryAt; await next.info(); assert.equal(f.calls.checks, 2);
+});
+
+test('closing aborts installation preflight but never starts or replays a native job', async t => {
+  const f = await fixture(t); await f.service.info(); const entered = deferred<void>(); let signal: AbortSignal | undefined;
+  f.state.check = async requestSignal => {
+    signal = requestSignal; entered.resolve();
+    await new Promise<void>(resolve => requestSignal!.addEventListener('abort', () => resolve(), { once: true }));
+    throw new ArchiveError('update-cancelled', 'Synthetic cancellation');
+  };
+  const installing = f.service.install(f.candidate.id, randomUUID());
+  const rejected = assert.rejects(installing, { code: 'update-cancelled' });
+  await entered.promise; await f.service.close(); await rejected;
+  assert.equal(signal?.aborted, true); assert.equal(f.calls.installs.length, 0); assert.equal(f.calls.begins, 0);
 });

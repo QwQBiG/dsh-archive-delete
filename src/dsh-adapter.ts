@@ -7,8 +7,8 @@ import { isDeepStrictEqual } from 'node:util';
 import { lstat, mkdir, open, readFile, readdir, realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep, win32 } from 'node:path';
 import {
-  ArchiveError, SUPPORTED_DSH_VERSION,
-  type Activity, type ArchivedSession, type DshAdapter, type JsonObject,
+  ArchiveError, SUPPORTED_DSH_VERSION_LABEL, isSupportedDshVersion,
+  type Activity, type ArchivedSession, type DataIssue, type DshAdapter, type JsonObject,
   type Lease, type LeaseResult, type SessionGroup, type SessionMember, type StorageWorkspace, type SupportStatus,
 } from './contracts.js';
 import { assertCanonicalStoragePath, assertLocalStoragePath, isWithin, samePath } from './filesystem.js';
@@ -17,6 +17,7 @@ import type { UsageRoot } from './storage-usage.js';
 /** The small, version-pinned structural boundary around DSH's runtime services. */
 interface Header extends JsonObject { id: string; version: number; createdAt: number }
 interface Snapshot { header: Header; revision?: string; sizeBytes?: number; formatStatus?: string }
+interface SnapshotCatalog { snapshots: Snapshot[]; issues: DataIssue[]; protectedIds: Set<string>; unidentified: boolean }
 interface WorkspaceRecord { id: string; path: string; title?: string; sessionIds: string[]; updatedAt?: string }
 interface WorkspaceState { workspaceIds: string[]; archivedSessionIds: string[]; pinnedSessionIds: string[]; [key: string]: unknown }
 interface Table {
@@ -94,8 +95,12 @@ function code(error: unknown): string | undefined {
   return typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
 }
 function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+function sessionKey(value: unknown): value is string { return typeof value === 'string' && value.length > 0 && value.length <= 512 && !value.includes('\0'); }
 function headerId(value: unknown): value is Header {
-  return object(value) && typeof value.id === 'string' && value.id.length > 0 && typeof value.version === 'number' && typeof value.createdAt === 'number';
+  return object(value) && sessionKey(value.id)
+    && typeof value.version === 'number' && Number.isFinite(value.version) && typeof value.createdAt === 'number' && Number.isFinite(value.createdAt)
+    && (value.parentSession === undefined || sessionKey(value.parentSession))
+    && (value.origin !== 'subagent' || typeof value.parentSession === 'string');
 }
 function encodeId(value: string): string {
   if (value === '.') return '~002E';
@@ -103,7 +108,7 @@ function encodeId(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]/g, (character) => `~${character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`);
 }
 function cloneHeader(header: Header): JsonObject { return JSON.parse(JSON.stringify(header)) as JsonObject; }
-/** rc.3 writes an omitted live delegation depth as zero in its JSONL header. */
+/** Supported JSONL backends persist an omitted live delegation depth as zero. */
 function sameSessionHeader(live: JsonObject, persisted: JsonObject): boolean {
   return isDeepStrictEqual({ ...live, delegationDepth: live.delegationDepth === undefined ? 0 : live.delegationDepth },
     { ...persisted, delegationDepth: persisted.delegationDepth === undefined ? 0 : persisted.delegationDepth });
@@ -120,7 +125,11 @@ export function getNativeLockExclusive(ctx: HostContext): (fd: number) => Promis
       if (typeof module.tryLockExclusive !== 'function') throw new ArchiveError('unsupported-host', 'The native DSH write-lock capability is unavailable.');
       return module.tryLockExclusive as (descriptor: number) => Promise<void>;
     })();
-    await (await implementation)(fd);
+    const pending = implementation;
+    let lock: (descriptor: number) => Promise<void>;
+    try { lock = await pending; }
+    catch (error) { if (implementation === pending) implementation = undefined; throw error; }
+    await lock(fd);
   };
 }
 type WindowsHandle = number | bigint;
@@ -159,7 +168,10 @@ export function getNativeWindowsLock(ctx: HostContext): (filename: string) => Pr
         driveType: kernel.func('__stdcall', 'GetDriveTypeW', 'uint', ['str16']),
       } as WindowsSemaphoreApi;
     })();
-    const api = await implementation;
+    const pending = implementation;
+    let api: WindowsSemaphoreApi;
+    try { api = await pending; }
+    catch (error) { if (implementation === pending) implementation = undefined; throw error; }
     if (!isLocalWindowsDriveType(api.driveType(win32.parse(filename).root))) throw new ArchiveError('unsafe-path', 'Windows archive operations require a verified local writable drive.');
     const handle = api.createSemaphore(null, 1, 1, windowsSessionLockName(filename));
     if (handle === 0 || handle === 0n) throw Object.assign(new Error('The Windows kernel lock could not be created.'), { code: 'EIO', win32Code: api.lastError() });
@@ -287,7 +299,7 @@ export async function getStorageSources(ctx: HostContext, workspaceId?: string):
       if (object(manifest) && manifest.name === '@deepseek-ai/dsh' && typeof manifest.version === 'string') version = manifest.version;
     } catch { /* Unknown layouts are not an invitation to guess storage roots. */ }
   }
-  if (version !== SUPPORTED_DSH_VERSION) throw new ArchiveError('unsupported-host', `Storage inspection requires DSH ${SUPPORTED_DSH_VERSION}; the current runtime is ${version}.`);
+  if (!isSupportedDshVersion(version)) throw new ArchiveError('unsupported-host', `Storage inspection requires DSH ${SUPPORTED_DSH_VERSION_LABEL}; the current runtime is ${version}.`);
   let home: string | undefined;
   const homeResolver = storageService(ctx, 'dshHomePath');
   if (typeof homeResolver === 'function') { try { home = storagePath(homeResolver()); } catch { /* Report unavailable below. */ } }
@@ -392,6 +404,8 @@ export async function createDshAdapter(ctx: HostContext, options: AdapterOptions
 }
 
 class NativeAdapter implements DshAdapter {
+  private issues: DataIssue[] = [];
+  private readonly releaseWarnings = new Set<string>();
   private readonly persistence: Persistence | undefined;
   private readonly registry: Registry | undefined;
   private readonly sessions: Sessions | undefined;
@@ -408,7 +422,7 @@ class NativeAdapter implements DshAdapter {
   async capabilities(): Promise<SupportStatus> {
     let reason: string | undefined;
     if (this.platform !== 'darwin' && this.platform !== 'win32') reason = 'Only macOS and Windows Desktop are supported in this release.';
-    else if (this.version !== SUPPORTED_DSH_VERSION) reason = `DSH Desktop ${SUPPORTED_DSH_VERSION} is required; the current runtime is ${this.version}. Update DSH Desktop to the required version, then restart this plugin.`;
+    else if (!isSupportedDshVersion(this.version)) reason = `DSH Desktop ${SUPPORTED_DSH_VERSION_LABEL} is required; the current runtime is ${this.version}. Update DSH Desktop to a supported version, then restart this plugin.`;
     else if (this.persistence?.name !== 'session-persistence-jsonl' || !isAbsolute(this.persistence.root)) reason = 'The official JSONL session backend is required.';
     else if (!this.sessions || typeof this.sessions.get !== 'function' || !this.ctx.waterfall || !this.ctx.emit) reason = 'Session activity and lifecycle services are unavailable.';
     else if (!this.registry || !['requireState', 'requireTable', 'enqueueOperation', 'setState', 'indexHeader'].every((key) => typeof (this.registry as unknown as Record<string, unknown>)[key] === 'function')
@@ -419,6 +433,15 @@ class NativeAdapter implements DshAdapter {
   private async requireSupported(): Promise<void> {
     const support = await this.capabilities();
     if (!support.supported) throw new ArchiveError('unsupported-host', support.reason ?? 'Unsupported host');
+  }
+  listIssues(): readonly DataIssue[] { return this.issues; }
+  private releaseUnavailable(reason: string): false {
+    if (!this.releaseWarnings.has(reason)) {
+      this.releaseWarnings.add(reason);
+      try { this.ctx.logger?.warn(`[archive-delete] Idle release is unavailable (${reason}); no session logs were moved. The confirmed request can remain pending.`); }
+      catch { /* Logging must not change a guarded cleanup decision. */ }
+    }
+    return false;
   }
   private async lifecycleSymbols(): Promise<NativeLifecycleSymbols | undefined> {
     if (this.effectSymbol) return { effect: this.effectSymbol };
@@ -432,7 +455,7 @@ class NativeAdapter implements DshAdapter {
       return { effect: symbols.effect, ...(typeof symbols.original === 'symbol' ? { original: symbols.original } : {}) };
     } catch { return undefined; }
   }
-  /** Invoke only the exact rc.3 owner teardown; never close a borrowed writer or edit registries. */
+  /** Invoke the supported host's exact owner teardown after identity and activity checks. */
   async releaseIdle(group: SessionGroup): Promise<boolean> {
     await this.requireSupported();
     if (group.members.every(member => this.sessions!.get(member.id) === undefined)) return true;
@@ -440,14 +463,14 @@ class NativeAdapter implements DshAdapter {
     const agents = service<AgentRegistry>(this.ctx, 'agents');
     const loop = service<Record<string, unknown>>(this.ctx, 'agentLoop');
     if (!symbols || !agents || !loop || typeof this.sessions!.flush !== 'function'
-      || !['get', 'list', 'isOwnedBy', 'requireFactory'].every(key => typeof (agents as unknown as Record<string, unknown>)[key] === 'function')) return false;
+      || !['get', 'list', 'isOwnedBy', 'requireFactory'].every(key => typeof (agents as unknown as Record<string, unknown>)[key] === 'function')) return this.releaseUnavailable('missing-lifecycle-capability');
     let factory: unknown;
-    try { factory = agents.requireFactory().target; } catch { return false; }
+    try { factory = agents.requireFactory().target; } catch { return this.releaseUnavailable('factory-unavailable'); }
     const originalLoop = symbols.original ? (loop as Record<symbol, unknown>)[symbols.original] ?? loop : loop;
-    if (originalLoop !== factory || !object(factory) || !object(factory.runtime) || !object(factory.runtime.ctx)) return false;
+    if (originalLoop !== factory || !object(factory) || !object(factory.runtime) || !object(factory.runtime.ctx)) return this.releaseUnavailable('factory-identity');
     const loopContext = factory.runtime.ctx;
     const registry = loopContext.registry;
-    if (!object(registry) || typeof registry.values !== 'function') return false;
+    if (!object(registry) || typeof registry.values !== 'function') return this.releaseUnavailable('lifecycle-registry');
     const fibers = new Set<Record<string, unknown>>();
     const ancestors = (candidate: unknown) => {
       while (object(candidate) && !fibers.has(candidate)) {
@@ -457,10 +480,10 @@ class NativeAdapter implements DshAdapter {
     ancestors(this.ctx.fiber); ancestors(loopContext.fiber);
     try {
       for (const runtime of (registry.values as () => Iterable<unknown>).call(registry)) {
-        if (!object(runtime) || !object(runtime.fibers) || typeof (runtime.fibers as Record<symbol, unknown>)[Symbol.iterator] !== 'function') return false;
+        if (!object(runtime) || !object(runtime.fibers) || typeof (runtime.fibers as Record<symbol, unknown>)[Symbol.iterator] !== 'function') return this.releaseUnavailable('runtime-fibers');
         for (const fiber of runtime.fibers as unknown as Iterable<unknown>) ancestors(fiber);
       }
-    } catch { return false; }
+    } catch { return this.releaseUnavailable('runtime-enumeration'); }
     const rootArchived = () => {
       if (!this.registry!.archivedSessionIds.includes(group.sessionId)) throw new ArchiveError('not-archived', 'Only archived sessions can be released for trash.');
     };
@@ -515,7 +538,7 @@ class NativeAdapter implements DshAdapter {
       }
     };
     await checkActivity();
-    const prepared = inspectPlan(); if (prepared === undefined) return false;
+    const prepared = inspectPlan(); if (prepared === undefined) return this.releaseUnavailable('unverified-session-owner');
     for (const plan of prepared) await this.sessions!.flush!(plan.session);
     await checkActivity();
     // No await between the final identity/idle checks and claiming every native
@@ -531,51 +554,92 @@ class NativeAdapter implements DshAdapter {
       throw new ArchiveError('release-failed', 'The host could not finish releasing this idle session. Its logs have not been moved.');
     return true;
   }
-  private async snapshots(): Promise<Snapshot[]> {
-    const snapshots = await this.persistence!.list();
-    const ids = new Set<string>();
-    for (const snapshot of snapshots) {
-      if (!headerId(snapshot.header) || ids.has(snapshot.header.id)) throw new ArchiveError('invalid-session', 'Session identity is missing or duplicated.');
-      ids.add(snapshot.header.id);
+  private async catalog(): Promise<SnapshotCatalog> {
+    const candidates: unknown = await this.persistence!.list();
+    if (!Array.isArray(candidates)) throw new ArchiveError('invalid-session', 'The host returned an invalid session inventory.');
+    const ids = new Map<string, number>();
+    const related = new Map<string, Set<string>>();
+    for (const value of candidates) {
+      const header = object(value) && object(value.header) ? value.header : undefined;
+      if (typeof header?.id !== 'string' || !header.id) continue;
+      ids.set(header.id, (ids.get(header.id) ?? 0) + 1);
+      if (!related.has(header.id)) related.set(header.id, new Set());
+      if (typeof header.parentSession === 'string' && header.parentSession) {
+        if (!related.has(header.parentSession)) related.set(header.parentSession, new Set());
+        related.get(header.id)!.add(header.parentSession); related.get(header.parentSession)!.add(header.id);
+      }
     }
-    return snapshots;
+    const snapshots: Snapshot[] = []; const issues: DataIssue[] = []; const protectedIds = new Set<string>();
+    let unidentified = false;
+    for (const value of candidates) {
+      const header = object(value) && object(value.header) ? value.header : undefined;
+      const id = typeof header?.id === 'string' && header.id ? header.id : undefined;
+      if (headerId(header) && ids.get(header.id) === 1) { snapshots.push(value as Snapshot); continue; }
+      // A damaged record protects its whole known relationship component. If
+      // identity/ancestry cannot be located, no archive mutation can prove isolation.
+      if (id) protectedIds.add(id);
+      else if (typeof header?.parentSession === 'string' && header.parentSession) protectedIds.add(header.parentSession);
+      else unidentified = true;
+      if (id && !sessionKey(id) && !sessionKey(header?.parentSession)) unidentified = true;
+      if (header && ((header.parentSession !== undefined && !sessionKey(header.parentSession))
+        || (header.origin === 'subagent' && typeof header.parentSession !== 'string'))) unidentified = true;
+      issues.push({ scope: 'archive', ...(sessionKey(id) ? { id } : {}), code: 'invalid-session',
+        message: 'A damaged or duplicated session was excluded. Related conversations remain protected until the host inventory is repaired.' });
+    }
+    const pending = [...protectedIds];
+    for (let index = 0; index < pending.length; index++) for (const id of related.get(pending[index]!) ?? []) {
+      if (!protectedIds.has(id)) { protectedIds.add(id); pending.push(id); }
+    }
+    return { snapshots, issues, protectedIds, unidentified };
   }
   async listArchived(): Promise<ArchivedSession[]> {
     await this.requireSupported();
-    const snapshots = await this.snapshots();
+    const catalog = await this.catalog(); const { snapshots } = catalog;
+    this.issues = catalog.issues;
     const archived = new Set(this.registry!.archivedSessionIds);
     const records = this.registry!.requireState().workspaceIds.map((id) => this.registry!.requireTable().get(id)).filter((record): record is WorkspaceRecord => record !== undefined);
+    const accounts = new Map<string, WorkspaceRecord>();
+    for (const record of records) for (const id of record.sessionIds) if (!accounts.has(id)) accounts.set(id, record);
+    const childrenByParent = this.descendantIndex(snapshots);
     return snapshots.filter(({ header }) => archived.has(header.id) && header.origin !== 'subagent').map(({ header, sizeBytes }) => {
-      const children = this.descendants(header.id, snapshots, false);
-      const workspace = records.find((record) => record.sessionIds.includes(header.id));
-      return { id: header.id, title: titleOf(this.cache, header), workspace: workspace?.title ?? workspace?.path ?? 'Ungrouped',
+      const children = this.descendants(header.id, childrenByParent, false);
+      const workspace = accounts.get(header.id);
+      return { id: header.id, title: titleOf(this.cache, header), workspace: workspace?.title ?? workspace?.path ?? '',
         sizeBytes: (sizeBytes ?? 0) + children.reduce((sum, child) => sum + (child.sizeBytes ?? 0), 0), descendantCount: children.length };
     });
   }
   /** Only explicit subagent ancestry is owned; a fork's parent pointer is not ownership. */
-  private descendants(id: string, snapshots: Snapshot[], strict = true): Snapshot[] {
+  private descendantIndex(snapshots: Snapshot[]): Map<string, Snapshot[]> {
+    const index = new Map<string, Snapshot[]>();
+    for (const snapshot of snapshots) if (snapshot.header.origin === 'subagent' && typeof snapshot.header.parentSession === 'string') {
+      const children = index.get(snapshot.header.parentSession) ?? [];
+      children.push(snapshot); index.set(snapshot.header.parentSession, children);
+    }
+    return index;
+  }
+  private descendants(id: string, index: Map<string, Snapshot[]>, strict = true): Snapshot[] {
     const visited = new Set([id]);
     const result: Snapshot[] = [];
-    const walk = (parent: string) => {
-      for (const snapshot of snapshots) {
-        if (snapshot.header.parentSession !== parent || snapshot.header.origin !== 'subagent') continue;
-        if (visited.has(snapshot.header.id)) {
-          if (strict) throw new ArchiveError('ambiguous-lineage', 'Cyclic subagent ownership prevents safe cleanup.');
-          continue;
-        }
-        visited.add(snapshot.header.id); result.push(snapshot); walk(snapshot.header.id);
+    const pending = [...index.get(id) ?? []].reverse();
+    while (pending.length) {
+      const snapshot = pending.pop()!;
+      if (visited.has(snapshot.header.id)) {
+        if (strict) throw new ArchiveError('ambiguous-lineage', 'Cyclic subagent ownership prevents safe cleanup.');
+        continue;
       }
-    };
-    walk(id);
+      visited.add(snapshot.header.id); result.push(snapshot);
+      pending.push(...[...index.get(snapshot.header.id) ?? []].reverse());
+    }
     return result;
   }
   async inspect(sessionId: string): Promise<SessionGroup> {
     await this.requireSupported();
-    const snapshots = await this.snapshots();
+    const { snapshots, protectedIds, unidentified } = await this.catalog();
+    if (unidentified || protectedIds.has(sessionId)) throw new ArchiveError('invalid-session', 'Damaged session identity or ancestry prevents safe cleanup of this group. Repair the host inventory before continuing.');
     const root = snapshots.find(({ header }) => header.id === sessionId);
     if (!root) throw new ArchiveError('session-missing', 'The session no longer exists.');
     if (root.header.origin === 'subagent') throw new ArchiveError('subagent-target', 'Move the parent conversation instead of an individual subagent.');
-    const selected = [root, ...this.descendants(sessionId, snapshots)];
+    const selected = [root, ...this.descendants(sessionId, this.descendantIndex(snapshots))];
     const byId = new Map(snapshots.map((snapshot) => [snapshot.header.id, snapshot.header]));
     for (const snapshot of selected) {
       const ancestry = new Set<string>();
@@ -708,6 +772,13 @@ class NativeAdapter implements DshAdapter {
         if (directory !== undefined) {
           const entry = await lstat(directory);
           if (!isAbsolute(directory) || !entry.isDirectory() || entry.isSymbolicLink()) throw new ArchiveError('unsafe-path', 'A recovery location is not a plain directory.');
+          await assertCanonicalStoragePath(directory);
+        }
+        // Keep the host's exact semaphore naming scheme. Reject aliases rather
+        // than changing the key and accidentally using a lock the host ignores.
+        for (const candidate of [member.directory, dirname(member.directory)]) {
+          try { await assertCanonicalStoragePath(candidate); }
+          catch (error) { if (code(error) !== 'ENOENT') throw error; }
         }
         // Windows locks name paths rather than inodes: reserve the original destination
         // throughout restore/rollback as well as the currently located artifact.
@@ -730,7 +801,7 @@ class NativeAdapter implements DshAdapter {
   private async restoreProjections(member: SessionMember): Promise<void> {
     const reader = await this.persistence!.open(member.id, 'read');
     try {
-      if (JSON.stringify(reader.header) !== JSON.stringify(member.header)) throw new ArchiveError('restore-identity', 'Restored session identity changed before projection recovery.');
+      if (!sameSessionHeader(reader.header, member.header)) throw new ArchiveError('restore-identity', 'Restored session identity changed before projection recovery.');
       const { events } = await reader.read();
       const registry = service<{ restore(rows: object, events: unknown[], base: number, header: Header, inherited: number): { checkpoint: unknown } }>(this.ctx, 'sessionProjections')!;
       const restored = registry.restore({}, events, 0, reader.header, reader.inheritedEventCount);
@@ -765,7 +836,7 @@ class NativeAdapter implements DshAdapter {
     const restored: { member: SessionMember; snapshot: Snapshot }[] = [];
     for (const member of group.members) {
       const snapshot = await this.persistence!.stat(member.id);
-      if (!snapshot || JSON.stringify(snapshot.header) !== JSON.stringify(member.header)) throw new ArchiveError('restore-identity', 'Restored session identity does not match the recorded session.');
+      if (!snapshot || !sameSessionHeader(snapshot.header, member.header)) throw new ArchiveError('restore-identity', 'Restored session identity does not match the recorded session.');
       await this.restoreProjections(member);
       restored.push({ member, snapshot });
     }

@@ -45,15 +45,19 @@ export class UpdateClientController {
     if (settled) this.confirmation = undefined;
   }
   private scheduleStatus(): void {
-    const waiting = this.state.uncertain || this.state.data?.installation?.status === 'installing';
+    const waiting = this.state.uncertain || ['installing', 'unknown'].includes(this.state.data?.installation?.status ?? '');
     if (!waiting) { if (this.statusTimer) clearTimeout(this.statusTimer); this.statusTimer = undefined; this.statusAttempts = 0; return; }
-    if (this.disposed || this.statusTimer || this.statusAttempts >= 10) return;
-    this.statusTimer = setTimeout(() => { this.statusTimer = undefined; this.statusAttempts++; void this.check(); }, 3_000);
+    if (this.disposed || this.statusTimer) return;
+    // Native pnpm jobs often outlive one HTTP reply. Keep observing, with less
+    // frequent reads after the initial thirty seconds, until settled/disposed.
+    const delay = this.statusAttempts < 10 ? 3_000 : this.statusAttempts < 30 ? 15_000 : 60_000;
+    this.statusTimer = setTimeout(() => { this.statusTimer = undefined; this.statusAttempts++; void this.check(); }, delay);
     this.statusTimer.unref?.();
   }
   async check(force = false): Promise<void> {
     if (this.disposed || !this.api.updates || this.state.installing) return;
     if (this.checking) return this.checking;
+    if (force) this.statusAttempts = 0;
     const generation = ++this.checkGeneration;
     this.update({ checking: true, error: null });
     const task = (async () => {

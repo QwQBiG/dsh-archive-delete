@@ -3,7 +3,7 @@ import { access, mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, writeF
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { acquirePluginLease, createDshAdapter, isLocalWindowsDriveType, windowsSessionLockName, type HostContext } from '../src/dsh-adapter.js';
+import { acquirePluginLease, createDshAdapter, getNativeLockExclusive, getNativeWindowsLock, getStorageSources, isLocalWindowsDriveType, windowsSessionLockName, type HostContext } from '../src/dsh-adapter.js';
 import type { JsonObject } from '../src/contracts.js';
 import { createRequestHandler, parseApiRequest, registerHostRoutes } from '../src/host-routes.js';
 import type { ArchiveApi } from '../src/contracts.js';
@@ -85,6 +85,29 @@ test('adapter gates unsupported versions and platforms without touching session 
   } finally { await f.cleanup(); }
 });
 
+test('adapter and storage admit only explicitly supported host manifests, including rc.5', async () => {
+  const f = await fixture();
+  try {
+    await f.add('version-gate'); const anchor = join(f.home, 'live-host-package.json');
+    const ctx = { ...f.ctx, profileContext: { installAnchor: anchor }, dshHomePath: () => f.home };
+    for (const [version, expected] of [['0.2.1-rc.3', true], ['0.2.1-rc.5', true], ['0.2.1-rc.4', false], ['0.2.1-rc.6', false], ['0.3.0', false]] as const) {
+      await writeFile(anchor, JSON.stringify({ name: '@deepseek-ai/dsh', version }));
+      const adapter = await createDshAdapter(ctx, { home: f.home, platform: 'darwin', lockExclusive: async () => {} });
+      const status = await adapter.capabilities();
+      assert.equal(status.version, version); assert.equal(status.supported, expected, version);
+      if (expected) {
+        assert.equal((await adapter.inspect('version-gate')).sessionId, 'version-gate');
+        assert.equal((await getStorageSources(ctx)).find(root => root.id === 'sessions')!.path, f.sessionsRoot);
+      } else {
+        await assert.rejects(adapter.listArchived(), { code: 'unsupported-host' });
+        await assert.rejects(getStorageSources(ctx), { code: 'unsupported-host' });
+      }
+    }
+    assert.equal((await f.adapter.listArchived()).length, 1);
+    await assert.rejects(access(join(f.home, 'archive-delete')), { code: 'ENOENT' });
+  } finally { await f.cleanup(); }
+});
+
 test('startup reports the required and current version before creating storage and keeps the disabled API readable', async () => {
   const f = await fixture();
   try {
@@ -111,7 +134,7 @@ test('startup reports the required and current version before creating storage a
     assert.equal(body.value.support.version, '0.2.1-rc.2');
     assert.match(body.value.support.reason, /Update DSH Desktop/);
     const rejected = await handler(request({ action: 'preview', operation: 'trash', ids: ['session'] }));
-    assert.equal(rejected.status, 409);
+    assert.equal(rejected.status, 422);
     assert.match(await rejected.text(), /unsupported-host/);
     await close(); assert.equal(unmounted, true);
   } finally { await f.cleanup(); }
@@ -145,6 +168,49 @@ test('legacy dependent forks and cyclic subagents fail closed', async () => {
     await f.add('child', { origin: 'subagent', parent: 'parent' });
     await assert.rejects(() => f.adapter.inspect('parent'), { code: 'subagent-target' });
   } finally { await f.cleanup(); }
+});
+
+test('damaged sessions do not hide healthy archives and their relationship components stay protected', async t => {
+  const f = await fixture(); t.after(f.cleanup);
+  await f.add('healthy'); await f.add('affected'); await f.add('broken-child', { origin: 'subagent', parent: 'affected', archived: false });
+  delete f.snapshots.get('broken-child')!.header.createdAt;
+  assert.deepEqual((await f.adapter.listArchived()).map(item => item.id), ['healthy', 'affected']);
+  assert.deepEqual(f.adapter.listIssues?.().map(issue => [issue.scope, issue.id, issue.code]), [['archive', 'broken-child', 'invalid-session']]);
+  assert.equal((await f.adapter.inspect('healthy')).sessionId, 'healthy');
+  await assert.rejects(f.adapter.inspect('affected'), { code: 'invalid-session' });
+  await assert.rejects(f.adapter.inspect('broken-child'), { code: 'invalid-session' });
+});
+
+test('duplicate identities are excluded together and unlocatable damage blocks mutation without hiding healthy rows', async t => {
+  const f = await fixture(); t.after(f.cleanup); await f.add('healthy'); await f.add('duplicate');
+  const persistence = f.ctx.sessionPersistence as { list(): Promise<unknown[]> };
+  persistence.list = async () => [...f.snapshots.values(), { ...f.snapshots.get('duplicate')! }];
+  assert.deepEqual((await f.adapter.listArchived()).map(item => item.id), ['healthy']);
+  assert.equal((await f.adapter.inspect('healthy')).sessionId, 'healthy');
+  await assert.rejects(f.adapter.inspect('duplicate'), { code: 'invalid-session' });
+  persistence.list = async () => [...f.snapshots.values(), { header: { createdAt: 1 } }];
+  assert.equal((await f.adapter.listArchived()).length, 2);
+  await assert.rejects(f.adapter.inspect('healthy'), { code: 'invalid-session' });
+  assert.ok(f.adapter.listIssues?.().some(issue => issue.id === undefined));
+});
+
+test('malformed diagnostic identifiers cannot poison the healthy list response', async t => {
+  const f = await fixture(); t.after(f.cleanup); await f.add('healthy');
+  for (const [key, id] of [['oversized', 'x'.repeat(513)], ['nul', 'broken\0identity']])
+    f.snapshots.set(key!, { header: { id: id!, version: 4, createdAt: 1000 }, formatStatus: 'current', sizeBytes: 0 });
+  assert.deepEqual((await f.adapter.listArchived()).map(item => item.id), ['healthy']);
+  assert.equal(f.adapter.listIssues?.().length, 2);
+  assert.ok(f.adapter.listIssues?.().every(issue => issue.id === undefined && issue.code === 'invalid-session'));
+  await assert.rejects(f.adapter.inspect('healthy'), { code: 'invalid-session' });
+});
+
+test('restore compares header values independently of key order and the native zero-depth default', async t => {
+  const f = await fixture(); t.after(f.cleanup); await f.add('parent');
+  const group = await f.adapter.inspect('parent'); const snapshot = f.snapshots.get('parent')!;
+  snapshot.header = { delegationDepth: 0, ...Object.fromEntries(Object.entries(snapshot.header).reverse()) };
+  await f.adapter.restoreRegistry(group); assert.equal(f.projection.get('parent'), 'Title parent');
+  snapshot.header = { ...snapshot.header, cwd: '/another-project' };
+  await assert.rejects(f.adapter.restoreRegistry(group), { code: 'restore-identity' });
 });
 
 test('source revisions ignore lock creation but change when any canonical generation changes', async () => {
@@ -259,7 +325,7 @@ test('API registration uses the existing owner-authenticated exact Connection ro
   const route = mounted as { path: string; methods: string[]; requestBody: string };
   assert.equal(route.path, '/api/dsh-archive-delete');
   assert.deepEqual(route.methods, ['POST']);
-  assert.equal(route.requestBody, 'buffered');
+  assert.equal(route.requestBody, 'streaming');
   dispose(); assert.equal(disposed, true);
   assert.throws(() => registerHostRoutes({}, api), { code: 'unsupported-host' });
 });
@@ -339,4 +405,27 @@ test('Windows lock identity normalizes drive and path casing consistently', () =
 test('Windows drive admission rejects remote, missing, and unknown media', () => {
   for (const kind of [0, 1, 4, 5, 7]) assert.equal(isLocalWindowsDriveType(kind), false);
   for (const kind of [2, 3, 6]) assert.equal(isLocalWindowsDriveType(kind), true);
+});
+
+test('a transient peer resolution failure can recover on the next native lock attempt', async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'archive-lock-resolution-'))); t.after(() => rm(root, { recursive: true, force: true }));
+  const anchor = join(root, 'package.json'); await writeFile(anchor, JSON.stringify({ name: 'synthetic-host', type: 'module' }));
+  const ctx: HostContext = { profileContext: { installAnchor: anchor } };
+  const lock = getNativeLockExclusive(ctx); await assert.rejects(lock(0));
+  const moduleRoot = join(root, 'node_modules', '@deepseek-ai', 'node-addon-system'); await mkdir(moduleRoot, { recursive: true });
+  await writeFile(join(moduleRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/node-addon-system', type: 'module', exports: { './flock': './flock.mjs' } }));
+  await writeFile(join(moduleRoot, 'flock.mjs'), 'export async function tryLockExclusive(fd) { if (fd !== 17) throw new Error("unexpected descriptor"); }');
+  await lock(17);
+  const lockNamed = getNativeWindowsLock(ctx); const filename = join(root, 'session.lock');
+  await assert.rejects(lockNamed(filename));
+  const repaired = join(root, 'repaired-runtime'); await mkdir(repaired);
+  const repairedAnchor = join(repaired, 'package.json'); await writeFile(repairedAnchor, JSON.stringify({ name: 'synthetic-host' }));
+  ctx.profileContext = { installAnchor: repairedAnchor };
+  const backend = join(repaired, 'node_modules', '@deepseek-ai', 'dsh-session-persistence-jsonl'); await mkdir(backend, { recursive: true });
+  await writeFile(join(backend, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-session-persistence-jsonl', main: './index.cjs' }));
+  await writeFile(join(backend, 'index.cjs'), 'module.exports = {};');
+  const koffi = join(root, 'node_modules', 'koffi'); await mkdir(koffi);
+  await writeFile(join(koffi, 'package.json'), JSON.stringify({ name: 'koffi', type: 'module', main: './index.mjs' }));
+  await writeFile(join(koffi, 'index.mjs'), 'export default { load() { return { func(_convention, name) { return () => name === "GetDriveTypeW" ? 3 : name === "WaitForSingleObject" ? 0 : 1; } }; } };');
+  const held = await lockNamed(filename); await held.release();
 });

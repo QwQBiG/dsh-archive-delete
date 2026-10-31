@@ -52,6 +52,7 @@ export class ArchiveService implements ArchiveApi {
   private initialized = false;
   private closing = false;
   private maintenance: 'update-in-progress' | 'update-restart-required' | undefined;
+  private listing: Promise<Overview> | undefined;
   private readonly requests: RequestJournal;
   constructor(readonly adapter: DshAdapter, readonly store: TrashStore) { this.requests = new RequestJournal(store.root); }
   private serialize<T>(work: () => Promise<T>): Promise<T> {
@@ -70,7 +71,7 @@ export class ArchiveService implements ArchiveApi {
       return restartRequired => { this.maintenance = restartRequired ? 'update-restart-required' : undefined; };
     });
   }
-  async close(): Promise<void> { this.closing = true; await this.tail; }
+  async close(): Promise<void> { this.closing = true; this.previews.clear(); await this.tail; this.previews.clear(); }
   private async supported(): Promise<void> {
     const support = await this.adapter.capabilities();
     if (!support.supported) throw new ArchiveError('unsupported-host', support.reason ?? 'This DSH host is not supported.');
@@ -81,6 +82,7 @@ export class ArchiveService implements ArchiveApi {
       if (!(await this.adapter.capabilities()).supported) { this.initialized = true; return; }
       await this.store.initialize();
       await this.store.cleanTemporaryFiles();
+      await this.requests.cleanTemporaryFiles();
       // Repair first, then make exactly one pass over requests explicitly queued by the user.
       const operations = await this.store.operations();
       for (const op of operations.filter(o => o.phase !== 'pending')) {
@@ -163,7 +165,9 @@ export class ArchiveService implements ArchiveApi {
     }
   }
   async list(): Promise<Overview> {
-    return this.serialize(async () => {
+    // Coalesce overlapping refreshes without reading halfway through a file transition.
+    if (this.listing) return this.listing;
+    const listing = this.serialize(async () => {
       const support = await this.adapter.capabilities();
       if (!support.supported) return { support, archived: [], trash: [], recentResults: [] };
       const pending = new Map((await this.store.operations()).filter(o => o.phase === 'pending').map(o => [o.group.sessionId, o]));
@@ -172,8 +176,13 @@ export class ArchiveService implements ArchiveApi {
       });
       const recent = await this.requests.recent();
       if (this.startupFailures.length) recent.unshift(result('startup-recovery', 'trash', this.startupFailures));
-      return { support, archived, trash: await this.store.list(), recentResults: recent };
+      const trash = await this.store.list();
+      const issues = [...this.adapter.listIssues?.() ?? [], ...this.store.listIssues()];
+      return { support, archived, trash, recentResults: recent, ...(issues.length ? { issues } : {}) };
     });
+    this.listing = listing;
+    try { return await listing; }
+    finally { if (this.listing === listing) this.listing = undefined; }
   }
   async preview(action: Action, ids: string[]): Promise<Preview> {
     return this.serialize(async () => {
@@ -225,6 +234,9 @@ export class ArchiveService implements ArchiveApi {
         const candidate = this.previews.get(previewId);
         if (!candidate || candidate.preview.expiresAt < Date.now()) throw new ArchiveError('preview-expired', 'The preview expired. Refresh and review the targets again.');
         prepared = candidate;
+        // Consume before publication: even a write that publishes then reports
+        // an fsync error cannot leave this confirmation usable under a second ID.
+        this.previews.delete(previewId);
         saved = await this.requests.begin(requestId, fingerprint, { preview: prepared.preview,
           groups: Object.fromEntries(prepared.groups), fingerprints: Object.fromEntries(prepared.fingerprints) });
       }

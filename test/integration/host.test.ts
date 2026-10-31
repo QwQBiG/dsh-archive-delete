@@ -15,11 +15,19 @@ import { registerHostRoutes } from '../../src/host-routes.js';
 import { apply as applyPlugin } from '../../src/index.js';
 import { PLUGIN_VERSION } from '../../src/version.js';
 import type { JsonObject, StorageOverview } from '../../src/contracts.js';
-import { PACKAGE_NAME, SUPPORTED_DSH_VERSION } from '../../src/contracts.js';
+import { PACKAGE_NAME, SUPPORTED_DSH_VERSION_LABEL, SUPPORTED_DSH_VERSIONS, isSupportedDshVersion } from '../../src/contracts.js';
 import { createUpdateHost } from '../../src/update-host.js';
 
 const runtimeRoot = process.env.DSH_RUNTIME_ROOT ?? '/Applications/DeepSeek Harness.app/Contents/Resources/app/dsh';
 const hostRequire = createRequire(join(runtimeRoot, 'package.json'));
+const runtimeAnchor = join(runtimeRoot, 'node_modules/@deepseek-ai/dsh/package.json');
+const runtimeManifest = JSON.parse(await readFile(runtimeAnchor, 'utf8')) as { name?: unknown; version?: unknown };
+assert.equal(runtimeManifest.name, '@deepseek-ai/dsh', 'Native tests require the installed DSH host manifest.');
+assert.equal(typeof runtimeManifest.version, 'string');
+const runtimeVersion = runtimeManifest.version as string;
+assert.ok(isSupportedDshVersion(runtimeVersion), `Native tests require a supported DSH runtime: ${SUPPORTED_DSH_VERSION_LABEL}; received ${runtimeVersion}.`);
+if (process.env.DSH_TEST_VERSION !== undefined)
+  assert.equal(runtimeVersion, process.env.DSH_TEST_VERSION, 'DSH_TEST_VERSION must match the actual installed SDK; version overrides are not allowed.');
 // Resolve production externals from the separately installed, exact native runtime.
 let resolvingHost = false;
 registerHooks({ resolve(specifier, context, next) {
@@ -49,7 +57,7 @@ async function fixture(t: TestContext, compression = 'none') {
   const project = join(home, 'project'); await mkdir(project);
   const sessionsRoot = join(home, 'sessions'); await mkdir(sessionsRoot);
   const ctx = new Context();
-  ctx.provide('profileContext', { installAnchor: join(runtimeRoot, 'node_modules/@deepseek-ai/dsh/package.json') });
+  ctx.provide('profileContext', { installAnchor: runtimeAnchor });
   const backend = new JsonStorageBackend(join(home, 'storage'));
   ctx.provide('storage', { backend: { get: () => backend } });
   const domains = new DomainFacility(ctx, { backend: 'json' }); ctx.provide('storageDomain', domains);
@@ -85,7 +93,7 @@ async function fixture(t: TestContext, compression = 'none') {
   return { home, project, ctx, sessions, persistence, registry, cache, domains, workspace, adapter, store, api, create, execute };
 }
 
-test('stock rc.3: true JSONL and registry trash/restore/purge, official title survives domain reopen', async t => {
+test(`stock ${runtimeVersion}: true JSONL and registry trash/restore/purge, official title survives domain reopen`, async t => {
   const f = await fixture(t); const parent = await f.create('native-parent', 'Native synthetic title');
   assert.equal((await f.adapter.capabilities()).supported, true);
   assert.equal(f.persistence.name, 'session-persistence-jsonl');
@@ -113,7 +121,7 @@ test('stock rc.3: true JSONL and registry trash/restore/purge, official title su
 
 });
 
-test('stock rc.3: native independent fork retains its inherited log after parent and subagent trash', async t => {
+test(`stock ${runtimeVersion}: native independent fork retains its inherited log after parent and subagent trash`, async t => {
   const f = await fixture(t); const parent = await f.create('fork-source', 'Copied title');
   const reader = await f.persistence.open(parent.id, 'read'); const { events } = await reader.read(); await reader.close();
   const forkContext = new Context(); const forkStore = new SessionStore(forkContext);
@@ -134,7 +142,7 @@ test('stock rc.3: native independent fork retains its inherited log after parent
   } finally { await forkReader.close(); }
 });
 
-test('stock rc.3: native Connection keeps plugin route behind owner admission', async t => {
+test(`stock ${runtimeVersion}: native Connection keeps plugin route behind owner admission`, async t => {
   const f = await fixture(t); await f.create('gateway');
   const connection = new HostConnectionService(f.ctx, ['127.0.0.1'], { isAuthenticated: (request: Request) => request.headers.get('cookie') === 'synthetic=owner', authenticateApi: () => undefined });
   const unmount = registerHostRoutes(f.ctx as HostContext, f.api); t.after(unmount);
@@ -147,7 +155,7 @@ test('stock rc.3: native Connection keeps plugin route behind owner admission', 
   assert.equal(response.status, 200); assert.equal((await response.json()).value.archived[0].id, 'gateway');
 });
 
-test('stock rc.3: native storage owners and authenticated read-only overview use their real configured roots', async t => {
+test(`stock ${runtimeVersion}: native storage owners and authenticated read-only overview use their real configured roots`, async t => {
   const f = await fixture(t); await f.create('storage-native'); f.ctx.provide('dshHomePath', () => f.home);
   const { LocalAttachmentStore } = await host('@deepseek-ai/dsh-attachment-local');
   const { LocalSpillStore } = await host('@deepseek-ai/dsh-spill-local');
@@ -217,7 +225,7 @@ test('stock rc.3: native storage owners and authenticated read-only overview use
   } finally { await close(); await query.close(); }
 });
 
-test('stock rc.3: relocated session leases exclude native writers without obstructing rename', async t => {
+test(`stock ${runtimeVersion}: relocated session leases exclude native writers without obstructing rename`, async t => {
   const f = await fixture(t); await f.create('leased');
   const group = await f.adapter.inspect('leased');
   const held = await f.adapter.acquire(group); assert.equal(held.kind, 'acquired'); if (held.kind !== 'acquired') return;
@@ -250,7 +258,7 @@ test('stock rc.3: relocated session leases exclude native writers without obstru
   } finally { await available.lease.release(); }
 });
 
-test('stock rc.3: own loaded JSONL writer queues, cancellation persists, next startup replays once', async t => {
+test(`stock ${runtimeVersion}: own loaded JSONL writer queues, cancellation persists, next startup replays once`, async t => {
   const f = await fixture(t); const prepared = await f.create('pending-native');
   const detach = f.sessions.enter(prepared); const writer = await f.persistence.open(prepared.id, 'write');
   assert.equal((await f.execute('trash', [prepared.id])).items[0]!.status, 'pending');
@@ -266,7 +274,7 @@ test('stock rc.3: own loaded JSONL writer queues, cancellation persists, next st
   await restarted.initialize(); assert.equal((await restarted.list()).trash.length, 1);
 });
 
-test('stock rc.3: official Agent activity provider blocks turns awaiting user interaction', async t => {
+test(`stock ${runtimeVersion}: official Agent activity provider blocks turns awaiting user interaction`, async t => {
   const f = await fixture(t); const prepared = await f.create('interaction-native');
   const { AgentRegistry } = await host('@deepseek-ai/dsh-agent'); const agents = new AgentRegistry(f.ctx);
   // This provider's official contract keeps approval/question waits in status=running.
@@ -278,7 +286,7 @@ test('stock rc.3: official Agent activity provider blocks turns awaiting user in
   agents.store.delete(prepared.id);
 });
 
-test('stock rc.3: default zstd JSONL moves and restores without changing compressed bytes', async t => {
+test(`stock ${runtimeVersion}: default zstd JSONL moves and restores without changing compressed bytes`, async t => {
   const f = await fixture(t, 'zstd'); const prepared = await f.create('default-compressed');
   const member = (await f.adapter.inspect(prepared.id)).members[0]!;
   const file = join(member.directory, 'session.v4.jsonl.zstd'); const original = await readFile(file);
@@ -302,6 +310,22 @@ test('runtime version comes from the live profile installation, independent of p
   assert.equal((await absent.capabilities()).supported, false);
 });
 
+test('a second plugin instance obtains no data areas before the native store lease', async t => {
+  const f = await fixture(t); const home = join(f.home, 'second-instance-home'); await mkdir(home);
+  const root = join(home, 'archive-delete');
+  const held = await acquirePluginLease(root, getNativeLockExclusive(f.ctx), { lockNamed: getNativeWindowsLock(f.ctx) });
+  t.after(() => held.release());
+  const warnings: string[] = [];
+  const close = await applyPlugin({ get: name => f.ctx.get(name), dshHomePath: () => home,
+    waterfall: (event, request, next) => f.ctx.waterfall(event, request, next), emit: (event, ...args) => f.ctx.emit(event, ...args),
+    logger: { warn: message => warnings.push(message) },
+    connection: { fetch: { register: () => () => {} } },
+  });
+  t.after(close);
+  assert.ok(warnings.some(message => message.includes('Another DSH process owns')));
+  for (const area of ['trash', 'staging', 'operations', 'receipts']) await assert.rejects(access(join(root, area)), { code: 'ENOENT' });
+});
+
 test('successful startup logs its installed version and active API only after route admission; a failed mount never logs loaded', async t => {
   const f = await fixture(t);
   const info: string[] = []; const warnings: string[] = [];
@@ -319,7 +343,7 @@ test('successful startup logs its installed version and active API only after ro
   try {
     assert.equal(info.length, 1);
     assert.ok(info[0]!.startsWith(`[archive-delete] v${PLUGIN_VERSION} loaded`));
-    assert.match(info[0]!, /target DSH 0\.2\.1-rc\.3 \(host 0\.2\.1-rc\.3\)/);
+    assert.ok(info[0]!.includes(`target DSH ${SUPPORTED_DSH_VERSION_LABEL} (host ${runtimeVersion})`));
     assert.ok(info[0]!.includes(JSON.stringify(join(f.home, 'archive-delete', 'trash'))));
     const response = await connection.createSharedFetchHandler('/api').fetch(new Request('http://127.0.0.1/api/dsh-archive-delete', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'list' }),
@@ -329,7 +353,7 @@ test('successful startup logs its installed version and active API only after ro
   } finally { await close(); }
 });
 
-test('stock rc.3: explicit partial-purge retry locks the remaining member with preserved slot identity', async t => {
+test(`stock ${runtimeVersion}: explicit partial-purge retry locks the remaining member with preserved slot identity`, async t => {
   const f = await fixture(t); await f.create('partial-parent');
   await f.create('partial-child', 'Child', { parentSession: 'partial-parent', origin: 'subagent' });
   assert.equal((await f.execute('trash', ['partial-parent'])).items[0]!.status, 'moved');
@@ -356,7 +380,7 @@ test('stock rc.3: explicit partial-purge retry locks the remaining member with p
   assert.equal((await f.api.list()).trash.length, 0);
 });
 
-test('stock rc.3: startup rolls back a detached but uncommitted move under native leases', async t => {
+test(`stock ${runtimeVersion}: startup rolls back a detached but uncommitted move under native leases`, async t => {
   const f = await fixture(t); await f.create('interrupted-parent', 'Recovered title');
   await f.create('interrupted-child', 'Recovered child', { parentSession: 'interrupted-parent', origin: 'subagent' });
   const group = await f.adapter.inspect('interrupted-parent');
@@ -434,7 +458,7 @@ async function createIndependentFork(f: Awaited<ReturnType<typeof fixture>>, sou
   } finally { detach(); }
 }
 
-test('stock rc.3: managed idle parent and child move and purge in the same process without restarting', async t => {
+test(`stock ${runtimeVersion}: managed idle parent and child move and purge in the same process without restarting`, async t => {
   const f = await fixture(t);
   await f.create('hot-parent', 'Hot parent');
   await f.create('hot-child', 'Hot child', { parentSession: 'hot-parent', origin: 'subagent' });
@@ -459,7 +483,7 @@ test('stock rc.3: managed idle parent and child move and purge in the same proce
   } finally { await managed.close(); }
 });
 
-test('stock rc.3: newly created live sessions normalize the persisted default depth, then move and purge without restart', async t => {
+test(`stock ${runtimeVersion}: newly created live sessions normalize the persisted default depth, then move and purge without restart`, async t => {
   const f = await fixture(t); const managed = managedAgents(f);
   try {
     const parent = await managed.create('factory-new-parent', 'Factory new parent');
@@ -487,7 +511,7 @@ test('stock rc.3: newly created live sessions normalize the persisted default de
   } finally { await managed.close(); }
 });
 
-test('stock rc.3: default-depth normalization does not accept a changed actual depth or other header metadata', async t => {
+test(`stock ${runtimeVersion}: default-depth normalization does not accept a changed actual depth or other header metadata`, async t => {
   const f = await fixture(t); const managed = managedAgents(f);
   try {
     const parent = await managed.create('factory-new-protected', 'Factory protected');
@@ -505,7 +529,7 @@ test('stock rc.3: default-depth normalization does not accept a changed actual d
   } finally { await managed.close(); }
 });
 
-test('stock rc.3: idle status during maintenance and a queued inbox never authorize lifecycle release', async t => {
+test(`stock ${runtimeVersion}: idle status during maintenance and a queued inbox never authorize lifecycle release`, async t => {
   const f = await fixture(t); await f.create('hot-protected');
   const managed = managedAgents(f);
   let endMaintenance = () => {};
@@ -528,7 +552,7 @@ test('stock rc.3: idle status during maintenance and a queued inbox never author
   } finally { endMaintenance(); await maintenance; await managed.close(); }
 });
 
-test('stock rc.3: runtime child outside the confirmed group and duplicate owner effects fail closed', async t => {
+test(`stock ${runtimeVersion}: runtime child outside the confirmed group and duplicate owner effects fail closed`, async t => {
   const f = await fixture(t); await f.create('hot-owner');
   await createIndependentFork(f, 'hot-owner', 'hot-outside-fork');
   const managed = managedAgents(f);
@@ -565,7 +589,7 @@ async function updateManagerFixture(t: TestContext) {
   const env = { ...process.env, npm_config_offline: 'true', npm_config_registry: 'http://127.0.0.1:9',
     npm_config_manage_package_manager_versions: 'false', PNPM_OFFLINE: 'true' };
   const profile = { name: 'updater-qa', home, dir, patchPath: join(dir, 'cordis.patch.yml'), cwd: root,
-    installAnchor: join(runtimeRoot, 'node_modules/@deepseek-ai/dsh/package.json'), startedBundles: [] as string[], overlays: [],
+    installAnchor: runtimeAnchor, startedBundles: [] as string[], overlays: [],
     packageManager: { command, args, env } };
   const ctx = new Context(); ctx.provide('profileContext', profile);
   const { default: Loader } = await host('@deepseek-ai/cordis-plugin-loader'); await ctx.plugin(Loader);
@@ -575,7 +599,7 @@ async function updateManagerFixture(t: TestContext) {
   async function pack(version: string, bundle = true) {
     const source = join(root, `source-${version}`); await mkdir(join(source, 'lib'), { recursive: true });
     await writeFile(join(source, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version, type: 'module', main: './lib/index.js', license: 'Apache-2.0',
-      engines: { node: '>=24', dsh: SUPPORTED_DSH_VERSION }, ...(bundle ? { dsh: { manifestVersion: 1, bundle: { patch: './cordis.patch.yml' } } } : {}) }));
+      engines: { node: '>=24', dsh: SUPPORTED_DSH_VERSIONS.join(' || ') }, ...(bundle ? { dsh: { manifestVersion: 1, bundle: { patch: './cordis.patch.yml' } } } : {}) }));
     await writeFile(join(source, 'cordis.patch.yml'), '[]\n');
     await writeFile(join(source, 'lib', 'index.js'), `export const name = 'synthetic-updater'; export const version = '${version}';`);
     await writeFile(join(source, 'lib', 'client.js'), '/* synthetic updater fixture */');
@@ -588,7 +612,7 @@ async function updateManagerFixture(t: TestContext) {
   return { root, home, dir, profile, ctx, manager, pack };
 }
 
-test('stock rc.3 native manager: a persistent packed update replaces only the isolated profile and requires restart without HMR', async t => {
+test(`stock ${runtimeVersion} native manager: a persistent packed update replaces only the isolated profile and requires restart without HMR`, async t => {
   const f = await updateManagerFixture(t); const old = await f.pack('0.0.1'); const next = await f.pack('0.0.2');
   const first = await f.manager.installBundle(old, { requestId: randomUUID(), enabled: true, saveExact: true });
   assert.equal(first.error, undefined, JSON.stringify(first)); assert.equal(first.application, 'restart-required');
@@ -603,7 +627,7 @@ test('stock rc.3 native manager: a persistent packed update replaces only the is
   assert.equal(JSON.parse(await readFile(join(f.dir, 'node_modules', PACKAGE_NAME, 'package.json'), 'utf8')).version, '0.0.2');
 });
 
-test('stock rc.3 native manager: failed package admission restores the isolated profile manifest and lockfile', async t => {
+test(`stock ${runtimeVersion} native manager: failed package admission restores the isolated profile manifest and lockfile`, async t => {
   const f = await updateManagerFixture(t); const old = await f.pack('0.0.3');
   const first = await f.manager.installBundle(old, { requestId: randomUUID(), enabled: true, saveExact: true });
   assert.equal(first.error, undefined, JSON.stringify(first));

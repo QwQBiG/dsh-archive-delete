@@ -4,7 +4,7 @@ import test from 'node:test';
 import { setImmediate } from 'node:timers/promises';
 import { createRequestHandler, parseApiRequest } from '../src/host-routes.js';
 import { fixture } from './fixtures.js';
-import type { ArchiveApi } from '../src/contracts.js';
+import { ArchiveError, type ArchiveApi } from '../src/contracts.js';
 import type { UpdateOverview } from '../src/update-contracts.js';
 
 test('update routes accept only confirmation IDs and explicit check intent', async () => {
@@ -45,4 +45,59 @@ test('archive maintenance drains earlier writes, refuses new work and can close 
   const after = await f.service.beginUpdate(); after(true);
   await assert.rejects(f.service.list(), { code: 'update-restart-required' });
   await f.service.close();
+});
+
+test('empty and nul-bearing confirmation identifiers are rejected before reaching a service', async () => {
+  const requestId = randomUUID();
+  for (const invalid of ['', '\0', 'x'.repeat(101)]) for (const body of [
+    { action: 'execute', previewId: invalid, requestId },
+    { action: 'execute', previewId: 'preview', requestId: invalid },
+    { action: 'cancelPending', ids: ['one'], requestId: invalid },
+    { action: 'installUpdate', candidateId: 'candidate', requestId: invalid },
+  ]) assert.throws(() => parseApiRequest(body), { code: 'invalid-request' });
+});
+
+test('HTTP failures distinguish unsupported features, missing targets, busy resources and conflicts', async () => {
+  for (const [code, status] of [
+    ['unsupported-host', 422], ['update-unavailable', 501], ['workspace-not-found', 404], ['session-missing', 404],
+    ['store-busy', 423], ['scan-busy', 423], ['update-in-progress', 423], ['scan-closed', 503], ['source-changed', 409], ['operation-failed', 500],
+  ] as const) {
+    const api = { list: async () => { throw new ArchiveError(code, 'Diagnostic'); } } as unknown as ArchiveApi;
+    const reply = await createRequestHandler(api)(new Request('http://127.0.0.1/api/dsh-archive-delete', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'list' }),
+    }));
+    assert.equal(reply.status, status, code);
+    assert.equal((await reply.json()).error.code, code);
+  }
+});
+
+test('unbounded streaming bodies are cancelled as soon as the 64 KiB limit is crossed', async () => {
+  let chunks = 0; let cancelled = false; let calls = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) { chunks++; controller.enqueue(new Uint8Array(8192)); if (chunks === 100) controller.close(); },
+    cancel() { cancelled = true; },
+  });
+  const request = new Request('http://127.0.0.1/api/dsh-archive-delete', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: stream, duplex: 'half',
+  } as RequestInit);
+  const handler = createRequestHandler({ list: async () => { calls++; throw new Error('not reached'); } } as unknown as ArchiveApi);
+  const reply = await handler(request);
+  assert.equal(reply.status, 413);
+  assert.equal((await reply.json()).error.code, 'request-too-large');
+  assert.equal(cancelled, true); assert.ok(chunks <= 10, `consumed ${chunks} chunks`); assert.equal(calls, 0);
+});
+
+test('preview operations must be primitive enum strings and coercible arrays never reach the service', async () => {
+  let calls = 0;
+  const handler = createRequestHandler({ preview: async () => { calls++; throw new Error('must not execute'); } } as unknown as ArchiveApi);
+  for (const operation of [['trash'], ['restore'], ['purge'], {}, 1, true, null]) {
+    const input = { action: 'preview', operation, ids: ['one'] };
+    assert.throws(() => parseApiRequest(input), { code: 'invalid-request' });
+    const reply = await handler(new Request('http://127.0.0.1/api/dsh-archive-delete', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
+    }));
+    assert.equal(reply.status, 400);
+    assert.equal((await reply.json()).error.code, 'invalid-request');
+  }
+  assert.equal(calls, 0);
 });

@@ -5,6 +5,7 @@ import { appendFile, readFile, writeFile, symlink, mkdir, readdir } from 'node:f
 import { join } from 'node:path';
 import { fixture, present } from './fixtures.js';
 import { ArchiveService } from '../src/service.js';
+import { RequestJournal } from '../src/request-journal.js';
 import type { Action } from '../src/contracts.js';
 
 async function perform(f: Awaited<ReturnType<typeof fixture>>, action: Action, ids: string[]) {
@@ -73,6 +74,50 @@ test('preview revalidation rejects changed data and repeated request ID returns 
   await f.service.execute(good.id, req); const duplicate = await f.service.execute(good.id, req);
   assert.equal(duplicate.items[0]!.status, 'moved'); assert.equal((await f.store.list()).length, 1);
   await assert.rejects(f.service.execute(p.id, req), /already used/);
+  await assert.rejects(f.service.execute(good.id, randomUUID()), { code: 'preview-expired' });
+});
+
+test('overlapping refreshes coalesce into one authoritative listing', async t => {
+  const f = await fixture(); t.after(f.close); await f.add('one');
+  const original = f.adapter.listArchived.bind(f.adapter); let lists = 0;
+  let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+  let finish!: () => void; const blocked = new Promise<void>(resolve => { finish = resolve; });
+  f.adapter.listArchived = async () => { lists++; entered(); await blocked; return original(); };
+  const first = f.service.list(); await started;
+  const second = f.service.list(); const third = f.service.list();
+  finish();
+  const results = await Promise.all([first, second, third]);
+  assert.equal(lists, 1); assert.deepEqual(results[1], results[0]); assert.deepEqual(results[2], results[0]);
+});
+
+test('a durably published intent with a lost acknowledgement consumes its preview but can replay the same request', async t => {
+  const f = await fixture(); t.after(f.close); await f.add('one');
+  const preview = await f.service.preview('trash', ['one']); const requestId = randomUUID();
+  const journal = (f.service as unknown as { requests: RequestJournal }).requests;
+  const begin = journal.begin.bind(journal);
+  journal.begin = async (...args) => { await begin(...args); throw new Error('Synthetic post-publication sync error'); };
+  await assert.rejects(f.service.execute(preview.id, requestId), /post-publication/);
+  assert.equal((await new RequestJournal(f.store.root).load(requestId))?.complete, false);
+  await assert.rejects(f.service.execute(preview.id, randomUUID()), { code: 'preview-expired' });
+  journal.begin = begin;
+  assert.equal((await f.service.execute(preview.id, requestId)).items[0]?.status, 'moved');
+  assert.equal((await f.store.list()).length, 1);
+});
+
+test('refresh queued during a transition waits for one committed view', async t => {
+  const f = await fixture(); t.after(f.close); await f.add('one');
+  const preview = await f.service.preview('trash', ['one']);
+  const remove = f.adapter.removeRegistry.bind(f.adapter); let reads = 0;
+  const list = f.adapter.listArchived.bind(f.adapter); f.adapter.listArchived = async () => { reads++; return list(); };
+  let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+  let finish!: () => void; const blocked = new Promise<void>(resolve => { finish = resolve; });
+  f.adapter.removeRegistry = async group => { entered(); await blocked; await remove(group); };
+  const mutation = f.service.execute(preview.id, randomUUID()); await started;
+  const listing = f.service.list(); const duplicate = f.service.list();
+  await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(reads, 0);
+  finish(); assert.equal((await mutation).counts.succeeded, 1);
+  const overview = await listing; assert.equal(reads, 1); assert.equal(overview.archived.length, 0); assert.equal(overview.trash.length, 1);
+  assert.deepEqual(await duplicate, overview);
 });
 test('metadata failure rolls back all moved members', async t => {
   const f = await fixture(); t.after(f.close); const g = await f.add('parent', ['child']); f.adapter.failRemove = true;

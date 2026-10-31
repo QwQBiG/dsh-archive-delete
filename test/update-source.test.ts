@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import test from 'node:test';
-import { createGithubUpdateSource, validateUpdatePackage, type GithubUpdateSourceOptions } from '../src/update-source.js';
+import { createGithubUpdateSource, supportedPackageDshVersions, validateUpdatePackage, type GithubUpdateSourceOptions } from '../src/update-source.js';
 import type { ReleaseUpdateMetadata } from '../src/update-contracts.js';
 
 const HOST = '0.2.1-rc.3'; const VERSION = '0.1.6';
@@ -179,4 +179,97 @@ test('stream size limits, rate limits, network failure, timeout and cancellation
   await assert.rejects(stream.source({ timeoutMs: 5 }).check(), { code: 'update-timeout' }); assert.equal(cancelled, true);
   const controller = new AbortController(); controller.abort(); const before = size.calls.length;
   await assert.rejects(size.source().check(controller.signal), { code: 'update-cancelled' }); assert.equal(size.calls.length, before);
+});
+
+test('GitHub Retry-After and rate reset are respected without making another request', async () => {
+  for (const headers of [{ 'retry-after': '7200' }, { 'retry-after': new Date(Date.now() + 7_200_000).toUTCString() },
+    { 'x-ratelimit-reset': String(Math.ceil((Date.now() + 7_200_000) / 1000)) }]) {
+    const net = network([artifact()]); net.overrides.set(`${API}?per_page=20`, () => new Response('limited', { status: 429, headers }));
+    const source = net.source(); const now = Date.now();
+    await assert.rejects(source.check(), (error: unknown) => typeof error === 'object' && error !== null
+      && 'code' in error && error.code === 'update-rate-limited' && 'retryAt' in error && Number(error.retryAt) > now + 7_198_000);
+    await assert.rejects(source.check(), { code: 'update-rate-limited' }); assert.equal(net.calls.length, 1);
+  }
+});
+
+test('one discovery budget covers the release list and every metadata request', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const item = artifact(); const net = network([item]); let metadataStarted = false;
+  net.overrides.set(`${API}?per_page=20`, () => new Promise(resolve => setTimeout(() => resolve(Response.json([item.release])), 12)));
+  net.overrides.set(item.metadataUrl, () => { metadataStarted = true; return new Promise(() => {}); });
+  const checking = net.source({ timeoutMs: 20 }).check(); const rejected = assert.rejects(checking, { code: 'update-timeout' });
+  t.mock.timers.tick(12); await new Promise(resolve => setImmediate(resolve)); assert.equal(metadataStarted, true);
+  t.mock.timers.tick(8); await rejected; assert.equal(net.calls.length, 2);
+});
+
+function dualHostArtifact() {
+  const pkg = manifest(); pkg.engines.dsh = `${HOST} || 0.2.1-rc.5`;
+  const item = artifact(VERSION, 1, gzipSync(tar(entries(pkg))));
+  const name = item.release.assets[1]!.name.replace(/\.update\.json$/, '.dsh-0.2.1-rc.5.update.json');
+  const info = { ...structuredClone(item.info), requiredDshVersion: '0.2.1-rc.5' };
+  const specific = { ...item.release.assets[1]!, id: 13, name, browser_download_url: `${WEB}/download/v${VERSION}/${name}` };
+  item.release.assets.push(specific);
+  const metadataBytes = () => { const bytes = Buffer.from(JSON.stringify(info)); specific.size = bytes.length; return bytes; };
+  metadataBytes(); return { item, info, specific, metadataBytes };
+}
+
+test('one prebuilt package declares a bounded union of exact host versions through the standard engine', async () => {
+  const pkg = manifest(); const legacy = gzipSync(tar(entries(pkg)));
+  assert.deepEqual(supportedPackageDshVersions(pkg), [HOST]); await validateUpdatePackage(legacy, VERSION, HOST);
+  await assert.rejects(validateUpdatePackage(legacy, VERSION, '0.2.1-rc.5'), { code: 'update-package-invalid' });
+  pkg.engines.dsh = `${HOST} || 0.2.1-rc.5`; const compatible = gzipSync(tar(entries(pkg)));
+  assert.deepEqual(supportedPackageDshVersions(pkg), [HOST, '0.2.1-rc.5']);
+  for (const host of [HOST, '0.2.1-rc.5']) await validateUpdatePackage(compatible, VERSION, host);
+  for (const host of ['0.2.1-rc.2', '0.2.1-rc.4', '0.2.1']) await assert.rejects(validateUpdatePackage(compatible, VERSION, host), { code: 'update-package-invalid' });
+  for (const declaration of [null, {}, [], '', `${HOST} || ${HOST}`, `${HOST} || ^0.2.1`, `${HOST} || 0.2.1-rc.05`,
+    `${HOST} || 999999999999999999.0.0`, `${HOST} ||`, `${HOST}||0.2.1-rc.5`, ` ${HOST}`, `${HOST} `,
+    `${HOST} || >0.2.1-rc.3`, `${HOST} || *`, `${HOST} || 0.2.1-rc.3 - 0.2.1-rc.5`,
+    [HOST, ...Array.from({ length: 8 }, (_, i) => `0.2.${i}`)].join(' || ')]) {
+    const invalid = manifest(); invalid.engines.dsh = declaration;
+    await assert.rejects(validateUpdatePackage(gzipSync(tar(entries(invalid))), VERSION, HOST), { code: 'update-package-invalid' });
+  }
+  const custom = manifest(); custom.dshArchiveDelete = { supportedDshVersions: [HOST, '0.2.1-rc.5'] };
+  await assert.rejects(validateUpdatePackage(gzipSync(tar(entries(custom))), VERSION, '0.2.1-rc.5'), { code: 'update-package-invalid' });
+  for (const change of [(value: Record<string, any>) => { value.name = 'other'; },
+    (value: Record<string, any>) => { value.scripts.postinstall = 'unexpected hook'; },
+    (value: Record<string, any>) => { value.dependencies = { arbitrary: '*' }; },
+    (value: Record<string, any>) => { value.peerDependenciesMeta.react.optional = false; }]) {
+    const invalid = structuredClone(pkg); change(invalid);
+    await assert.rejects(validateUpdatePackage(gzipSync(tar(entries(invalid))), VERSION, '0.2.1-rc.5'), { code: 'update-package-invalid' });
+  }
+});
+
+test('each host selects its exact metadata and binds a separate pin to the same package bytes', async () => {
+  const f = dualHostArtifact(); const net = network([f.item]); net.overrides.set(f.specific.browser_download_url, () => new Response(f.metadataBytes()));
+  const first = net.source(); const second = net.source({ hostVersion: '0.2.1-rc.5' });
+  const primary = await first.check(); assert.equal(primary.candidate?.requiredDshVersion, HOST);
+  assert.ok(!net.calls.includes(f.specific.browser_download_url));
+  const other = await second.check(); assert.equal(other.candidate?.requiredDshVersion, '0.2.1-rc.5');
+  assert.notEqual(other.candidate?.id, primary.candidate?.id);
+  await first.revalidate(primary.pinned!); await second.revalidate(other.pinned!);
+  assert.deepEqual(await first.download(primary.pinned!), f.item.bytes); assert.deepEqual(await second.download(other.pinned!), f.item.bytes);
+  await assert.rejects(first.download(other.pinned!), { code: 'update-source-changed' });
+  f.specific.id++;
+  await first.revalidate(primary.pinned!); await assert.rejects(second.revalidate(other.pinned!), { code: 'update-source-changed' });
+});
+
+test('specific metadata has priority, is exact and never falls back after malformed content', async () => {
+  for (const mutation of [(f: ReturnType<typeof dualHostArtifact>) => { f.info.requiredDshVersion = HOST; },
+    (f: ReturnType<typeof dualHostArtifact>) => { f.item.release.assets.push({ ...f.specific }); },
+    (f: ReturnType<typeof dualHostArtifact>) => { f.specific.browser_download_url = `${WEB}/download/v${VERSION}/wrong.update.json`; }]) {
+    const f = dualHostArtifact(); const requested = f.specific.browser_download_url; mutation(f);
+    const net = network([f.item]); net.overrides.set(requested, () => new Response(f.metadataBytes()));
+    const checking = net.source({ hostVersion: '0.2.1-rc.5' }).check();
+    if (f.info.requiredDshVersion === HOST) assert.equal((await checking).availability, 'incompatible');
+    else await assert.rejects(checking, { code: 'update-metadata-invalid' });
+    assert.ok(!net.calls.includes(f.item.metadataUrl), 'an invalid exact-host asset does not cause fallback to generic metadata');
+  }
+  const item = artifact(); const net = network([item]);
+  assert.equal((await net.source({ hostVersion: '0.2.1-rc.5' }).check()).availability, 'incompatible');
+  const pkg = manifest(); pkg.engines.dsh = '0.2.1-rc.5';
+  const legacy = artifact(VERSION, 1, gzipSync(tar(entries(pkg)))); legacy.info.requiredDshVersion = '0.2.1-rc.5';
+  const source = network([legacy]).source({ hostVersion: '0.2.1-rc.5' });
+  const checked = await source.check(); assert.equal(checked.availability, 'available');
+  assert.deepEqual(await source.download(checked.pinned!), legacy.bytes, 'a legacy single-host release uses its default metadata');
+  for (const hostVersion of ['^0.2.1', '0.2.1-rc.5/../other', '', '0.2.1-rc.5\0']) assert.throws(() => net.source({ hostVersion }), TypeError);
 });

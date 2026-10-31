@@ -31,11 +31,11 @@ export async function assertPlainDirectory(path: string): Promise<void> {
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new ArchiveError('unsafe-path', 'A data directory is not a plain directory.');
 }
 /** Named Windows locks must not acquire distinct identities for the same data. */
-export async function assertCanonicalStoragePath(path: string, canonical?: string): Promise<void> {
-  if (process.platform !== 'win32') return;
+export async function assertCanonicalStoragePath(path: string, canonical?: string, platform = process.platform): Promise<void> {
+  if (platform !== 'win32') return;
   const physical = canonical ?? await realpath(path);
-  assertLocalStoragePath(physical);
-  if (!samePath(path, physical))
+  assertLocalStoragePath(path, platform); assertLocalStoragePath(physical, platform);
+  if (win32.relative(win32.resolve(path), win32.resolve(physical)) !== '')
     throw new ArchiveError('unsafe-path', 'Windows storage paths must use their canonical local path, without junction or short-name aliases.');
 }
 export async function assertPrivateDirectory(path: string): Promise<void> {

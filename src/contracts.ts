@@ -5,6 +5,9 @@ export type JsonObject = { [key: string]: JsonValue };
 export const PACKAGE_NAME = '@qwqbig/dsh-archive-delete';
 export const API_PATH = '/api/dsh-archive-delete';
 export const SUPPORTED_DSH_VERSION = '0.2.1-rc.3';
+export const SUPPORTED_DSH_VERSIONS = [SUPPORTED_DSH_VERSION, '0.2.1-rc.5'] as const;
+export const SUPPORTED_DSH_VERSION_LABEL = SUPPORTED_DSH_VERSIONS.join(' / ');
+export function isSupportedDshVersion(version: string): boolean { return (SUPPORTED_DSH_VERSIONS as readonly string[]).includes(version); }
 
 export interface SupportStatus { supported: boolean; version: string; platform: string; reason?: string }
 export interface Activity { kind: string; label: string }
@@ -43,7 +46,8 @@ export interface PreviewItem {
   disposition: 'ready' | 'pending' | 'blocked'; code?: string; message?: string;
 }
 export interface Preview { id: string; action: Action; items: PreviewItem[]; expiresAt: number }
-export interface Overview { support: SupportStatus; archived: ArchivedSession[]; trash: TrashEntry[]; recentResults: BatchResult[]; storageWorkspaces?: StorageWorkspace[] }
+export interface DataIssue { scope: 'archive' | 'trash'; id?: string; code: string; message: string }
+export interface Overview { support: SupportStatus; archived: ArchivedSession[]; trash: TrashEntry[]; recentResults: BatchResult[]; storageWorkspaces?: StorageWorkspace[]; issues?: DataIssue[] }
 export interface StorageWorkspace { id: string; title: string }
 export interface StorageOverview extends UsageScanResult {
   scope: 'host' | 'workspace';
@@ -73,6 +77,8 @@ export type LeaseResult = { kind: 'acquired'; lease: Lease } | { kind: 'loaded';
 export interface DshAdapter {
   capabilities(): Promise<SupportStatus>;
   listArchived(): Promise<ArchivedSession[]>;
+  /** Read-only diagnostics from the latest archive listing; damaged records stay protected. */
+  listIssues?(): readonly DataIssue[];
   inspect(sessionId: string): Promise<SessionGroup>;
   acquire(group: SessionGroup): Promise<LeaseResult>;
   /** Optional pinned host lifecycle capability. No active work or raw locks may be forced closed. */

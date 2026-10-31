@@ -24,7 +24,7 @@ test('read-only inventory reports current logical bytes, first-level folders and
   const category = result.categories[0]!;
   assert.equal(category.status, 'complete'); assert.equal(category.uniqueFileCount, 2);
   assert.deepEqual(category.directories, [{ relativePath: 'nested', fileBytes: 11, fileCount: 1 }, { relativePath: '.', fileBytes: 3, fileCount: 1 }]);
-  assert.deepEqual(category.largestFiles, [{ relativePath: 'nested/large.bin', sizeBytes: 11, source: 'unknown' }, { relativePath: 'small.tmp', sizeBytes: 3, source: 'unknown' }]);
+  assert.deepEqual(category.largestFiles, [{ relativePath: 'nested/large.bin', sizeBytes: 11, source: 'unknown', kind: 'other' }, { relativePath: 'small.tmp', sizeBytes: 3, source: 'unknown', kind: 'other' }]);
   assert.ok(result.finishedAt >= result.startedAt); assert.ok(result.durationMs >= 0);
   assert.deepEqual(await readdir(home), listing); assert.deepEqual(await readFile(join(home, 'small.tmp')), original);
   await writeFile(join(home, 'small.tmp'), Buffer.alloc(7));
@@ -193,7 +193,7 @@ test('only declared regular-file roots are measured and deduplicated, without sc
   const result = await scanStorage([{ ...root('database', database), file: true }, { ...root('alias', alias), file: true }]);
   assert.equal(result.complete, true); assert.equal(result.fileBytes, 17); assert.equal(result.referencedBytes, 34);
   assert.equal(result.fileCount, 2); assert.equal(result.duplicateHardlinks, 1);
-  assert.deepEqual(result.categories[0]!.largestFiles, [{ relativePath: 'search.sqlite', sizeBytes: 17, source: 'unknown' }]);
+  assert.deepEqual(result.categories[0]!.largestFiles, [{ relativePath: 'search.sqlite', sizeBytes: 17, source: 'unknown', kind: 'other' }]);
   assert.equal(result.categories[0]!.counters.directories, 0);
   const invalid = await scanStorage([root('default-file', database), { ...root('declared-directory', home), file: true },
     { ...root('file-exclusion', database), file: true, excludePaths: [join(database, 'child')] }]);

@@ -39,7 +39,7 @@ export class StorageInspector {
         catch { throw new ArchiveError('workspace-changed', 'The selected workspace changed. Select it again and rescan.'); }
         checkCancelled();
         if (roots.length !== 1 || current.length !== 1 || roots[0]?.id !== current[0]?.id || roots[0]?.path !== current[0]?.path
-          || JSON.stringify(roots[0]?.excludePaths ?? []) !== JSON.stringify(current[0]?.excludePaths ?? []))
+          || !sameExclusions(roots[0]?.excludePaths ?? [], current[0]?.excludePaths ?? []))
           throw new ArchiveError('workspace-changed', 'The selected workspace changed. Select it again and rescan.');
       }
       return { ...usage, scope: workspaceId === undefined ? 'host' : 'workspace', workspaces: this.workspaces(),
@@ -62,6 +62,12 @@ export class StorageInspector {
     active.controller.abort();
     await active.done.catch(() => {});
   }
+}
+
+function sameExclusions(before: readonly string[], after: readonly string[]): boolean {
+  const expected = new Set(before);
+  const received = new Set(after);
+  return expected.size === received.size && [...expected].every(path => received.has(path));
 }
 
 /** Preserve the archive class receiver; never replace or wrap a host service. */

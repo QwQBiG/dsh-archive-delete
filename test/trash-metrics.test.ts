@@ -86,7 +86,8 @@ test('missing members require a matching permanent deletion journal', async t =>
 test('unexpected files and owned-name links fail closed without changing their targets', async t => {
   const f = await trashed(t); const unexpected = join(f.entry, '0', 'unowned.bin'); await writeFile(unexpected, 'keep');
   await assert.rejects(f.store.entrySnapshot(f.entryId), { code: 'unknown-file' });
-  await assert.rejects(f.store.list(), { code: 'unknown-file' }); assert.equal(await readFile(unexpected, 'utf8'), 'keep'); await unlink(unexpected);
+  assert.deepEqual(await f.store.list(), []); assert.equal(f.store.listIssues()[0]!.code, 'unknown-file');
+  assert.equal(await readFile(unexpected, 'utf8'), 'keep'); await unlink(unexpected);
   const outside = join(f.root, 'outside'); await mkdir(outside); const target = join(outside, 'keep'); await writeFile(target, 'retained');
   const alias = join(f.entry, '0', 'session.v3.jsonl');
   try { await symlink(target, alias, 'file'); }

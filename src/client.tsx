@@ -5,6 +5,7 @@ import { ArchiveDialog, CLIENT_CSS, CLIENT_NAMESPACE, en, zh, type NativePrimiti
 import { UpdateClientController } from './update-client.js';
 import { UpdateCard } from './update-ui.js';
 import type { UpdateOverview } from './update-contracts.js';
+import { FILE_KINDS } from './storage-classification.js';
 
 type HostRequire = (name: string) => unknown;
 type Observable<T> = { getSnapshot(): T; subscribe(listener: () => void): () => void };
@@ -27,68 +28,91 @@ interface MenuProps {
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-function strings(value: unknown): value is string[] { return Array.isArray(value) && value.every((item) => typeof item === 'string'); }
+function identifier(value: unknown, maximum = 512): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= maximum && !value.includes('\0');
+}
+function oneOf(value: unknown, choices: readonly string[]): value is string { return typeof value === 'string' && choices.includes(value); }
+function strings(value: unknown): value is string[] { return Array.isArray(value) && value.every(item => identifier(item)); }
 function finite(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
 function count(value: unknown): value is number { return Number.isSafeInteger(value) && Number(value) >= 0; }
+function optionalText(value: unknown): boolean { return value === undefined || typeof value === 'string'; }
 function workspaces(value: unknown): boolean {
-  return Array.isArray(value) && value.every(item => object(item) && typeof item.id === 'string' && typeof item.title === 'string');
+  return Array.isArray(value) && value.every(item => object(item) && identifier(item.id) && typeof item.title === 'string');
 }
 function relativePath(value: unknown): boolean {
-  return typeof value === 'string' && value.length > 0 && !/^[/\\]|^[a-z]:/i.test(value) && !value.split(/[/\\]/).includes('..');
+  return typeof value === 'string' && value.length > 0 && !value.includes('\0') && !/^[/\\]|^[a-z]:/i.test(value) && !value.split(/[/\\]/).includes('..');
+}
+function fileKinds(value: unknown, fileBytes: unknown, fileCount: unknown): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length > FILE_KINDS.length
+    || !value.every(kind => object(kind) && oneOf(kind.kind, FILE_KINDS) && count(kind.fileBytes) && count(kind.fileCount) && Number(kind.fileCount) > 0)
+    || new Set(value.map(kind => kind.kind)).size !== value.length) return false;
+  if (fileBytes === null) return value.length === 0 && fileCount === 0;
+  const bytes = value.reduce((sum, kind) => sum + Number(kind.fileBytes), 0);
+  const files = value.reduce((sum, kind) => sum + Number(kind.fileCount), 0);
+  return count(bytes) && count(files) && bytes === fileBytes && files === fileCount;
 }
 
 function isOverview(value: unknown): value is Overview {
   return object(value) && object(value.support) && typeof value.support.supported === 'boolean'
     && typeof value.support.version === 'string' && typeof value.support.platform === 'string'
-    && Array.isArray(value.archived) && value.archived.every((item) => object(item) && typeof item.id === 'string' && typeof item.title === 'string' && typeof item.workspace === 'string' && finite(item.sizeBytes) && finite(item.descendantCount))
-    && Array.isArray(value.trash) && value.trash.every((item) => object(item) && typeof item.id === 'string' && typeof item.sessionId === 'string' && typeof item.title === 'string' && finite(item.trashedAt) && finite(item.sizeBytes) && finite(item.memberCount))
+    && optionalText(value.support.reason)
+    && Array.isArray(value.archived) && value.archived.every((item) => object(item) && identifier(item.id) && typeof item.title === 'string' && typeof item.workspace === 'string' && count(item.sizeBytes) && count(item.descendantCount)
+      && (item.pending === undefined || typeof item.pending === 'boolean') && optionalText(item.pendingReason))
+    && Array.isArray(value.trash) && value.trash.every((item) => object(item) && identifier(item.id) && identifier(item.sessionId) && typeof item.title === 'string' && count(item.trashedAt) && count(item.sizeBytes) && count(item.memberCount))
     && Array.isArray(value.recentResults) && value.recentResults.every(isBatchResult)
+    && (value.issues === undefined || (Array.isArray(value.issues) && value.issues.every(issue => object(issue)
+      && oneOf(issue.scope, ['archive', 'trash']) && (issue.id === undefined || identifier(issue.id)) && typeof issue.code === 'string' && typeof issue.message === 'string')))
     && (value.storageWorkspaces === undefined || workspaces(value.storageWorkspaces));
 }
 function isStorageOverview(value: unknown): value is StorageOverview {
-  if (!object(value) || value.metric !== 'logical-file-bytes' || !['host', 'workspace'].includes(String(value.scope))
-    || !workspaces(value.workspaces) || (value.workspaceId !== undefined && typeof value.workspaceId !== 'string')
+  if (!object(value) || value.metric !== 'logical-file-bytes' || !oneOf(value.scope, ['host', 'workspace'])
+    || !workspaces(value.workspaces) || (value.workspaceId !== undefined && !identifier(value.workspaceId))
     || (value.scope === 'workspace' ? !value.workspaceId : value.workspaceId !== undefined)
     || typeof value.complete !== 'boolean' || !finite(value.durationMs) || value.durationMs < 0
     || !['startedAt', 'finishedAt', 'fileBytes', 'referencedBytes', 'fileCount', 'uniqueFileCount', 'duplicateHardlinks', 'duplicatePaths', 'identityUnknown'].every(key => count(value[key]))
     || !Array.isArray(value.categories)) return false;
-  return value.categories.every(category => object(category) && typeof category.id === 'string' && typeof category.kind === 'string'
+  return value.categories.every(category => object(category) && identifier(category.id) && identifier(category.kind)
     && (category.label === undefined || typeof category.label === 'string') && category.readOnly === true
-    && ['complete', 'partial', 'missing', 'unavailable'].includes(String(category.status))
+    && oneOf(category.status, ['complete', 'partial', 'missing', 'unavailable'])
     && (category.fileBytes === null || count(category.fileBytes)) && (category.referencedBytes === null || count(category.referencedBytes))
     && count(category.fileCount) && count(category.uniqueFileCount) && object(category.counters)
     && ['entries', 'files', 'directories', 'symlinks', 'unreadable', 'changed', 'unsupported', 'crossDevice', 'depthLimit', 'duplicateHardlinks', 'duplicatePaths', 'identityUnknown', 'excluded'].every(key => count((category.counters as Record<string, unknown>)[key]))
     && strings(category.overlaps)
+    && fileKinds(category.fileKinds, category.fileBytes, category.uniqueFileCount)
     && Array.isArray(category.issues) && category.issues.every(issue => object(issue) && typeof issue.code === 'string' && (issue.relativePath === undefined || relativePath(issue.relativePath)))
-    && Array.isArray(category.largestFiles) && category.largestFiles.every(file => object(file) && relativePath(file.relativePath) && count(file.sizeBytes) && file.source === 'unknown')
+    && Array.isArray(category.largestFiles) && category.largestFiles.every(file => object(file) && relativePath(file.relativePath) && count(file.sizeBytes) && file.source === 'unknown'
+      && (file.kind === undefined || oneOf(file.kind, FILE_KINDS)))
     && Array.isArray(category.directories) && category.directories.every(directory => object(directory) && relativePath(directory.relativePath) && count(directory.fileBytes) && count(directory.fileCount)));
 }
 function isPreview(value: unknown): value is Preview {
-  return object(value) && typeof value.id === 'string' && ['trash', 'restore', 'purge'].includes(String(value.action)) && finite(value.expiresAt)
-    && Array.isArray(value.items) && value.items.every((item) => object(item) && typeof item.id === 'string' && typeof item.title === 'string' && typeof item.sessionId === 'string' && strings(item.memberIds) && finite(item.sizeBytes) && ['ready', 'pending', 'blocked'].includes(String(item.disposition)));
+  return object(value) && identifier(value.id, 100) && oneOf(value.action, ['trash', 'restore', 'purge']) && finite(value.expiresAt)
+    && Array.isArray(value.items) && value.items.every((item) => object(item) && identifier(item.id) && typeof item.title === 'string' && identifier(item.sessionId) && strings(item.memberIds) && count(item.sizeBytes) && oneOf(item.disposition, ['ready', 'pending', 'blocked'])
+      && optionalText(item.code) && optionalText(item.message));
 }
 function isBatchResult(value: unknown): value is BatchResult {
-  return object(value) && typeof value.operationId === 'string' && ['trash', 'restore', 'purge', 'cancel'].includes(String(value.action))
-    && object(value.counts) && ['succeeded', 'pending', 'skipped', 'failed'].every((key) => finite((value.counts as Record<string, unknown>)[key]))
-    && Array.isArray(value.items) && value.items.every((item) => object(item) && typeof item.id === 'string' && typeof item.title === 'string' && ['moved', 'pending', 'restored', 'purged', 'cancelled', 'skipped', 'failed'].includes(String(item.status)));
+  return object(value) && identifier(value.operationId, 100) && oneOf(value.action, ['trash', 'restore', 'purge', 'cancel'])
+    && object(value.counts) && ['succeeded', 'pending', 'skipped', 'failed'].every((key) => count((value.counts as Record<string, unknown>)[key]))
+    && Array.isArray(value.items) && value.items.every((item) => object(item) && identifier(item.id) && typeof item.title === 'string' && oneOf(item.status, ['moved', 'pending', 'restored', 'purged', 'cancelled', 'skipped', 'failed'])
+      && optionalText(item.code) && optionalText(item.message));
 }
 function isUpdateOverview(value: unknown): value is UpdateOverview {
   const version = (v: unknown) => typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v);
   if (!object(value) || !version(value.currentVersion) || !version(value.installedVersion) || typeof value.hostVersion !== 'string'
-    || !['unknown', 'current', 'available', 'incompatible', 'error'].includes(String(value.availability)) || typeof value.canInstall !== 'boolean'
+    || !oneOf(value.availability, ['unknown', 'current', 'available', 'incompatible', 'error']) || typeof value.canInstall !== 'boolean'
     || (value.checkedAt !== undefined && !count(value.checkedAt)) || (value.nextCheckAt !== undefined && !count(value.nextCheckAt))
     || (value.code !== undefined && typeof value.code !== 'string')) return false;
   if (value.candidate !== undefined) {
     const c = value.candidate;
-    if (!object(c) || typeof c.id !== 'string' || c.id.length > 512 || !version(c.version) || typeof c.requiredDshVersion !== 'string'
+    if (!object(c) || !identifier(c.id) || !version(c.version) || typeof c.requiredDshVersion !== 'string'
       || typeof c.publishedAt !== 'string' || typeof c.notes !== 'string' || c.notes.length > 64_000 || !count(c.assetBytes)
       || c.releaseUrl !== `https://github.com/QwQBiG/dsh-archive-delete/releases/tag/v${c.version}`) return false;
   }
   if (value.availability === 'available' && value.candidate === undefined) return false;
   if (value.installation !== undefined) {
     const i = value.installation;
-    if (!object(i) || typeof i.requestId !== 'string' || !version(i.version)
-      || !['installing', 'installed', 'restart-required', 'failed', 'interrupted', 'unknown'].includes(String(i.status))
+    if (!object(i) || !identifier(i.requestId, 100) || !version(i.version)
+      || !oneOf(i.status, ['installing', 'installed', 'restart-required', 'failed', 'interrupted', 'unknown'])
       || (i.code !== undefined && typeof i.code !== 'string')) return false;
   }
   return true;
