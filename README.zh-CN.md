@@ -1,8 +1,10 @@
+<img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/icon-180.png" alt="归档回收站图标" width="72" align="right">
+
 # dsh-archive-delete
 
 简体中文 · [English](README.md)
 
-在 DeepSeek Harness 中管理归档会话、回收站和存储用量。
+在 DeepSeek Harness 中批量清理归档、恢复会话，并查看文件和目录占用。
 
 `@qwqbig/dsh-archive-delete` · **v0.0.2** · macOS / Windows · DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5**、JSONL 存储 · [Apache-2.0](LICENSE)
 
@@ -23,6 +25,29 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh
 - 批量选择、按大小排序、逐项结果与重试。
 - 查看 DSH 和所选工作区的存储分类、文件类型、大文件与目录大小。
 - 在插件内检查 GitHub 更新并确认升级。
+
+## 界面预览
+
+使用示例数据展示归档会话、回收站和存储概览。
+
+![使用示例数据演示归档会话、回收站和存储概览](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-zh.gif)
+
+<details>
+<summary>查看截图</summary>
+
+**批量清理归档**
+
+![示例归档会话及批量选择操作](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archives.png)
+
+**恢复或清除所选回收站记录**
+
+![示例回收站记录及恢复、永久清除操作](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-trash.png)
+
+**文件类型与大文件**
+
+![使用示例数据展示文件类型和大文件的存储概览](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-storage.png)
+
+</details>
 
 ## 使用
 

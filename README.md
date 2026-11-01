@@ -1,8 +1,10 @@
+<img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/icon-180.png" alt="Archive Delete icon" width="72" align="right">
+
 # dsh-archive-delete
 
 [简体中文](README.zh-CN.md) · English
 
-Archived conversations, recoverable trash and storage usage inside DeepSeek Harness.
+Batch archive cleanup, recoverable trash, and file and folder usage inside DeepSeek Harness.
 
 `@qwqbig/dsh-archive-delete` · **v0.0.2** · macOS / Windows · DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5**, JSONL storage · [Apache-2.0](LICENSE)
 
@@ -23,6 +25,29 @@ The package includes compiled files and is ready to install. [Installation guide
 - Batch selection, largest-first sorting, per-item results and retries.
 - Storage categories, file types, large files and folder sizes for DSH and a selected workspace.
 - In-app GitHub update checks and confirmed upgrades.
+
+## Preview
+
+Archived conversations, trash and storage overview with sample data.
+
+![Sample walkthrough of archived conversations, trash and storage overview](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-en.gif)
+
+<details>
+<summary>Screenshots</summary>
+
+**Batch archive cleanup**
+
+![Archived conversations with batch selection, using sample data](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archives.png)
+
+**Restore or clear selected trash**
+
+![Trash with restore and permanent-delete actions, using sample data](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-trash.png)
+
+**File types and large files**
+
+![Storage overview with file types and large files, using sample data](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-storage.png)
+
+</details>
 
 ## Use
 
