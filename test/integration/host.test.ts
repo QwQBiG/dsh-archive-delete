@@ -529,6 +529,32 @@ test(`stock ${runtimeVersion}: default-depth normalization does not accept a cha
   } finally { await managed.close(); }
 });
 
+test(`stock ${runtimeVersion}: idle-release diagnostics identify a missing probe and recover without touching its live owners`, async t => {
+  const f = await fixture(t); const managed = managedAgents(f); const warnings: string[] = [];
+  try {
+    const handle = await managed.create('native-probe-owner', 'Private diagnostic title');
+    const agents = f.ctx.agents;
+    const incomplete = { get: agents.get.bind(agents), list: () => ({}),
+      isOwnedBy: agents.isOwnedBy.bind(agents), requireFactory: agents.requireFactory.bind(agents) };
+    let broken = true;
+    const context: HostContext = { get: name => name === 'agents' && broken ? incomplete : f.ctx.get(name),
+      fiber: f.ctx.fiber, waterfall: (event, request, next) => f.ctx.waterfall(event, request, next),
+      emit: (event, ...args) => f.ctx.emit(event, ...args), logger: { warn: message => warnings.push(message) } };
+    const adapter = await createDshAdapter(context, { home: f.home });
+    const group = await adapter.inspect(handle.agent.id);
+    const file = join(group.members[0]!.directory, 'session.v4.jsonl'); const before = await readFile(file);
+    assert.equal(await adapter.releaseIdle!(group), false); assert.equal(await adapter.releaseIdle!(group), false);
+    assert.equal(warnings.length, 1); assert.ok(warnings[0]!.includes(`host=${runtimeVersion} reason=agent-inventory.`));
+    for (const privateValue of [handle.agent.id, 'Private diagnostic title', f.home]) assert.equal(warnings[0]!.includes(privateValue), false);
+    assert.equal(f.ctx.agents.get(handle.agent.id), handle.agent); assert.equal(f.ctx.sessions.get(handle.agent.id), handle.agent.session);
+    assert.deepEqual(await readFile(file), before);
+    broken = false;
+    assert.equal(await adapter.releaseIdle!(group), true); assert.equal(warnings.length, 1);
+    assert.equal(f.ctx.agents.get(handle.agent.id), undefined); assert.equal(f.ctx.sessions.get(handle.agent.id), undefined);
+    assert.ok(await f.persistence.stat(handle.agent.id));
+  } finally { await managed.close(); }
+});
+
 test(`stock ${runtimeVersion}: idle status during maintenance and a queued inbox never authorize lifecycle release`, async t => {
   const f = await fixture(t); await f.create('hot-protected');
   const managed = managedAgents(f);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { RequestJournal, type RequestContext } from '../src/request-journal.js';
@@ -107,6 +107,58 @@ test('read-only receipt listings leave even unsafe temporary remnants untouched'
   assert.equal((await journal.incomplete()).length, 0);
   assert.equal((await journal.recent()).length, 1);
   assert.equal(await readFile(temporary, 'utf8'), 'not canonical');
+});
+
+test('recent ordering refreshes in-place receipt edits within one minute despite intervening local writes', async t => {
+  const { root, journal } = await fixture(t); const ids: string[] = [];
+  const base = Date.now() - 100_000;
+  for (let index = 0; index < 12; index++) {
+    const id = randomUUID(); ids.push(id);
+    await journal.begin(id, `original-${index}`, context()); await journal.complete(id, true);
+    const date = new Date(base + index * 1000); await utimes(join(root, 'receipts', `${id}.json`), date, date);
+  }
+  let now = 0;
+  const cached = new RequestJournal(root, () => now);
+  assert.deepEqual((await cached.recent()).map(item => item.operationId), ids.slice(-10).reverse());
+  const directory = join(root, 'receipts'); const before = await lstat(directory, { bigint: true });
+  const path = join(directory, `${ids[0]}.json`);
+  const rewritten = JSON.parse(await readFile(path, 'utf8'));
+  rewritten.result.items[0].message = 'Updated receipt';
+  await writeFile(path, `${JSON.stringify(rewritten)}\n`);
+  const promoted = new Date(Date.now() + 100_000); await utimes(path, promoted, promoted);
+  const after = await lstat(directory, { bigint: true });
+  assert.deepEqual([after.dev, after.ino, after.mtimeNs, after.ctimeNs], [before.dev, before.ino, before.mtimeNs, before.ctimeNs]);
+  now = 59_000;
+  assert.equal((await cached.recent()).some(item => item.operationId === ids[0]), false);
+  const local = randomUUID(); await cached.begin(local, 'local-update', context()); await cached.complete(local, true);
+  now = 60_000;
+  const refreshed = await cached.recent();
+  assert.equal(refreshed[0]?.operationId, ids[0]); assert.equal(refreshed[0]?.items[0]?.message, 'Updated receipt');
+  assert.ok(refreshed.some(item => item.operationId === local));
+  assert.equal((await cached.load(ids[0]!, 'original-0'))?.complete, true);
+});
+
+test('cached recent results reread contents and refill incomplete entries within one minute', async t => {
+  const { root, journal } = await fixture(t); const ids: string[] = [];
+  for (let index = 0; index < 11; index++) {
+    const id = randomUUID(); ids.push(id);
+    await journal.begin(id, `original-${index}`, context()); await journal.complete(id, true);
+    const date = new Date(1_700_000_000_000 + index * 1000); await utimes(join(root, 'receipts', `${id}.json`), date, date);
+  }
+  let now = 0; const cached = new RequestJournal(root, () => now);
+  await cached.recent();
+  const latest = join(root, 'receipts', `${ids.at(-1)}.json`);
+  const rewritten = JSON.parse(await readFile(latest, 'utf8'));
+  rewritten.result.items[0].message = 'Fresh displayed content';
+  await writeFile(latest, `${JSON.stringify(rewritten)}\n`);
+  assert.equal((await cached.recent())[0]?.items[0]?.message, 'Fresh displayed content');
+  const last = ids.at(-1)!;
+  const ctx = context();
+  await writeFile(latest, `${JSON.stringify({ ...rewritten, complete: false, ...ctx })}\n`);
+  assert.ok((await cached.recent()).every(item => item.operationId !== last));
+  now = 60_000;
+  const refreshed = await cached.recent();
+  assert.equal(refreshed.length, 10); assert.ok(refreshed.every(item => item.operationId !== last));
 });
 test('cancel intent uses trash selection context with a stable cancel result', async t => {
   const { root, journal } = await fixture(t); const id = randomUUID(); const ctx = context();

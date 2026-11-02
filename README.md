@@ -6,14 +6,14 @@
 
 Batch archive cleanup, recoverable trash, and file and folder usage inside DeepSeek Harness.
 
-`@qwqbig/dsh-archive-delete` · **v0.0.2** · macOS / Windows · DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5**, JSONL storage · [Apache-2.0](LICENSE)
+`@qwqbig/dsh-archive-delete` · **v0.0.3** · macOS / Windows · DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5**, JSONL storage · [Apache-2.0](LICENSE)
 
 ## Install
 
 Open **Plugins → Add plugin** in DSH Desktop and paste:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh-archive-delete-0.0.2.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz
 ```
 
 The package includes compiled files and is ready to install. [Installation guide](docs/installation.md)
@@ -59,7 +59,7 @@ A pending move stays in **Archived**. **Cancel waiting and review** opens a new 
 
 ## Updates
 
-For **v0.0.1**, paste the installation URL above into **Add plugin** once to upgrade to v0.0.2.
+For **v0.0.1**, paste the installation URL above into **Add plugin** once to upgrade to v0.0.3.
 
 The version row checks GitHub daily. Choose **Review update**, then **Confirm upgrade**. When prompted, fully quit DSH and reopen it to load the installed version. You can also add a newer Release URL through the same plugin manager.
 
