@@ -429,3 +429,89 @@ test('a transient peer resolution failure can recover on the next native lock at
   await writeFile(join(koffi, 'index.mjs'), 'export default { load() { return { func(_convention, name) { return () => name === "GetDriveTypeW" ? 3 : name === "WaitForSingleObject" ? 0 : 1; } }; } };');
   const held = await lockNamed(filename); await held.release();
 });
+
+async function idleLifecycleFixture() {
+  const f = await fixture();
+  const id = 'Private-owner'; await f.add(id);
+  const session = { header: f.snapshots.get(id)!.header };
+  const liveSessions = new Map([[id, session]]);
+  const agent = { id, session, status: 'idle', phase: { kind: 'idle' } as unknown, inbox: { hasPending: false } as unknown };
+  const liveAgents = new Map([[id, agent]]);
+  const effect = Symbol('synthetic lifecycle effect');
+  let disposed = 0; let flushed = 0;
+  const dispose = Object.assign(() => { disposed++; liveSessions.delete(id); liveAgents.delete(id); },
+    { [effect]: { label: `agentLoop.lifecycle(${id})` } });
+  const fiber = { _disposables: new Set([dispose]) as unknown };
+  const loopContext = { registry: { values: () => [{ fibers: new Set([fiber]) }] }, fiber };
+  const loop = { runtime: { ctx: loopContext } };
+  const agents = { get: (key: string) => liveAgents.get(key), list: (): unknown => [...liveAgents.values()],
+    isOwnedBy: () => false, requireFactory: () => ({ target: loop }) };
+  const sessionService = { get: (key: string) => liveSessions.get(key), flush: async () => { flushed++; return true; } };
+  const warnings: string[] = [];
+  Object.assign(f.ctx, { sessions: sessionService, agents, agentLoop: loop, fiber, logger: { warn: (message: string) => warnings.push(message) } });
+  const adapter = await createDshAdapter(f.ctx, { home: f.home, version: '0.2.1-rc.3', platform: 'darwin', effectSymbol: effect, lockExclusive: async () => {} });
+  const group = await adapter.inspect(id);
+  return { ...f, adapter, group, agent, agents, loop, fiber, sessionService, liveSessions, liveAgents, warnings,
+    disposed: () => disposed, flushed: () => flushed };
+}
+
+test('idle release still flushes and settles the verified native owner without diagnostic noise', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup);
+  assert.equal(await f.adapter.releaseIdle!(f.group), true);
+  assert.equal(f.flushed(), 1); assert.equal(f.disposed(), 1);
+  assert.equal(f.liveSessions.size, 0); assert.equal(f.liveAgents.size, 0);
+  assert.deepEqual(f.warnings, []);
+});
+
+test('missing idle-release capabilities have distinct bounded diagnostics and recover without replacing the adapter', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup);
+  delete f.ctx.agents;
+  assert.equal(await f.adapter.releaseIdle!(f.group), false);
+  assert.equal(await f.adapter.releaseIdle!(f.group), false);
+  assert.equal(f.warnings.length, 1); assert.match(f.warnings[0]!, /host=0\.2\.1-rc\.3 reason=agent-registry/);
+  f.ctx.agents = f.agents; delete f.ctx.agentLoop;
+  assert.equal(await f.adapter.releaseIdle!(f.group), false);
+  assert.equal(f.warnings.length, 2); assert.match(f.warnings[1]!, /reason=agent-loop/);
+  assert.equal(f.disposed(), 0); assert.equal(f.flushed(), 0);
+  f.ctx.agentLoop = f.loop;
+  assert.equal(await f.adapter.releaseIdle!(f.group), true);
+  assert.equal(f.disposed(), 1); assert.equal(f.warnings.length, 2);
+});
+
+test('idle owner-shape refusals identify the failing probe without exposing session data or disposing an owner', async t => {
+  const cases: [string, (f: Awaited<ReturnType<typeof idleLifecycleFixture>>) => void][] = [
+    ['agent-inventory', f => { f.agents.list = () => ({}); }],
+    ['agent-state', f => { f.agent.phase = undefined; }],
+    ['lifecycle-disposables', f => { f.fiber._disposables = {}; }],
+    ['lifecycle-owner-missing', f => { f.fiber._disposables = new Set([() => {}]); }],
+  ];
+  for (const [reason, change] of cases) await t.test(reason, async t => {
+    const f = await idleLifecycleFixture(); t.after(f.cleanup); change(f);
+    assert.equal(await f.adapter.releaseIdle!(f.group), false);
+    assert.equal(await f.adapter.releaseIdle!(f.group), false);
+    assert.equal(f.warnings.length, 1); assert.ok(f.warnings[0]!.includes(`reason=${reason}.`));
+    for (const privateValue of ['Private', f.home, '/project', 'no session logs were moved']) assert.equal(f.warnings[0]!.includes(privateValue), false);
+    assert.equal(f.liveSessions.size, 1); assert.equal(f.liveAgents.size, 1);
+    assert.equal(f.disposed(), 0); assert.equal(f.flushed(), 0);
+  });
+});
+
+test('a lost lifecycle probe during flush keeps the source-change guard and records the specific probe', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup);
+  f.sessionService.flush = async () => { f.fiber._disposables = {}; return true; };
+  await assert.rejects(f.adapter.releaseIdle!(f.group), { code: 'source-changed' });
+  assert.equal(f.disposed(), 0); assert.equal(f.liveSessions.size, 1);
+  assert.equal(f.warnings.length, 1); assert.match(f.warnings[0]!, /reason=lifecycle-disposables/);
+});
+
+test('routine active-session protection is not logged and a failing logger cannot authorize release', async t => {
+  const active = await idleLifecycleFixture(); t.after(active.cleanup);
+  active.agent.phase = { kind: 'maintenance' };
+  await assert.rejects(active.adapter.releaseIdle!(active.group), { code: 'active' });
+  assert.deepEqual(active.warnings, []); assert.equal(active.disposed(), 0);
+  const unavailable = await idleLifecycleFixture(); t.after(unavailable.cleanup);
+  unavailable.ctx.logger = { warn: () => { throw new Error('Private logger failure'); } };
+  unavailable.fiber._disposables = {};
+  assert.equal(await unavailable.adapter.releaseIdle!(unavailable.group), false);
+  assert.equal(unavailable.disposed(), 0); assert.equal(unavailable.liveSessions.size, 1);
+});

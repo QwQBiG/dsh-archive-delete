@@ -4,17 +4,17 @@
 
 ## Current results
 
-Package `0.0.2`, official DSH Desktop `0.2.1-rc.3` / `0.2.1-rc.5`, JSONL storage. Local runtime: Node `24.21.0`, pnpm `11.28.5`.
+Package `0.0.3`, official DSH Desktop `0.2.1-rc.3` / `0.2.1-rc.5`, JSONL storage. Local runtime: Node `24.21.0`, pnpm `11.28.5`.
 
 | Check | Recorded result |
 | --- | --- |
-| Unit/client/service suite | 276 passed of 283; 3 Windows-only and 4 Electron-only skips in plain Node on macOS |
-| Native host integration | 20 passed of 21; 1 Windows-only skip on macOS |
+| Unit/client/service suite | 287 passed of 294; 3 Windows-only and 4 Electron-only skips in plain Node on macOS |
+| Native host integration | 21 passed of 22; 1 Windows-only skip on macOS |
 | Build/type, docs and package checks | Passed |
-| macOS / Windows × rc.3 / rc.5 | [All four CI jobs passed](https://github.com/QwQBiG/dsh-archive-delete/actions/runs/41190749043), including native package installation and lifecycle |
+| macOS / Windows × rc.3 / rc.5 | [CI matrix](https://github.com/QwQBiG/dsh-archive-delete/actions/workflows/ci.yml), including native package installation and lifecycle |
 | Pack, checksums, update metadata and updater admission | Passed |
 | Isolated install, URL replacement, uninstall/reinstall | Passed; bundle registration and retained trash checked |
-| Installed rc.5 ASAR / Electron | 26 passed of 27 including native host and ASAR metadata checks; 1 Windows-only skip |
+| Installed rc.5 ASAR / Electron | 27 passed of 28 including native host and ASAR metadata checks; 1 Windows-only skip |
 | macOS Desktop UI | Isolated loading, diagnostic display and preview checked |
 
 Data tests use temporary profiles and synthetic conversations. Complete move/restore/purge flows are verified by native integration. Windows Desktop UI and physical whole-machine power-loss recovery remain unverified.
@@ -33,7 +33,7 @@ Data tests use temporary profiles and synthetic conversations. Complete move/res
 | Updates | Stable version selection, native profile ownership, pinned metadata, package checks and uncertain results |
 | Distribution | Compiled package, checksum agreement, bundle registration, replacement and retained data |
 
-Receipt-index measurements on a local 5,000-record fixture were about 24 ms for the first lookup and 0.8 ms median for warm lookups. Startup still inventories recovery records.
+Receipt-index measurements on a local 5,000-record fixture were about 27 ms for the first lookup, 0.74 ms median for warm lookups and 19 ms for an expired-index refresh. Startup still inventories recovery records.
 
 ## Reproduce
 
@@ -44,7 +44,7 @@ pnpm verify
 pnpm pack --pack-destination artifacts
 node scripts/release-artifacts.mjs artifacts
 node --import tsx scripts/check-update-package.mjs artifacts
-node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.0.2.tgz
+node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.0.3.tgz
 ```
 
 The package lifecycle command uses another temporary profile and local URL fixtures. Desktop UI checks are recorded separately from automated data tests.

@@ -54,13 +54,15 @@ Moves use the same volume and preserve original log bytes. The adapter applies w
 
 The staging parent entry is synced before logs move into it. Purge syncs member-file removals, member-directory removals and manifest removal before the trash parent and terminal journal. POSIX uses directory fsync; Windows provides process-interruption recovery without a whole-machine power-loss guarantee. Path-based deletion rechecks owned directory identities immediately before removal.
 
-Completed receipts retain identifiers/outcomes with titles removed. Recent-result lookup uses a warm index of ten completed records and validates displayed receipts. Initial inventory and startup recovery scale with history. Temporary-file cleanup runs explicitly at startup.
+Completed receipts retain identifiers/outcomes with titles removed. Recent-result lookup caches ten completed records and validates their contents on every read. The ordering index expires after one minute, so in-place edits are picked up on a later read even when the directory identity stays the same. Initial inventory and startup recovery scale with history. Temporary-file cleanup runs explicitly at startup.
 
 ## Native lifecycle and leases
 
 A confirmed manual move can release a wholly idle host-managed group through the native AgentLoop lifecycle. Admission checks ownership, input, maintenance, active tasks and children. The service then re-inspects membership/content and takes normal leases before moving. Pending requests get one startup attempt; manual re-review provides a fresh immediate-release attempt.
 
 Header comparisons normalize the host's omitted `delegationDepth` to its persisted default `0`. Other values and session identities remain part of revalidation.
+
+Unavailable idle-release probes log a fixed reason code and the host version, once per reason for each adapter instance. Agent inventory, phase/inbox, fiber effects and lifecycle ownership have distinct codes. Active work follows the normal per-item result path.
 
 macOS uses host flock handles. Windows uses the host JSONL semaphore names and reserves original plus relocated paths. Canonical local paths keep lease identities aligned. The plugin-store lease covers recovery and transition ownership for the process lifetime.
 

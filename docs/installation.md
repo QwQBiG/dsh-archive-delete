@@ -9,7 +9,7 @@ Requires official DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5**, JSONL storage, and ma
 Open **Plugins → Add plugin**, enter this URL, and enable the plugin:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh-archive-delete-0.0.2.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz
 ```
 
 The Release package contains compiled files. If DSH requests a restart, use **⌘Q / Quit** on macOS or **Exit/Quit** on Windows, including the tray menu when present, then reopen it.
@@ -47,7 +47,7 @@ Sizes are logical file bytes. The main total deduplicates verified paths and har
 
 ## Updates
 
-To upgrade from **v0.0.1**, enter the v0.0.2 URL at the top of this guide in **Plugins → Add plugin**. The manager replaces the existing installation. Subsequent upgrades use the version row.
+To upgrade from **v0.0.1**, enter the v0.0.3 URL at the top of this guide in **Plugins → Add plugin**. The manager replaces the existing installation. Subsequent upgrades use the version row.
 
 The version row provides **Check**, **Review update** and **Details**. GitHub checks run daily, with a one-minute manual interval. Failed checks retry after at least one hour and follow longer GitHub rate-limit windows.
 
@@ -64,7 +64,7 @@ For a manual upgrade, add the new versioned Release URL through **Add plugin** i
 Use Desktop's interface for ordinary installation. For a CLI-managed Desktop profile, quit DSH first:
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh-archive-delete-0.0.2.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz
 ```
 
 Check `<DSH_HOME>/profiles/desktop/package.json`. `dsh.profile.bundles` must contain the package name once. Add the entry if the CLI only installed the dependency, preserving the other fields:
@@ -86,7 +86,7 @@ Start DSH and open the management dialog. If a standalone CLI rejects the reserv
 The plugin component should be running and its management dialog should respond. A successful startup also logs:
 
 ```text
-[archive-delete] v0.0.2 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.0.3 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
 Doctor checks profile registration, package files, host version and storage access. Run it with Node 24+; substitute the actual home/profile/runtime:
@@ -120,15 +120,15 @@ Remove this package's entry from the same profile's `dsh.profile.bundles` if it 
 
 ## Download checksum
 
-Keep the matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh-archive-delete-0.0.2.tgz.sha256) beside a downloaded package:
+Keep the matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz.sha256) beside a downloaded package:
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.2.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.3.tgz.sha256
 ```
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.0.2.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.0.2.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.0.3.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.0.3.tgz.sha256
 ```
 
 ## Troubleshooting

@@ -6,14 +6,14 @@
 
 在 DeepSeek Harness 中批量清理归档、恢复会话，并查看文件和目录占用。
 
-`@qwqbig/dsh-archive-delete` · **v0.0.2** · macOS / Windows · DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5**、JSONL 存储 · [Apache-2.0](LICENSE)
+`@qwqbig/dsh-archive-delete` · **v0.0.3** · macOS / Windows · DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5**、JSONL 存储 · [Apache-2.0](LICENSE)
 
 ## 安装
 
 打开 DSH 桌面端的 **插件 → 添加插件**，粘贴：
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh-archive-delete-0.0.2.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz
 ```
 
 安装包已包含编译产物，可直接安装。[安装指南](docs/installation.zh-CN.md)
@@ -59,7 +59,7 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh
 
 ## 更新
 
-**v0.0.1** 用户请先在 **添加插件** 中粘贴上方安装 URL，升至 v0.0.2。
+**v0.0.1** 用户请先在 **添加插件** 中粘贴上方安装 URL，升至 v0.0.3。
 
 版本栏每天检查 GitHub。选择 **查看并升级**，再 **确认升级**；提示重启时，完整退出 DSH 后重新打开，加载已安装版本。也可在同一插件管理器中添加新版 Release URL。
 

@@ -6,6 +6,7 @@ import { assertPrivateDirectory, readBoundedJson, syncDirectory } from './filesy
 
 const UUID = /^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
 const STATUSES = new Set(['moved', 'pending', 'restored', 'purged', 'cancelled', 'skipped', 'failed']);
+const RECENT_INDEX_MAX_AGE_MS = 60_000;
 export interface RequestContext {
   preview: Preview;
   groups: Record<string, SessionGroup>;
@@ -73,7 +74,8 @@ export class RequestJournal {
   private tail: Promise<unknown> = Promise.resolve();
   private recentIndex: { id: string; mtime: number }[] | undefined;
   private indexedDirectory: string | undefined;
-  constructor(root: string) { this.directory = join(resolve(root), 'receipts'); }
+  private indexedAt = Number.NEGATIVE_INFINITY;
+  constructor(root: string, private readonly now: () => number = () => performance.now()) { this.directory = join(resolve(root), 'receipts'); }
   private path(id: string): string { return join(this.directory, `${requestId(id)}.json`); }
   private serialize<T>(work: () => Promise<T>): Promise<T> {
     const next = this.tail.then(work, work); this.tail = next.catch(() => {}); return next;
@@ -202,7 +204,11 @@ export class RequestJournal {
     return this.serialize(async () => {
       await this.directorySafe();
       const before = await this.directoryIdentity();
-      if (!this.recentIndex || this.indexedDirectory !== before) {
+      const now = this.now();
+      const age = now - this.indexedAt;
+      // Atomic writes change the directory identity. External in-place edits do
+      // not, so periodically refresh ordering without rescanning on every read.
+      if (!this.recentIndex || this.indexedDirectory !== before || age < 0 || age >= RECENT_INDEX_MAX_AGE_MS) {
         const names = (await readdir(this.directory)).filter(name => name.endsWith('.json'));
         const dated: { id: string; mtime: number }[] = [];
         // Bound filesystem concurrency; old completed receipts remain durable for idempotency.
@@ -223,6 +229,7 @@ export class RequestJournal {
         }
         this.recentIndex = completed;
         this.indexedDirectory = before === await this.directoryIdentity() ? before : undefined;
+        this.indexedAt = now;
       }
       const recent: BatchResult[] = [];
       // Always validate the actual displayed receipts, including after external edits.

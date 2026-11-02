@@ -14,7 +14,7 @@ pnpm verify
 pnpm pack --pack-destination artifacts
 node scripts/release-artifacts.mjs artifacts
 node --import tsx scripts/check-update-package.mjs artifacts
-node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.0.2.tgz
+node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.0.3.tgz
 ```
 
 `verify` 执行类型／构建、单元、原生集成、文档和包检查。源码变化时一并生成 `lib/`。数据测试使用临时 home/profile 和合成会话。

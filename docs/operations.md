@@ -48,7 +48,7 @@ Permanent deletion works on selected trash entries in the current process. It re
 
 Recovery checks observed paths and leases against recorded ownership. A missing original empty bucket is accepted for recorded cleanup; conflicting or unreadable data produces a diagnostic. Keep the affected entry and journals together when reporting an issue.
 
-Completed request receipts retain IDs/outcomes for replay. Listing reads recent results through a cached index; startup explicitly cleans temporary receipt files.
+Completed request receipts retain IDs/outcomes for replay. Listing rereads displayed contents and caches their order for up to one minute; the next lookup after expiry refreshes that order. Startup explicitly cleans temporary receipt files.
 
 ## Storage observations
 

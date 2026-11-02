@@ -14,7 +14,7 @@ pnpm verify
 pnpm pack --pack-destination artifacts
 node scripts/release-artifacts.mjs artifacts
 node --import tsx scripts/check-update-package.mjs artifacts
-node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.0.2.tgz
+node scripts/verify-package-lifecycle.mjs ./artifacts/qwqbig-dsh-archive-delete-0.0.3.tgz
 ```
 
 `verify` runs type/build, unit, native integration, documentation and package checks. Source changes include regenerated `lib/` files. Use a temporary home/profile and synthetic conversations for data tests.

@@ -9,7 +9,7 @@
 打开 **插件 → 添加插件**，输入以下 URL 并启用：
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh-archive-delete-0.0.2.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz
 ```
 
 Release 包已包含编译文件。提示重启时，macOS 使用 **⌘Q／退出**，Windows 使用 **退出**，驻留托盘时也从托盘菜单退出，再重新打开。
@@ -47,7 +47,7 @@ DSH 扫描使用宿主配置的位置，并排除已登记的项目目录；工�
 
 ## 更新
 
-从 **v0.0.1** 升级时，在 **插件 → 添加插件** 中输入本页顶部的 v0.0.2 URL，管理器会替换现有安装。后续升级使用版本栏。
+从 **v0.0.1** 升级时，在 **插件 → 添加插件** 中输入本页顶部的 v0.0.3 URL，管理器会替换现有安装。后续升级使用版本栏。
 
 版本栏提供 **检查更新**、**查看并升级** 和 **详情**。GitHub 每天检查一次，手动检查至少间隔一分钟；失败后至少一小时再试，并遵守 GitHub 更长的限流等待。
 
@@ -64,7 +64,7 @@ DSH 扫描使用宿主配置的位置，并排除已登记的项目目录；工�
 日常安装使用 Desktop 界面。通过 CLI 管理 Desktop profile 时，先退出 DSH：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh-archive-delete-0.0.2.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz
 ```
 
 检查 `<DSH_HOME>/profiles/desktop/package.json`，`dsh.profile.bundles` 中应包含一次包名。CLI 仅安装依赖时，补上该条目并保留其他字段：
@@ -86,7 +86,7 @@ dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/re
 插件组件应处于运行状态，管理弹窗应能响应。成功启动也会记录：
 
 ```text
-[archive-delete] v0.0.2 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.0.3 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
 Doctor 检查 profile 登记、包文件、宿主版本及存储访问。使用 Node 24+，替换为实际 home/profile/runtime：
@@ -120,15 +120,15 @@ dsh plugin --profile desktop remove @qwqbig/dsh-archive-delete
 
 ## 下载校验
 
-下载包旁保留配套的 [SHA-256 文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.2/qwqbig-dsh-archive-delete-0.0.2.tgz.sha256)：
+下载包旁保留配套的 [SHA-256 文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz.sha256)：
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.2.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.3.tgz.sha256
 ```
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.0.2.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.0.2.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.0.3.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.0.3.tgz.sha256
 ```
 
 ## 排错

@@ -2,6 +2,12 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
+## 0.0.3
+
+- Refresh recent-result ordering after one minute, including in-place receipt edits.
+- Identify unavailable idle-release probes with specific reason codes and the host version, recorded once per reason.
+- Verify probe failure and recovery against the native host while retaining live session owners until release can proceed.
+
 ## 0.0.2
 
 - Supports DSH Desktop `0.2.1-rc.3` and `0.2.1-rc.5` on macOS and Windows.
