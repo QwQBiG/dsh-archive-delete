@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fixture, present } from './fixtures.js';
 import { ArchiveService } from '../src/service.js';
 import { RequestJournal } from '../src/request-journal.js';
-import type { Action } from '../src/contracts.js';
+import { UnconfirmedMutationError, type Action } from '../src/contracts.js';
 
 async function perform(f: Awaited<ReturnType<typeof fixture>>, action: Action, ids: string[]) {
   const preview = await f.service.preview(action, ids); return f.service.execute(preview.id, randomUUID());
@@ -96,7 +96,8 @@ test('a durably published intent with a lost acknowledgement consumes its previe
   const journal = (f.service as unknown as { requests: RequestJournal }).requests;
   const begin = journal.begin.bind(journal);
   journal.begin = async (...args) => { await begin(...args); throw new Error('Synthetic post-publication sync error'); };
-  await assert.rejects(f.service.execute(preview.id, requestId), /post-publication/);
+  await assert.rejects(f.service.execute(preview.id, requestId), error => error instanceof UnconfirmedMutationError
+    && error.code === 'operation-failed' && !error.message.includes('post-publication'));
   assert.equal((await new RequestJournal(f.store.root).load(requestId))?.complete, false);
   await assert.rejects(f.service.execute(preview.id, randomUUID()), { code: 'preview-expired' });
   journal.begin = begin;

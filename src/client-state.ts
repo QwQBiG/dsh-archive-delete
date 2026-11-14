@@ -31,6 +31,9 @@ export interface ClientState {
 export class ClientTransportError extends Error {
   constructor(message: string) { super(message); this.name = 'ClientTransportError'; }
 }
+export class ClientUnconfirmedMutationError extends ClientTransportError {
+  constructor(public readonly code: string, message: string) { super(message); this.name = 'ClientUnconfirmedMutationError'; }
+}
 
 type Mutation =
   | { kind: 'execute'; previewId: string; requestId: string }
@@ -282,6 +285,7 @@ export class ArchiveClientController {
   }
 
   private async perform(mutation: Mutation): Promise<void> {
+    const wasUnconfirmed = this.uncertainMutation === mutation;
     this.update({ busy: true, error: null });
     try {
       const result = mutation.kind === 'execute'
@@ -301,7 +305,8 @@ export class ArchiveClientController {
         await this.preview('trash', [review.id]);
       }
     } catch (error) {
-      const uncertain = error instanceof ClientTransportError;
+      const outcome = error instanceof ArchiveError ? error.mutationOutcome : undefined;
+      const uncertain = error instanceof ClientTransportError || outcome === 'unconfirmed' || (wasUnconfirmed && outcome !== 'not-started');
       this.uncertainMutation = uncertain ? mutation : null;
       this.update({ busy: false, error: this.error(error, uncertain), uncertainRequest: uncertain });
     }
@@ -313,7 +318,7 @@ export class ArchiveClientController {
   });
 
   private error(error: unknown, uncertain: boolean): ClientError {
-    if (error instanceof ArchiveError) return { code: error.code, message: error.message, uncertain };
+    if (error instanceof ArchiveError || error instanceof ClientUnconfirmedMutationError) return { code: error.code, message: error.message, uncertain };
     return {
       code: uncertain ? 'outcome-unknown' : 'request-failed',
       message: error instanceof Error ? error.message : String(error), uncertain,

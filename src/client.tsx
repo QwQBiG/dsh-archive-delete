@@ -1,6 +1,6 @@
 import React, { useCallback, useSyncExternalStore } from 'react';
 import { API_PATH, PACKAGE_NAME, ArchiveError, type Action, type ApiRequest, type ArchiveApi, type BatchResult, type Overview, type Preview, type StorageOverview } from './contracts.js';
-import { ArchiveClientController, ClientTransportError } from './client-state.js';
+import { ArchiveClientController, ClientTransportError, ClientUnconfirmedMutationError } from './client-state.js';
 import { ArchiveDialog, CLIENT_CSS, CLIENT_NAMESPACE, en, zh, type NativePrimitives, type Translate } from './client-ui.js';
 import { UpdateClientController } from './update-client.js';
 import { UpdateCard } from './update-ui.js';
@@ -153,6 +153,11 @@ export function createArchiveApi(transport: typeof fetch = globalThis.fetch.bind
         try { envelope = await response.json(); }
         catch { if (abort.signal.aborted) throw abort.signal.reason; throw new ClientTransportError('DSH returned an unreadable response.'); }
         if (object(envelope) && envelope.ok === false && object(envelope.error) && typeof envelope.error.code === 'string' && typeof envelope.error.message === 'string') {
+          if (envelope.error.uncertain !== undefined && typeof envelope.error.uncertain !== 'boolean') throw new ClientTransportError('DSH returned an unexpected response.');
+          const mutation = body.action === 'execute' || body.action === 'cancelPending' || body.action === 'installUpdate';
+          if (mutation && (envelope.error.uncertain === true || (envelope.error.uncertain === undefined && envelope.error.code === 'operation-failed')))
+            throw new ClientUnconfirmedMutationError(envelope.error.code, envelope.error.message);
+          if (mutation && envelope.error.uncertain === false) throw new ArchiveError(envelope.error.code, envelope.error.message, 'not-started');
           throw new ArchiveError(envelope.error.code, envelope.error.message);
         }
         if (!response.ok || !object(envelope) || envelope.ok !== true || !accepts(envelope.value)) {

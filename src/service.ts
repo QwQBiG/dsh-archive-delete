@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  ArchiveError, type Action, type ArchiveApi, type BatchResult, type DshAdapter,
+  ArchiveError, UnconfirmedMutationError, type Action, type ArchiveApi, type BatchResult, type DshAdapter,
   type ItemResult, type Overview, type Preview, type PreviewItem, type SessionGroup,
 } from './contracts.js';
 import { TrashStore, groupFingerprint, type Operation, type OperationContext } from './storage.js';
@@ -18,7 +18,7 @@ const MESSAGE: Record<string, string> = {
 };
 export function safeError(error: unknown): { code: string; message: string } {
   if (error instanceof ArchiveError) return { code: error.code, message: error.message };
-  return { code: 'operation-failed', message: 'The operation could not complete. Its recorded state is available for recovery.' };
+  return { code: 'operation-failed', message: 'The operation could not complete. Review its current state before retrying.' };
 }
 function failure(id: string, title: string, error: unknown): ItemResult {
   const detail = safeError(error); return { id, title, status: 'failed', ...detail };
@@ -63,6 +63,14 @@ export class ArchiveService implements ArchiveApi {
       return work();
     };
     const task = this.tail.then(guarded, guarded); this.tail = task.catch(() => {}); return task;
+  }
+  private mutation<T>(work: (admit: () => void) => Promise<T>): Promise<T> {
+    let admitted = false;
+    return this.serialize(() => work(() => { admitted = true; })).catch(error => {
+      if (!admitted) throw error;
+      const detail = safeError(error);
+      throw new UnconfirmedMutationError(detail.code, detail.message);
+    });
   }
   /** Drain archive work before package replacement, without putting installation
    * inside the tail: HMR may await close() while the native manager still runs. */
@@ -237,12 +245,13 @@ export class ArchiveService implements ArchiveApi {
     });
   }
   async execute(previewId: string, requestId: string): Promise<BatchResult> {
-    return this.serialize(async () => {
+    return this.mutation(async admit => {
       await this.supported(); checkRequestId(requestId);
       const fingerprint = createHash('sha256').update(`execute:${previewId}`).digest('hex');
       let saved = await this.requests.load(requestId, fingerprint);
       if (saved?.complete) return saved.result;
       if (saved) {
+        admit();
         for (const op of await this.store.operations()) if (op.requestId === requestId && op.phase !== 'pending') await this.recover(op);
         saved = (await this.requests.load(requestId, fingerprint))!;
       }
@@ -250,11 +259,16 @@ export class ArchiveService implements ArchiveApi {
       if (saved) prepared = { preview: saved.preview!, groups: new Map(Object.entries(saved.groups!)), fingerprints: new Map(Object.entries(saved.fingerprints!)) };
       else {
         const candidate = this.previews.get(previewId);
-        if (!candidate || candidate.preview.expiresAt < Date.now()) throw new ArchiveError('preview-expired', 'The preview expired. Refresh and review the targets again.');
+        if (!candidate || candidate.preview.expiresAt < Date.now()) {
+          if ((await this.store.operations()).some(op => op.requestId === requestId))
+            throw new UnconfirmedMutationError('recovery-required', MESSAGE['recovery-required']!);
+          throw new ArchiveError('preview-expired', 'The preview expired. Refresh and review the targets again.', 'not-started');
+        }
         prepared = candidate;
         // Consume before publication: even a write that publishes then reports
         // an fsync error cannot leave this confirmation usable under a second ID.
         this.previews.delete(previewId);
+        admit();
         saved = await this.requests.begin(requestId, fingerprint, { preview: prepared.preview,
           groups: Object.fromEntries(prepared.groups), fingerprints: Object.fromEntries(prepared.fingerprints) });
       }
@@ -350,11 +364,12 @@ export class ArchiveService implements ArchiveApi {
     } finally { await held.lease.release(); }
   }
   async cancelPending(ids: string[], requestId: string): Promise<BatchResult> {
-    return this.serialize(async () => {
+    return this.mutation(async admit => {
       await this.supported(); checkRequestId(requestId); validateIds(ids);
       const fingerprint = createHash('sha256').update(`cancel:${JSON.stringify(ids)}`).digest('hex');
       let saved = await this.requests.load(requestId, fingerprint);
       if (saved?.complete) return saved.result;
+      admit();
       if (!saved || saved.cancelTargets === undefined) {
         const operations = await this.store.operations();
         const supersedes = (await this.requests.incomplete()).filter(item => item.requestId !== requestId && item.result.action === 'cancel'

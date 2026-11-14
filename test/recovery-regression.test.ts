@@ -5,7 +5,7 @@ import { appendFile, mkdir, readFile, readdir, rmdir, unlink, writeFile } from '
 import { join } from 'node:path';
 import { fixture, present } from './fixtures.js';
 import { ArchiveService } from '../src/service.js';
-import type { Action, ItemResult, SessionGroup } from '../src/contracts.js';
+import { UnconfirmedMutationError, type Action, type ItemResult, type SessionGroup } from '../src/contracts.js';
 import { RequestJournal } from '../src/request-journal.js';
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -50,7 +50,8 @@ for (const action of ['trash', 'restore', 'purge'] as const) {
       if (!injected && id === requestId) { injected = true; throw new Error('Synthetic failure after file transition and before result persistence'); }
       return record(id, item);
     };
-    await assert.rejects(f.service.execute(preview.id, requestId), /Synthetic failure/);
+    await assert.rejects(f.service.execute(preview.id, requestId), error => error instanceof UnconfirmedMutationError
+      && error.code === 'operation-failed' && !error.message.includes('Synthetic failure'));
     assert.equal((await f.store.operations()).some(operation => operation.requestId === requestId), true);
     const restarted = new ArchiveService(f.adapter, f.store); await restarted.initialize();
     const answer = await restarted.execute(preview.id, requestId);

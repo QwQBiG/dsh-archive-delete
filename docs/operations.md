@@ -22,6 +22,8 @@ Preview resolves selected IDs into parent/subagent groups and displays size, mem
 
 One preview authorizes one request. It is consumed before durable intent publication, including a publication error. The same request ID recovers the existing intent/result. Maintenance clears active previews and ignores late preview responses.
 
+An error after the request may have been recorded keeps the outcome unconfirmed. Use **Retry the same request**; a temporary refusal during retry keeps the original request available. If the service verifies that neither its receipt nor an associated operation exists, it returns to preview review instead.
+
 ## Move and pending requests
 
 1. Inspect the archived group and its activity.

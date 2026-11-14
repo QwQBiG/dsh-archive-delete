@@ -68,6 +68,7 @@ export const en = {
   reasonInitialization: 'Archive storage could not be initialized. Check the host diagnostics and reload the plugin.',
   reasonStoreBusy: 'Another DSH process owns this trash store. Close that instance before continuing.',
   reasonTransport: 'DSH could not return a valid response. Check the connection and refresh to review the current state.',
+  reasonOperation: 'The operation could not complete. Review its current state before retrying.',
   reasonDamaged: 'This record is incomplete or invalid. See details for the cause.',
   dataIssues: '{n} records or storage areas need attention', dataIssuesHint: 'These records are unavailable for selection. Expand details to see why.',
   storagePrevious: 'Showing the previous scan.',
@@ -161,6 +162,7 @@ export const zh: Record<TextKey, string> = {
   reasonInitialization: '回收站存储初始化失败，请检查宿主诊断后重新加载插件。',
   reasonStoreBusy: '其他 DSH 进程正在使用此回收站，请关闭相应实例后继续。',
   reasonTransport: 'DSH 未能返回有效响应，请检查连接并刷新，核对当前状态。',
+  reasonOperation: '操作未能完成，请刷新当前状态后再重试。',
   reasonDamaged: '此记录不完整或无效，可查看详情了解原因。',
   dataIssues: '{n} 条记录或存储区域需要检查', dataIssuesHint: '这些记录暂不可选，可展开详情查看原因。',
   storagePrevious: '上次扫描结果。',
@@ -211,6 +213,7 @@ export function localizeReason(code: string | undefined, message: string, t: Tra
     'path-conflict': 'reasonConflict', 'restore-conflict': 'reasonConflict', 'overlapping-targets': 'reasonOverlap',
     'store-busy': 'reasonStoreBusy',
     'request-failed': 'reasonTransport', 'list-failed': 'reasonTransport',
+    'operation-failed': 'reasonOperation',
     'invalid-session': 'reasonDamaged', 'corrupt-state': 'reasonDamaged', 'entry-unavailable': 'reasonDamaged',
     'update-in-progress': 'updateWaiting', 'update-restart-required': 'updateRestart',
   };
