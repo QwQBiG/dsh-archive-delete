@@ -39,8 +39,10 @@ function optionalText(value: unknown): boolean { return value === undefined || t
 function workspaces(value: unknown): boolean {
   return Array.isArray(value) && value.every(item => object(item) && identifier(item.id) && typeof item.title === 'string');
 }
+/** Display-only wire paths use '/' separators. Backslashes and colons can be
+ * literal POSIX filename characters; API actions still accept IDs, never paths. */
 function relativePath(value: unknown): boolean {
-  return typeof value === 'string' && value.length > 0 && !value.includes('\0') && !/^[/\\]|^[a-z]:/i.test(value) && !value.split(/[/\\]/).includes('..');
+  return typeof value === 'string' && value.length > 0 && !value.includes('\0') && !value.startsWith('/') && !value.split('/').includes('..');
 }
 function fileKinds(value: unknown, fileBytes: unknown, fileCount: unknown): boolean {
   if (value === undefined) return true;

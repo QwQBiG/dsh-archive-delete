@@ -84,7 +84,7 @@ The search-index category includes the configured SQLite database and its existi
 
 The scanner reads metadata through bounded directory traversal: 50,000 entries, depth 32 and a 5-second inspector budget. It yields between batches, supports cancellation and records skipped/changed/unavailable entries. The result carries its observation time and complete/partial status.
 
-The main total deduplicates canonical paths and verified file identities. Category totals may overlap; folder totals count file paths. File-type breakdowns use directory-component and extension rules for dependencies, build folders, version-control data, logs, media, archives, code/configuration, documents and other files. Type subtotals deduplicate within each category. Each large-file row includes its type.
+The main total deduplicates canonical paths and verified file identities. Category totals may overlap; folder totals count file paths. File-type breakdowns use directory-component and extension rules for dependencies, build folders, version-control data, logs, media, archives, code/configuration, documents and other files. Type subtotals deduplicate within each category. Each large-file row includes its type. Wire paths use `/` separators; native POSIX filenames retain literal colons and backslashes when displayed and classified. These paths are display data, while archive actions accept IDs.
 
 Storage UI shows compact category summaries, then file types, large files and folders on demand. A same-scope rescan keeps the previous timestamped observation while updating; a scope change clears it.
 
