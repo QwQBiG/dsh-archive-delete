@@ -40,6 +40,8 @@ Cancellation records the exact queued operation IDs. If it is interrupted, start
 
 Restoration returns the group to its original workspace in archived state. A missing workspace becomes Ungrouped. Existing destinations produce a conflict for that target.
 
+If an empty internal session bucket was removed while its logs were in trash or staging, restore or rollback recreates that bucket under the existing session-storage root. Project folders are not recreated.
+
 Permanent deletion works on selected trash entries in the current process. It removes their logs and recovery metadata and cannot be undone. A partial deletion reports the remaining state and supports a new explicit retry; only a complete remaining group can be restored.
 
 ## Journal recovery
