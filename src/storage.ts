@@ -169,6 +169,22 @@ export class TrashStore {
     if (!logs) throw new ArchiveError('missing-log', 'The session log is missing.');
     return names;
   }
+  /** Recreate recorded internal buckets, never project paths or the session root. */
+  private async sourceBuckets(group: SessionGroup): Promise<Map<string, () => Promise<void>>> {
+    await this.validateSource(group, true);
+    const unchangedRoot = await this.directoryGuard(this.sessionsRoot);
+    const checks = new Map<string, () => Promise<void>>();
+    for (const bucket of new Set(group.members.map(member => dirname(member.directory)))) {
+      await unchangedRoot();
+      try { await mkdir(bucket, { mode: 0o700 }); }
+      catch (error) { if (!(error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST')) throw error; }
+      const unchangedBucket = await this.directoryGuard(bucket);
+      checks.set(bucket, async () => { await unchangedRoot(); await unchangedBucket(); });
+    }
+    await unchangedRoot(); await this.sync(this.sessionsRoot);
+    await this.validateSource(group, true);
+    return checks;
+  }
   private async writeOperation(operation: Operation): Promise<void> { await atomicJson(this.operationPath(operation.id), operation); }
   async cleanTemporaryFiles(): Promise<void> {
     const clean = async (directory: string) => {
@@ -248,10 +264,12 @@ export class TrashStore {
       return;
     }
     await this.validateContainer(stage, op.group);
+    const buckets = await this.sourceBuckets(op.group);
     for (let i = op.group.members.length - 1; i >= 0; i--) {
       const m = op.group.members[i]!; const staged = join(stage, String(i));
       if (!await exists(staged)) continue;
       if (await exists(m.directory)) throw new ArchiveError('restore-conflict', 'Recovery would overwrite existing session data.');
+      await buckets.get(dirname(m.directory))!();
       await rename(staged, m.directory); await syncDirectory(dirname(m.directory));
     }
     await unlink(join(stage, 'manifest.json')).catch(e => { if (!isMissing(e)) throw e; });
@@ -450,10 +468,13 @@ export class TrashStore {
     const manifest = await this.manifest(entryId);
     for (const member of manifest.group.members) if (await exists(member.directory))
       throw new ArchiveError('restore-conflict', 'The original session location is already occupied.');
+    const buckets = await this.sourceBuckets(manifest.group);
     const op: Operation = { schema: 1, id: randomUUID(), entryId, phase: 'restoring', group: manifest.group, createdAt: Date.now(), moved: [], ...context };
     await this.writeOperation(op);
     for (const [i, member] of op.group.members.entries()) {
       const path = join(this.entry(entryId), String(i)); await this.validateContents(path);
+      await buckets.get(dirname(member.directory))!();
+      if (await exists(member.directory)) throw new ArchiveError('restore-conflict', 'The original session location is already occupied.');
       await rename(path, member.directory); await syncDirectory(dirname(member.directory)); await syncDirectory(this.entry(entryId));
       op.moved.push(i); await this.writeOperation(op);
     }
@@ -514,7 +535,7 @@ export class TrashStore {
     if ((await readdir(directory)).some(name => name !== 'manifest.json'))
       throw new ArchiveError('unknown-file', 'Unexpected data remains in the trash entry. Its manifest was retained.');
   }
-  /** Recheck each owned directory immediately before path-based deletion. Node
+  /** Recheck each owned directory immediately before a path mutation. Node
    * has no portable unlinkat; this does not promise immunity to a same-user
    * adversary changing a parent during the final filesystem syscall. */
   private async directoryGuard(path: string): Promise<() => Promise<void>> {
@@ -526,7 +547,7 @@ export class TrashStore {
       const current = await lstat(path, { bigint: true });
       if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== before.dev || current.ino !== before.ino
         || !samePath(await realpath(path), canonical))
-        throw new ArchiveError('unsafe-path', 'A trash directory changed during permanent deletion.');
+        throw new ArchiveError('unsafe-path', 'A data directory changed during this operation.');
     };
     await check(); return check;
   }

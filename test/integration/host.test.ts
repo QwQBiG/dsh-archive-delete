@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { access, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { createRequire, registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
@@ -51,6 +51,19 @@ const { SessionProjectionCache, projectionCacheDomainSpec } = await host('@deeps
 const { WorkspaceRegistry } = await host('@deepseek-ai/dsh-workspace');
 const jsonl = await host('@deepseek-ai/dsh-session-persistence-jsonl');
 const { HostConnectionService } = await host('@deepseek-ai/dsh-client-connection');
+
+test(`stock ${runtimeVersion}: restore rebuilds an empty internal bucket without recreating a removed project folder`, async t => {
+  const f = await fixture(t); await f.create('missing-restore-bucket');
+  const group = await f.adapter.inspect('missing-restore-bucket');
+  const directory = group.members[0]!.directory; const original = await readFile(join(directory, 'session.v4.jsonl'));
+  assert.equal((await f.execute('trash', [group.sessionId])).items[0]!.status, 'moved');
+  await rmdir(dirname(directory)); await rmdir(f.project);
+  const entry = (await f.store.list())[0]!;
+  assert.equal((await f.execute('restore', [entry.id])).items[0]!.status, 'restored');
+  assert.deepEqual(await readFile(join(directory, 'session.v4.jsonl')), original);
+  assert.equal(f.registry.requireState().archivedSessionIds.includes(group.sessionId), true);
+  await assert.rejects(access(f.project), { code: 'ENOENT' });
+});
 
 async function fixture(t: TestContext, compression = 'none') {
   const home = await realpath(await mkdtemp(join(tmpdir(), 'archive-native-')));
