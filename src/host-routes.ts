@@ -84,8 +84,10 @@ export function createRequestHandler(api: ArchiveApi): (request: Request) => Pro
     if (request.method !== 'POST') return new Response('method not allowed', { status: 405, headers: { allow: 'POST' } });
     const contentType = request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
     if (contentType !== 'application/json') return response({ ok: false, error: { code: 'invalid-request', message: 'Content-Type must be application/json.' } }, 415);
+    let archiveMutation = false;
     try {
       const input = parseApiRequest(await readRequest(request));
+      archiveMutation = input.action === 'execute' || input.action === 'cancelPending';
       let value: Extract<ApiResponse, { ok: true }>['value'];
       switch (input.action) {
         case 'list': value = await api.list(); break;
@@ -105,7 +107,8 @@ export function createRequestHandler(api: ArchiveApi): (request: Request) => Pro
       return response({ ok: true, value });
     } catch (error) {
       const detail = safeError(error);
-      return response({ ok: false, error: detail }, errorStatus(detail.code));
+      const outcome = archiveMutation && error instanceof ArchiveError ? error.mutationOutcome : undefined;
+      return response({ ok: false, error: { ...detail, ...(outcome ? { uncertain: outcome === 'unconfirmed' } : {}) } }, errorStatus(detail.code));
     }
   };
 }

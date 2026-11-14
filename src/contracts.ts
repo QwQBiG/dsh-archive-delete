@@ -62,7 +62,7 @@ export type ApiRequest =
   | { action: 'updates'; force: boolean }
   | { action: 'installUpdate'; candidateId: string; requestId: string }
   | { action: 'storage'; workspaceId?: string };
-export type ApiResponse = { ok: true; value: Overview | Preview | BatchResult | StorageOverview | UpdateOverview } | { ok: false; error: { code: string; message: string } };
+export type ApiResponse = { ok: true; value: Overview | Preview | BatchResult | StorageOverview | UpdateOverview } | { ok: false; error: { code: string; message: string; uncertain?: boolean } };
 export interface ArchiveApi {
   list(): Promise<Overview>;
   preview(action: Action, ids: string[]): Promise<Preview>;
@@ -88,5 +88,9 @@ export interface DshAdapter {
   restoreRegistry(group: SessionGroup): Promise<void>;
 }
 export class ArchiveError extends Error {
-  constructor(public readonly code: string, message: string) { super(message); this.name = 'ArchiveError'; }
+  constructor(public readonly code: string, message: string, public readonly mutationOutcome?: 'unconfirmed' | 'not-started') { super(message); this.name = 'ArchiveError'; }
+}
+/** A durable mutation may exist; only its original request can resolve the outcome. */
+export class UnconfirmedMutationError extends ArchiveError {
+  constructor(code: string, message: string) { super(code, message, 'unconfirmed'); this.name = 'UnconfirmedMutationError'; }
 }

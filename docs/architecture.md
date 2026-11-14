@@ -33,6 +33,16 @@ The owner-authenticated `/api/dsh-archive-delete` route accepts a JSON stream ca
 
 The server resolves paths and release assets. The client validates response fields, tracks request generations and reconciles uncertain mutation replies with the same request ID. Tab/page/sort changes clear selection. Maintenance invalidates in-flight previews. Confirmation expiry and ready/idle-release/protected counts come from the current preview.
 
+Archive mutation errors can carry an optional `error.uncertain` boolean:
+
+| Value | Meaning |
+| --- | --- |
+| `true` | Intent publication or later processing may have occurred; retry the original request ID. |
+| `false` | A validated lookup found no receipt or related operation for the expired preview's request; a new preview can be reviewed. |
+| Omitted | The error makes no statement about a previous attempt's outcome. |
+
+The service marks exceptions after possible durable admission as unconfirmed. A temporary refusal during replay keeps the earlier uncertainty. For older servers, `operation-failed` mutation errors are treated as unconfirmed. Read errors and recorded per-item outcomes retain their existing behavior.
+
 ## Data and transitions
 
 The store lease is acquired before data-area initialization. State lives under `<DSH_HOME>/archive-delete/`:
