@@ -11,6 +11,9 @@ export interface RequestContext {
   preview: Preview;
   groups: Record<string, SessionGroup>;
   fingerprints: Record<string, string>;
+  /** Queue operation identities captured before cancellation starts. */
+  cancelTargets?: Record<string, string[]>;
+  cancelSupersedes?: string[];
 }
 export interface RequestRecord {
   schema: 1;
@@ -20,6 +23,8 @@ export interface RequestRecord {
   preview?: Preview;
   groups?: Record<string, SessionGroup>;
   fingerprints?: Record<string, string>;
+  cancelTargets?: Record<string, string[]>;
+  cancelSupersedes?: string[];
   result: BatchResult;
 }
 function missing(error: unknown): boolean {
@@ -46,6 +51,15 @@ function validItem(value: unknown): value is ItemResult {
     && (value.code === undefined || typeof value.code === 'string')
     && (value.message === undefined || typeof value.message === 'string');
 }
+function validCancellationTargets(value: unknown, preview: unknown): boolean {
+  if (!object(value) || !object(preview) || !Array.isArray(preview.items) || Object.keys(value).length !== preview.items.length) return false;
+  return preview.items.every(item => {
+    if (!object(item) || typeof item.id !== 'string' || !Object.hasOwn(value, item.id)) return false;
+    const targets = value[item.id];
+    return Array.isArray(targets) && targets.length <= 1000 && targets.every(target => typeof target === 'string' && UUID.test(target))
+      && new Set(targets).size === targets.length;
+  });
+}
 function validate(value: unknown, id: string): asserts value is RequestRecord {
   if (!object(value) || value.schema !== 1 || value.requestId !== id || typeof value.fingerprint !== 'string'
     || typeof value.complete !== 'boolean' || !object(value.result) || value.result.operationId !== id
@@ -54,7 +68,7 @@ function validate(value: unknown, id: string): asserts value is RequestRecord {
     || new Set(value.result.items.map(item => item.id)).size !== value.result.items.length)
     throw new ArchiveError('corrupt-state', 'A request receipt is invalid.');
   if (value.complete) {
-    if (value.preview !== undefined || value.groups !== undefined || value.fingerprints !== undefined
+    if (value.preview !== undefined || value.groups !== undefined || value.fingerprints !== undefined || value.cancelTargets !== undefined || value.cancelSupersedes !== undefined
       || value.result.items.some(item => item.title !== ''))
       throw new ArchiveError('corrupt-state', 'A completed request receipt retains recovery content.');
   } else if (!object(value.preview) || typeof value.preview.id !== 'string'
@@ -66,6 +80,15 @@ function validate(value: unknown, id: string): asserts value is RequestRecord {
     || !object(value.groups) || !object(value.fingerprints)) {
     throw new ArchiveError('corrupt-state', 'An incomplete request receipt is invalid.');
   }
+  if (!value.complete && value.cancelTargets !== undefined) {
+    if (value.result.action !== 'cancel' || !validCancellationTargets(value.cancelTargets, value.preview))
+      throw new ArchiveError('corrupt-state', 'Cancellation queue identities are invalid.');
+  }
+  if (value.cancelSupersedes !== undefined && (value.result.action !== 'cancel' || value.cancelTargets === undefined
+    || !Array.isArray(value.cancelSupersedes) || value.cancelSupersedes.length > 1000
+    || !value.cancelSupersedes.every(target => typeof target === 'string' && UUID.test(target) && target !== id)
+    || new Set(value.cancelSupersedes).size !== value.cancelSupersedes.length))
+    throw new ArchiveError('corrupt-state', 'Superseded cancellation identities are invalid.');
 }
 
 /** Durable request progress. The host holds the plugin-store lease around its lifetime. */
@@ -149,6 +172,17 @@ export class RequestJournal {
   async load(id: string, fingerprint?: string): Promise<RequestRecord | undefined> {
     return this.serialize(async () => { await this.directorySafe(); return this.read(id, fingerprint); });
   }
+  /** Bind older incomplete cancellation intents once, before any queue changes. */
+  async bindCancellation(id: string, targets: Record<string, string[]>, supersedes: string[] = []): Promise<RequestRecord> {
+    return this.serialize(async () => {
+      await this.directorySafe(); const record = await this.read(id);
+      if (!record || record.result.action !== 'cancel') throw new ArchiveError('request-conflict', 'A cancellation intent is required.');
+      if (!record.complete && record.cancelTargets === undefined) {
+        record.cancelTargets = structuredClone(targets); record.cancelSupersedes = [...supersedes]; validate(record, id); await this.write(record);
+      }
+      return structuredClone(record);
+    });
+  }
   async record(id: string, item: ItemResult): Promise<RequestRecord> {
     return this.serialize(async () => {
       await this.directorySafe();
@@ -179,7 +213,7 @@ export class RequestJournal {
         code: 'operation-interrupted', message: 'The operation was interrupted before this target completed. Review it before retrying.' });
       record.result.items = record.preview!.items.map(item => ({ ...saved.get(item.id)!, title: '' }));
       record.result.counts = counts(record.result.items); record.complete = true;
-      delete record.preview; delete record.groups; delete record.fingerprints;
+      delete record.preview; delete record.groups; delete record.fingerprints; delete record.cancelTargets; delete record.cancelSupersedes;
       await this.write(record); await this.discardTemps(id); return structuredClone(record.result);
     });
   }
