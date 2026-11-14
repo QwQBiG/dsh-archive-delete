@@ -166,9 +166,12 @@ export class UpdateService {
     if (this.closed) throw new ArchiveError('update-stopping', 'The plugin is stopping.');
     if (!this.installPromise) await this.reconcileInstallation();
     if (this.installPromise || this.installedVersion !== this.options.host.loadedVersion) return this.overview();
-    const due = !this.cache || this.now() >= this.cache.nextCheckAt;
-    const rateLimited = this.cache?.check.code === 'update-rate-limited' && this.now() < this.cache.nextCheckAt;
-    const manual = force && !rateLimited && (!this.cache || this.now() - this.cache.checkedAt >= 60_000);
+    const now = this.now();
+    const rateLimited = this.cache?.check.code === 'update-rate-limited' && now < this.cache.nextCheckAt;
+    // A live clock correction invalidates an observation from the future, but
+    // must not shorten a server-provided retry deadline.
+    const due = !this.cache || now >= this.cache.nextCheckAt || (now < this.cache.checkedAt && !rateLimited);
+    const manual = force && !rateLimited && (!this.cache || now - this.cache.checkedAt >= 60_000);
     if (!this.checkPromise && (due || manual)) {
       const abort = new AbortController(); this.checkAbort = abort;
       const checking = (async () => {
