@@ -92,15 +92,17 @@ export function UpdateCard({ controller, Button, t, archiveBusy = false }: {
   const installError = Boolean(code && (uncertain || installation?.status === 'failed' || installation?.status === 'interrupted'));
   const status = installing ? t('updateInstalling') : restart ? t('updateRestart')
     : uncertain ? t('updateUnknownOutcome') : installation?.status === 'failed' ? t('updateFailed')
-    : installation?.status === 'interrupted' ? t('updateInterrupted') : installation?.status === 'installed' ? t('updateDone')
+    : installation?.status === 'interrupted' ? t('updateInterrupted')
     : code ? reason(code, t)
     : data?.availability === 'available' ? t('updateAvailable', { version: data.candidate!.version })
-    : data?.availability === 'current' ? t('updateCurrentStatus') : data?.availability === 'incompatible' ? t('updateIncompatible') : t('updateUnknownStatus');
+    : data?.availability === 'current' ? t('updateCurrentStatus') : data?.availability === 'incompatible' ? t('updateIncompatible')
+    : installation?.status === 'installed' ? t('updateDone') : t('updateUnknownStatus');
   const compactStatus = state.checking ? t('updateCheckingCompact') : installing ? t('updateInstallingCompact') : restart ? t('updateRestartCompact')
     : uncertain ? t('updateUncertainCompact') : installation?.status === 'failed' ? t('updateFailedCompact')
-    : installation?.status === 'interrupted' ? t('updateInterruptedCompact') : installation?.status === 'installed' ? t('updateDoneCompact')
+    : installation?.status === 'interrupted' ? t('updateInterruptedCompact')
     : code ? t('updateErrorCompact') : data?.availability === 'available' ? t('updateAvailable', { version: data.candidate!.version })
-    : data?.availability === 'current' ? t('updateCurrentCompact') : data?.availability === 'incompatible' ? t('updateIncompatibleCompact') : t('updateUnknownCompact');
+    : data?.availability === 'current' ? t('updateCurrentCompact') : data?.availability === 'incompatible' ? t('updateIncompatibleCompact')
+    : installation?.status === 'installed' ? t('updateDoneCompact') : t('updateUnknownCompact');
   const releaseLink = data?.candidate && <a href={data.candidate.releaseUrl} target="_blank" rel="noreferrer">{t('updateRelease')}</a>;
   return <section ref={container} className="dad-update" aria-label={t('updateTitle')} aria-busy={state.installing || state.checking}>
     <div className="dad-update-summary">
