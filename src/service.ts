@@ -4,7 +4,7 @@ import {
   type ItemResult, type Overview, type Preview, type PreviewItem, type SessionGroup,
 } from './contracts.js';
 import { TrashStore, groupFingerprint, type Operation, type OperationContext } from './storage.js';
-import { RequestJournal } from './request-journal.js';
+import { RequestJournal, type RequestRecord } from './request-journal.js';
 
 interface Prepared { preview: Preview; groups: Map<string, SessionGroup>; fingerprints: Map<string, string> }
 const REQUEST_ID = /^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
@@ -14,6 +14,7 @@ const MESSAGE: Record<string, string> = {
   busy: 'Another process holds this session. Nothing was moved.',
   'source-changed': 'Session data changed. Review a new preview before continuing.',
   'recovery-required': 'An interrupted operation needs recovery before this session can be changed.',
+  'cancel-review-required': 'An older cancellation has no queue identities. Confirm cancellation again before this queued session can run.',
 };
 export function safeError(error: unknown): { code: string; message: string } {
   if (error instanceof ArchiveError) return { code: error.code, message: error.message };
@@ -89,7 +90,22 @@ export class ArchiveService implements ArchiveApi {
         try { await this.recover(op); }
         catch (e) { this.startupFailures.push(failure(op.group.sessionId, op.group.title, e)); }
       }
-      for (const op of operations.filter(o => o.phase === 'pending')) {
+      // Cancellation intents take precedence over automatic pending moves. Keep
+      // failed cancellations incomplete so a later start can resume them.
+      const blockedCancellations = new Set<string>();
+      for (const request of (await this.requests.incomplete()).filter(item => item.result.action === 'cancel')) {
+        try { await this.resumeCancellation(request); }
+        catch (error) {
+          const saved = (await this.requests.load(request.requestId))!;
+          for (const item of request.preview!.items.filter(item => !saved.result.items.some(result => result.id === item.id))) {
+            const targets = saved.cancelTargets?.[item.id];
+            if (targets) targets.forEach(id => blockedCancellations.add(id));
+            else for (const op of operations) if (op.phase === 'pending' && op.group.sessionId === item.id) blockedCancellations.add(op.id);
+            this.startupFailures.push(failure(item.id, '', error));
+          }
+        }
+      }
+      for (const op of (await this.store.operations()).filter(o => o.phase === 'pending' && !blockedCancellations.has(o.id))) {
         try {
           if ((await this.store.operations()).some(o => o.phase !== 'pending' && o.group.sessionId === op.group.sessionId))
             throw new ArchiveError('recovery-required', MESSAGE['recovery-required']!);
@@ -116,7 +132,9 @@ export class ArchiveService implements ArchiveApi {
           this.startupFailures.push(failure(op.group.sessionId, op.group.title, e));
         }
       }
-      for (const request of await this.requests.incomplete()) await this.requests.complete(request.requestId, true);
+      for (const request of await this.requests.incomplete()) {
+        if (request.result.action !== 'cancel') await this.requests.complete(request.requestId, true);
+      }
       this.initialized = true;
     });
   }
@@ -335,21 +353,60 @@ export class ArchiveService implements ArchiveApi {
     return this.serialize(async () => {
       await this.supported(); checkRequestId(requestId); validateIds(ids);
       const fingerprint = createHash('sha256').update(`cancel:${JSON.stringify(ids)}`).digest('hex');
-      let saved = await this.requests.load(requestId, fingerprint); if (saved?.complete) return saved.result;
-      saved ??= await this.requests.begin(requestId, fingerprint, {
-        preview: { id: requestId, action: 'trash', expiresAt: Date.now(), items: ids.map(key => ({ id: key, title: '', sessionId: key, memberIds: [], sizeBytes: 0, disposition: 'ready' })) },
-        groups: {}, fingerprints: {},
-      }, 'cancel');
-      for (const key of ids) {
-        if (saved.result.items.some(item => item.id === key)) continue;
-        const pending = (await this.store.operations()).filter(op => op.phase === 'pending' && op.group.sessionId === key);
-        for (const op of pending) {
-          if (op.requestId) await this.requests.record(op.requestId, { id: op.targetId!, title: '', status: 'cancelled' });
-          await this.store.finish(op);
-        }
-        saved = await this.requests.record(requestId, { id: key, title: '', status: pending.length ? 'cancelled' : 'skipped' });
+      let saved = await this.requests.load(requestId, fingerprint);
+      if (saved?.complete) return saved.result;
+      if (!saved || saved.cancelTargets === undefined) {
+        const operations = await this.store.operations();
+        const supersedes = (await this.requests.incomplete()).filter(item => item.requestId !== requestId && item.result.action === 'cancel'
+          && item.cancelTargets === undefined && item.preview!.items.some(target => ids.includes(target.id))).map(item => item.requestId);
+        saved ??= await this.requests.begin(requestId, fingerprint, {
+          preview: { id: requestId, action: 'trash', expiresAt: Date.now(), items: ids.map(key => ({ id: key, title: '', sessionId: key, memberIds: [], sizeBytes: 0, disposition: 'ready' })) },
+          groups: {}, fingerprints: {}, cancelTargets: this.cancellationTargets(ids, operations), cancelSupersedes: supersedes,
+        }, 'cancel');
+        // A direct user retry can confirm the current queue for a legacy intent.
+        if (saved.cancelTargets === undefined) saved = await this.requests.bindCancellation(requestId, this.cancellationTargets(ids, operations), supersedes);
       }
-      return this.requests.complete(requestId);
+      return this.resumeCancellation(saved);
     });
+  }
+  private cancellationTargets(ids: string[], operations: readonly Operation[]): Record<string, string[]> {
+    return Object.fromEntries(ids.map(key => [key, operations.filter(op => op.phase === 'pending' && op.group.sessionId === key).map(op => op.id)]));
+  }
+  private async resumeCancellation(saved: RequestRecord): Promise<BatchResult> {
+    if (saved.cancelTargets === undefined) {
+      const remaining = saved.preview!.items.filter(item => !saved.result.items.some(result => result.id === item.id));
+      const pending = await this.store.operations();
+      // Old receipts cannot distinguish the original queue from a later user
+      // confirmation. Keep them paused until the user confirms cancellation.
+      if (remaining.some(item => pending.some(op => op.phase === 'pending' && op.group.sessionId === item.id)))
+        throw new ArchiveError('cancel-review-required', MESSAGE['cancel-review-required']!);
+      for (const item of remaining) saved = await this.requests.record(saved.requestId, { id: item.id, title: '', status: 'failed',
+        code: 'operation-interrupted', message: 'The earlier cancellation has no recorded outcome. Review the current session state.' });
+      return this.requests.complete(saved.requestId);
+    }
+    for (const item of saved.preview!.items) {
+      if (saved.result.items.some(previous => previous.id === item.id)) continue;
+      const targets = saved.cancelTargets![item.id]!;
+      const pending = (await this.store.operations()).filter(op => op.phase === 'pending' && op.group.sessionId === item.id && targets.includes(op.id));
+      for (const op of pending) {
+        if (op.requestId) await this.requests.record(op.requestId, { id: op.targetId!, title: '', status: 'cancelled' });
+        await this.store.finish(op);
+      }
+      saved = await this.requests.record(saved.requestId, { id: item.id, title: '', status: targets.length ? 'cancelled' : 'skipped' });
+    }
+    await this.retireLegacyCancellations(saved);
+    return this.requests.complete(saved.requestId);
+  }
+  private async retireLegacyCancellations(confirmation: RequestRecord): Promise<void> {
+    const ids = confirmation.preview!.items.map(item => item.id);
+    for (const requestId of confirmation.cancelSupersedes ?? []) {
+      let record = await this.requests.load(requestId);
+      if (!record || record.complete || record.result.action !== 'cancel' || record.cancelTargets !== undefined) continue;
+      for (const item of record.preview!.items.filter(item => ids.includes(item.id) && !record!.result.items.some(result => result.id === item.id))) {
+        record = await this.requests.record(record.requestId, { id: item.id, title: '', status: 'skipped', code: 'operation-interrupted',
+          message: 'A new cancellation confirmation replaced the earlier incomplete request.' });
+      }
+      if (record.result.items.length === record.preview!.items.length) await this.requests.complete(record.requestId);
+    }
   }
 }

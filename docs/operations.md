@@ -14,6 +14,8 @@
 
 Batch results count successes, pending items, skips and failures separately. Damaged records have their own notice while healthy records remain listed.
 
+Refreshing updates the displayed outcome from the same request receipt, including a cancellation in another window or startup processing. Other requests do not replace the local result.
+
 ## Confirmation
 
 Preview resolves selected IDs into parent/subagent groups and displays size, members, ready/idle-release/protected counts and expiry. It lasts five minutes. Changes to content, registration or relationships require a new preview.
@@ -29,6 +31,8 @@ One preview authorizes one request. It is consumed before durable intent publica
 5. Persist per-item outcomes and finish terminal journals.
 
 When a writer remains held, the request stays pending. **Cancel waiting and review** cancels that queue and opens a new preview. Cancelling or closing the preview leaves the original logs in place. Startup recovers interrupted operations, then checks each queued move once. Content changes or unarchiving end the old request and require another confirmation.
+
+Cancellation records the exact queued operation IDs. If it is interrupted, startup finishes cancelling those operations; later confirmations for the same conversation remain separate. A cancellation from an older build may lack these IDs. In that case, the affected queued move stays paused until you confirm cancellation again. Other queued conversations can still proceed.
 
 ## Restore and permanent deletion
 

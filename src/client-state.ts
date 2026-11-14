@@ -204,11 +204,13 @@ export class ArchiveClientController {
         this.knownTitles.set(item.sessionId, item.title);
       }
       const overview = { ...received, recentResults: received.recentResults.map(this.withKnownTitles) };
+      const refreshedResult = overview.recentResults.find(item => item.operationId === this.state.result?.operationId);
       if (this.state.storage.workspaceId && !overview.storageWorkspaces?.some(item => item.id === this.state.storage.workspaceId)) {
         this.cancelStorage();
         this.update({ storage: { workspaceId: '', scanning: false, result: null, error: null, cancelled: false } });
       }
-      this.update({ overview, page: Math.min(this.state.page, pageCount({ overview, tab: this.state.tab }) - 1), loading: false, error: this.uncertainMutation ? this.state.error : null });
+      this.update({ overview, ...(refreshedResult ? { result: refreshedResult } : {}),
+        page: Math.min(this.state.page, pageCount({ overview, tab: this.state.tab }) - 1), loading: false, error: this.uncertainMutation ? this.state.error : null });
       this.update({ selected: visibleSelection(this.state) });
       const recovered = this.uncertainMutation
         ? overview.recentResults.find((item) => item.operationId === this.uncertainMutation?.requestId)
