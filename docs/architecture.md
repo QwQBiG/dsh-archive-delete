@@ -96,6 +96,8 @@ A server-owned pin binds release/asset identity, version, size and SHA-256. Sour
 
 Confirmed bytes are retained in `updates/packages/`. DSH's manager replaces the same bundle in the current profile. Check and installation journals use a hash of the canonical profile directory. The archive queue drains before replacement; the install task remains outside that queue so self-unloading can complete.
 
+Each admitted request also has an atomic `<profile-hash>.<request-id>.request.json` receipt bound to its candidate and version. Publication writes this receipt, then the latest-state file, before calling the manager. Outcomes are saved to the request receipt first; startup uses that receipt if updating the latest-state copy was interrupted, and migrates legacy latest-only records. Replaying an older receipt leaves the latest state unchanged. Receipts are retained to keep old request IDs consumed, and lookups read only the requested file.
+
 Disposal cancels discovery/preflight. A delegated native installation keeps its own lifetime. Same-request rechecks inspect native installation state without replaying a recorded install. Observation intervals back off from 3 to 15 to 60 seconds. Running and installed versions determine activation/restart state.
 
 The package declares supported hosts through `engines.dsh`: `0.2.1-rc.3 || 0.2.1-rc.5`. Package admission accepts a bounded list of exact versions. Release metadata provides the default rc.3 asset and an exact-host rc.5 asset; both select the same package and checksum. Installed ASAR runtime manifests use a reader that validates the containing archive.

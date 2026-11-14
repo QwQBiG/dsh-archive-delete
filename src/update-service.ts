@@ -24,6 +24,16 @@ function candidate(value: unknown): value is UpdateCandidate {
     && Number.isSafeInteger(value.assetBytes) && Number(value.assetBytes) > 0 && Number(value.assetBytes) <= 16 * 1024 * 1024;
 }
 interface SavedInstallation extends UpdateInstallation { candidateId: string; startedAt: number }
+function savedInstallation(value: unknown): SavedInstallation {
+  if (!record(value) || typeof value.requestId !== 'string' || !UUID.test(value.requestId) || !bounded(value.candidateId, 512)
+    || typeof value.version !== 'string' || !VERSION.test(value.version)
+    || typeof value.startedAt !== 'number' || !Number.isSafeInteger(value.startedAt) || value.startedAt < 0
+    || typeof value.status !== 'string' || !['installing', 'installed', 'restart-required', 'failed', 'interrupted', 'unknown'].includes(value.status)
+    || (value.code !== undefined && (typeof value.code !== 'string' || value.code.length > 1000 || value.code.includes('\0'))))
+    throw new ArchiveError('update-state-unsafe', 'The saved update operation is invalid.');
+  return value as unknown as SavedInstallation;
+}
+type UpdateStateFile = 'check.json' | 'installation.json' | `${string}.request.json`;
 interface Cache { schema: 1; currentVersion: string; hostVersion: string; checkedAt: number; nextCheckAt: number; check: Omit<ReleaseCheck, 'pinned' | 'availability'> & { availability: UpdateOverview['availability'] } }
 interface Options {
   root: string;
@@ -54,12 +64,12 @@ class UpdateStore {
   }
   area(): string { return join(this.root, 'updates'); }
   packages(): string { return join(this.area(), 'packages'); }
-  async read(name: 'check.json' | 'installation.json'): Promise<unknown> {
+  async read(name: UpdateStateFile): Promise<unknown> {
     await assertPrivateDirectory(this.area());
     try { return await readBoundedJson(join(this.area(), `${this.profileKey}.${name}`), 128 * 1024); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
   }
-  async write(name: 'check.json' | 'installation.json', value: unknown): Promise<void> {
+  async write(name: UpdateStateFile, value: unknown): Promise<void> {
     await assertPrivateDirectory(this.root); await assertPrivateDirectory(this.area());
     const target = join(this.area(), `${this.profileKey}.${name}`); const temporary = join(this.area(), `.update-${randomUUID()}.tmp`);
     try {
@@ -69,6 +79,18 @@ class UpdateStore {
       try { await handle.writeFile(JSON.stringify(value)); await handle.sync(); } finally { await handle.close(); }
       await rename(temporary, target); await syncDirectory(this.area());
     } finally { await unlink(temporary).catch(() => {}); }
+  }
+  async request(requestId: string): Promise<SavedInstallation | undefined> {
+    if (!UUID.test(requestId)) throw new ArchiveError('invalid-request', 'A valid update request identifier is required.');
+    const value = await this.read(`${requestId}.request.json`);
+    if (value === undefined) return;
+    const saved = savedInstallation(value);
+    if (saved.requestId !== requestId) throw new ArchiveError('update-state-unsafe', 'The saved update request identity changed.');
+    return saved;
+  }
+  async writeRequest(value: SavedInstallation): Promise<void> {
+    savedInstallation(value);
+    await this.write(`${value.requestId}.request.json`, value);
   }
   async package(version: string, digest: string, bytes: Uint8Array): Promise<string> {
     if (!VERSION.test(version) || !/^[a-f\d]{64}$/.test(digest) || bytes.length > 16 * 1024 * 1024
@@ -131,18 +153,20 @@ export class UpdateService {
       && (cached.check.candidate === undefined || candidate(cached.check.candidate))) this.cache = cached as unknown as Cache;
     const saved = await this.store.read('installation.json');
     if (saved !== undefined) {
-      if (!record(saved) || !UUID.test(String(saved.requestId)) || !bounded(saved.candidateId, 512) || !VERSION.test(String(saved.version))
-        || typeof saved.startedAt !== 'number' || !Number.isSafeInteger(saved.startedAt) || saved.startedAt < 0
-        || !['installing', 'installed', 'restart-required', 'failed', 'interrupted', 'unknown'].includes(String(saved.status)))
-        throw new ArchiveError('update-state-unsafe', 'The saved update operation is invalid.');
-      this.installation = saved as unknown as SavedInstallation;
+      const latest = savedInstallation(saved);
+      const receipt = await this.store.request(latest.requestId);
+      if (receipt && (receipt.candidateId !== latest.candidateId || receipt.version !== latest.version))
+        throw new ArchiveError('update-state-unsafe', 'The saved update request binding changed.');
+      this.installation = receipt ?? latest;
       if (['installing', 'installed', 'restart-required', 'unknown'].includes(this.installation.status)) {
         this.installation = { ...this.installation, status: this.installedVersion === this.installation.version
           ? this.options.host.loadedVersion === this.installedVersion ? 'installed' : 'restart-required'
           : this.options.host.loadedVersion === this.installedVersion ? 'interrupted' : 'unknown' };
         if (this.installation.status === 'installed') delete this.installation.code;
-        await this.store.write('installation.json', this.installation);
       }
+      // The request receipt is authoritative if publication of the latest
+      // state was interrupted. Legacy latest-only records migrate here.
+      await this.saveInstallation(this.installation);
     }
     if (this.installedVersion !== this.options.host.loadedVersion || ['restart-required', 'unknown'].includes(this.installation?.status ?? '')) {
       const release = await this.options.beginUpdate(); release(true);
@@ -154,13 +178,17 @@ export class UpdateService {
     this.interval = setInterval(() => { void this.info().catch(() => {}); }, RETRY);
     this.interval.unref();
   }
-  private overview(): UpdateOverview {
+  private async saveInstallation(value: SavedInstallation): Promise<void> {
+    await this.store.writeRequest(value);
+    await this.store.write('installation.json', value);
+  }
+  private overview(installation = this.installation): UpdateOverview {
     return { currentVersion: this.options.host.loadedVersion, installedVersion: this.installedVersion, hostVersion: this.options.host.hostVersion,
       availability: this.cache?.check.availability ?? 'unknown', canInstall: this.options.host.canInstall && !this.closed,
       ...(this.cache ? { checkedAt: this.cache.checkedAt, nextCheckAt: this.cache.nextCheckAt,
         ...(this.cache.check.candidate ? { candidate: this.cache.check.candidate } : {}), ...(this.cache.check.code ? { code: this.cache.check.code } : {}) } : {}),
-      ...(this.installation ? { installation: { requestId: this.installation.requestId, version: this.installation.version, status: this.installation.status,
-        ...(this.installation.code ? { code: this.installation.code } : {}) } } : {}) };
+      ...(installation ? { installation: { requestId: installation.requestId, version: installation.version, status: installation.status,
+        ...(installation.code ? { code: installation.code } : {}) } } : {}) };
   }
   async info(force = false): Promise<UpdateOverview> {
     if (this.closed) throw new ArchiveError('update-stopping', 'The plugin is stopping.');
@@ -211,9 +239,34 @@ export class UpdateService {
       await this.reconcileInstallation();
       return this.overview();
     }
+    const previous = await this.store.request(requestId);
+    if (previous && previous.candidateId !== candidateId) throw new ArchiveError('update-request-conflict', 'This request belongs to a different update.');
+    // Another confirmation can enter while its receipt is being read. Repeat
+    // admission before either replaying an old result or starting native work.
+    if (this.activeRequest?.requestId === requestId) {
+      if (this.activeRequest.candidateId !== candidateId) throw new ArchiveError('update-request-conflict', 'This request belongs to a different update.');
+      return this.installPromise!;
+    }
+    if (this.installation?.requestId === requestId) {
+      if (this.installation.candidateId !== candidateId) throw new ArchiveError('update-request-conflict', 'This request belongs to a different update.');
+      if (this.installPromise) return this.installPromise;
+      if (this.closed) throw new ArchiveError('update-stopping', 'The plugin is stopping.');
+      await this.reconcileInstallation(); return this.overview();
+    }
     if (this.closed || !this.options.host.canInstall) throw new ArchiveError('update-unavailable', 'The native plugin manager is unavailable.');
     if (this.installPromise || this.installedVersion !== this.options.host.loadedVersion
       || ['installing', 'restart-required', 'unknown'].includes(this.installation?.status ?? '')) throw new ArchiveError('update-in-progress', 'An update is already running or waiting for a restart.');
+    if (previous) {
+      // A request intent without the latest-state publication never reached
+      // the manager. Keep that UUID consumed after an interrupted admission.
+      if (previous.status === 'installing') {
+        previous.status = 'interrupted'; await this.store.writeRequest(previous);
+        if (this.installPromise || this.installedVersion !== this.options.host.loadedVersion
+          || ['installing', 'restart-required', 'unknown'].includes(this.installation?.status ?? ''))
+          throw new ArchiveError('update-in-progress', 'An update is already running or waiting for a restart.');
+      }
+      return this.overview(previous);
+    }
     if (this.cache?.check.availability !== 'available' || this.cache.check.candidate?.id !== candidateId)
       throw new ArchiveError('update-changed', 'Check updates again and review the current release.');
     const reviewed = this.cache.check.candidate;
@@ -240,11 +293,12 @@ export class UpdateService {
     if (saved.status === status && saved.code === undefined) return;
     this.installation = { ...saved, status };
     delete this.installation.code;
-    await this.store.write('installation.json', this.installation);
+    await this.saveInstallation(this.installation);
   }
   private async runInstall(reviewed: UpdateCandidate, candidateId: string, requestId: string): Promise<UpdateOverview> {
     let release: ((restartRequired?: boolean) => void) | undefined;
     let managerCalled = false;
+    let recordedOutcome: SavedInstallation | undefined;
     const abort = new AbortController(); this.installAbort = abort;
     const budget = setTimeout(() => abort.abort(new ArchiveError('update-timeout', 'Update verification exceeded its time budget.')), 30_000);
     const checkStopped = () => {
@@ -267,7 +321,7 @@ export class UpdateService {
       release = await this.options.beginUpdate();
       if (this.closed) throw new ArchiveError('update-stopping', 'The plugin stopped before installation.');
       this.installation = { requestId, candidateId, version: reviewed.version, status: 'installing', startedAt: this.now() };
-      await this.store.write('installation.json', this.installation);
+      await this.saveInstallation(this.installation);
       if (this.closed) throw new ArchiveError('update-stopping', 'The plugin stopped before installation.');
       checkStopped(); clearTimeout(budget);
       managerCalled = true;
@@ -277,19 +331,31 @@ export class UpdateService {
         ? result.status === 'installed' ? 'installed' : result.status === 'restart-required' ? 'restart-required' : 'unknown'
         : result.status === 'failed' && this.installedVersion === this.options.host.loadedVersion ? 'failed' : 'unknown';
       this.installation = { ...this.installation, status, ...(result.code ? { code: result.code } : {}) };
+      await this.store.writeRequest(this.installation);
+      recordedOutcome = this.installation;
       await this.store.write('installation.json', this.installation);
       release(status === 'restart-required' || status === 'unknown' || this.installedVersion !== this.options.host.loadedVersion);
       release = undefined;
       return this.overview();
     } catch (error) {
+      // Once the canonical result is durable, failure to refresh the latest
+      // state's copy must not turn a completed attempt into an unknown one.
+      if (recordedOutcome) {
+        this.installation = recordedOutcome;
+        release?.(recordedOutcome.status === 'restart-required' || recordedOutcome.status === 'unknown'
+          || this.installedVersion !== this.options.host.loadedVersion);
+        release = undefined;
+        return this.overview();
+      }
       let changed = managerCalled;
       try { this.installedVersion = (await this.options.host.installed()).version; changed ||= this.installedVersion !== this.options.host.loadedVersion; } catch { /* Uncertain disk state stays protected. */ }
-      if (this.installation?.requestId === requestId || managerCalled) {
-        this.installation = { requestId, candidateId, version: reviewed.version, startedAt: this.installation?.startedAt ?? this.now(),
-          status: changed ? 'unknown' : 'failed', code: errorCode(error) };
-        await this.store.write('installation.json', this.installation);
-      }
-      release?.(changed); release = undefined;
+      try {
+        if (this.installation?.requestId === requestId || managerCalled) {
+          this.installation = { requestId, candidateId, version: reviewed.version, startedAt: this.installation?.startedAt ?? this.now(),
+            status: changed ? 'unknown' : 'failed', code: errorCode(error) };
+          await this.saveInstallation(this.installation);
+        }
+      } finally { release?.(changed); release = undefined; }
       if (managerCalled) return this.overview();
       throw error;
     } finally { clearTimeout(budget); if (this.installAbort === abort) this.installAbort = undefined; release?.(true); }
