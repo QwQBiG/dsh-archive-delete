@@ -68,6 +68,8 @@ macOS uses host flock handles. Windows uses the host JSONL semaphore names and r
 
 ## Storage observations
 
+The search-index category includes the configured SQLite database and its existing `-wal`, `-shm` and `-journal` files, including locations outside DSH home. It measures these exact files without scanning their parent directory.
+
 The adapter resolves configured DSH roots and registered workspaces. DSH scans exclude project directories and separately categorized descendants. Workspace scans recheck the selected registration/path and compare exclusion sets after scanning.
 
 The scanner reads metadata through bounded directory traversal: 50,000 entries, depth 32 and a 5-second inspector budget. It yields between batches, supports cancellation and records skipped/changed/unavailable entries. The result carries its observation time and complete/partial status.

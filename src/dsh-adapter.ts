@@ -13,6 +13,7 @@ import {
 } from './contracts.js';
 import { assertCanonicalStoragePath, assertLocalStoragePath, isWithin, samePath } from './filesystem.js';
 import type { UsageRoot } from './storage-usage.js';
+import { SQLITE_SIDECAR_SUFFIXES } from './storage-sqlite.js';
 
 /** The small, version-pinned structural boundary around DSH's runtime services. */
 interface Header extends JsonObject { id: string; version: number; createdAt: number }
@@ -343,17 +344,19 @@ export async function getStorageSources(ctx: HostContext, workspaceId?: string):
     root('settings', property(settings, 'root')),
     root('profiles', home ? join(home, 'profiles') : undefined),
     root('spill', property(spill, 'root')),
-    { ...root('search', storagePath(queryPath), queryPath === ':memory:' ? 'in-memory' : 'root-unresolved'), file: true },
+    { ...root('search', storagePath(queryPath), queryPath === ':memory:' ? 'in-memory' : 'root-unresolved'), file: true, sqliteSidecars: true },
     root('other', home),
   ];
+  const sourcePaths = (item: UsageRoot): string[] => item.path
+    ? [item.path, ...(item.sqliteSidecars ? SQLITE_SIDECAR_SUFFIXES.map(suffix => `${item.path}${suffix}`) : [])] : [];
   // Every category owns its configured subtree. Parent summaries omit known
   // descendants, so cache and other do not count those paths a second time.
   for (const item of roots) if (item.path && !item.file) {
-    const descendants = roots.flatMap(candidate => candidate.path && isWithin(item.path!, candidate.path) ? [candidate.path] : []);
+    const descendants = roots.flatMap(candidate => sourcePaths(candidate).filter(path => isWithin(item.path!, path)));
     const excludes = [...new Set(descendants)].filter(path => !descendants.some(parent => parent !== path && isWithin(parent, path)));
     if (excludes.length) item.excludePaths = excludes;
   }
-  const protectedPaths = [pluginRoot, ...roots.filter(item => item.id !== 'other').map(item => item.path)]
+  const protectedPaths = [pluginRoot, ...roots.filter(item => item.id !== 'other').flatMap(sourcePaths)]
     .filter((path): path is string => path !== undefined);
   const isInternal = (path: string, boundary: string) => samePath(path, boundary) || isWithin(boundary, path);
   const userHome = resolve(homedir());
