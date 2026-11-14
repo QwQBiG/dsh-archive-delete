@@ -146,7 +146,8 @@ test('storage API sends only registered IDs to the gateway and forwards cancella
   assert.equal(returned.categories[1]!.fileBytes, null);
   assert.equal(sent[0]!.url, 'https://example.test/dsh/api/dsh-archive-delete');
   assert.equal(sent[0]!.init.credentials, 'same-origin');
-  assert.equal(sent[0]!.init.signal, abort.signal);
+  assert.ok(sent[0]!.init.signal instanceof AbortSignal);
+  assert.equal(sent[0]!.init.signal.aborted, false);
   assert.deepEqual(JSON.parse(String(sent[0]!.init.body)), { action: 'storage', workspaceId: 'project-1' });
   assert.ok(!String(sent[0]!.init.body).includes('path'));
 });

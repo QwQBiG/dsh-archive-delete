@@ -118,32 +118,50 @@ function isUpdateOverview(value: unknown): value is UpdateOverview {
   return true;
 }
 
+export interface ArchiveApiOptions { timeoutMs?: number }
+
 /** Calls only the authenticated, same-origin DSH gateway; neither paths nor credentials are accepted. */
-export function createArchiveApi(transport: typeof fetch = globalThis.fetch.bind(globalThis), baseUri?: string): ArchiveApi {
+export function createArchiveApi(transport: typeof fetch = globalThis.fetch.bind(globalThis), baseUri?: string, options: ArchiveApiOptions = {}): ArchiveApi {
   const base = baseUri ?? document.baseURI;
   const endpoint = new URL(API_PATH.replace(/^\//, ''), base).href;
+  const timeoutMs = options.timeoutMs ?? 60_000;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647) throw new RangeError('Invalid gateway request timeout.');
   const request = async <T,>(body: ApiRequest, accepts: (value: unknown) => value is T, signal?: AbortSignal): Promise<T> => {
-    let response: Response;
+    if (signal?.aborted) throw signal.reason;
+    const abort = new AbortController();
+    let rejectInterrupted!: (reason: unknown) => void;
+    const interrupted = new Promise<never>((_resolve, reject) => { rejectInterrupted = reject; });
+    const stop = (reason: unknown) => { rejectInterrupted(reason); abort.abort(reason); };
+    const cancel = () => stop(signal?.reason);
+    signal?.addEventListener('abort', cancel, { once: true });
+    const timer = setTimeout(() => stop(new ClientTransportError('The connection to DSH timed out.')), timeoutMs);
     try {
-      response = await transport(endpoint, {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body),
-        ...(signal ? { signal } : {}),
-      });
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      throw new ClientTransportError('The connection to DSH was interrupted.');
-    }
-    let envelope: unknown;
-    try { envelope = await response.json(); }
-    catch (error) { if (signal?.aborted) throw error; throw new ClientTransportError('DSH returned an unreadable response.'); }
-    if (object(envelope) && envelope.ok === false && object(envelope.error) && typeof envelope.error.code === 'string' && typeof envelope.error.message === 'string') {
-      throw new ArchiveError(envelope.error.code, envelope.error.message);
-    }
-    if (!response.ok || !object(envelope) || envelope.ok !== true || !accepts(envelope.value)) {
-      throw new ClientTransportError('DSH returned an unexpected response.');
-    }
-    return envelope.value;
+      // A timeout ends the wait for a reply. An admitted host mutation may still
+      // finish; the controller keeps its IDs for status checks and exact replay.
+      const operation = (async () => {
+        let response: Response;
+        try {
+          response = await transport(endpoint, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body), signal: abort.signal,
+          });
+        } catch {
+          if (abort.signal.aborted) throw abort.signal.reason;
+          throw new ClientTransportError('The connection to DSH was interrupted.');
+        }
+        let envelope: unknown;
+        try { envelope = await response.json(); }
+        catch { if (abort.signal.aborted) throw abort.signal.reason; throw new ClientTransportError('DSH returned an unreadable response.'); }
+        if (object(envelope) && envelope.ok === false && object(envelope.error) && typeof envelope.error.code === 'string' && typeof envelope.error.message === 'string') {
+          throw new ArchiveError(envelope.error.code, envelope.error.message);
+        }
+        if (!response.ok || !object(envelope) || envelope.ok !== true || !accepts(envelope.value)) {
+          throw new ClientTransportError('DSH returned an unexpected response.');
+        }
+        return envelope.value;
+      })();
+      return await Promise.race([operation, interrupted]);
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
   };
   return {
     list: () => request({ action: 'list' }, isOverview),
