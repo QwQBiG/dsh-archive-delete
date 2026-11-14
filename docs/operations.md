@@ -75,6 +75,8 @@ Storage scans have their own cancellation lifetime. They carry observation time,
 
 Check and installation journals are profile-scoped under `updates/`; verified packages stay in `updates/packages/`. Same-request checks read native installation state without repeating a recorded manager call. Polling backs off from 3 to 15 to 60 seconds.
 
+Each confirmed installation keeps its own receipt across later attempts and restarts. Rechecking an older request returns its recorded outcome; an active or unresolved newer installation keeps archive changes paused. Existing latest-only installation records migrate on startup.
+
 Before replacement, archive work drains and new mutations pause. Unloading cancels verification before delegation; the native manager owns an admitted installation. Startup reconciles the saved target with the installed and loaded versions.
 
 [Installation and troubleshooting](installation.md) · [Architecture](architecture.md) · [Verification](acceptance.md)
