@@ -347,15 +347,36 @@ export async function getStorageSources(ctx: HostContext, workspaceId?: string):
     { ...root('search', storagePath(queryPath), queryPath === ':memory:' ? 'in-memory' : 'root-unresolved'), file: true, sqliteSidecars: true },
     root('other', home),
   ];
+  // Match physical containment as well as configured spellings. On POSIX a
+  // plain directory can live below an aliased ancestor (for example /var).
+  // Keep the configured roots unchanged so the scanner still rejects leaf links.
+  const observedPaths = new Map<string, Promise<string>>();
+  const observedPath = (path: string): Promise<string> => {
+    let observed = observedPaths.get(path);
+    if (!observed) { observed = realpath(path).catch(() => path); observedPaths.set(path, observed); }
+    return observed;
+  };
   const sourcePaths = (item: UsageRoot): string[] => item.path
     ? [item.path, ...(item.sqliteSidecars ? SQLITE_SIDECAR_SUFFIXES.map(suffix => `${item.path}${suffix}`) : [])] : [];
-  // Every category owns its configured subtree. Parent summaries omit known
-  // descendants, so cache and other do not count those paths a second time.
-  for (const item of roots) if (item.path && !item.file) {
-    const descendants = roots.flatMap(candidate => sourcePaths(candidate).filter(path => isWithin(item.path!, path)));
-    const excludes = [...new Set(descendants)].filter(path => !descendants.some(parent => parent !== path && isWithin(parent, path)));
-    if (excludes.length) item.excludePaths = excludes;
-  }
+  const configuredPaths = roots.flatMap(sourcePaths);
+  const assignExclusions = async (projects: string[] = []): Promise<void> => {
+    const candidates = [...new Set([...configuredPaths, ...projects])];
+    const physical = new Map(await Promise.all(candidates.map(async path => [path, await observedPath(path)] as const)));
+    for (const item of roots) if (item.path && !item.file) {
+      const canonicalRoot = physical.get(item.path)!;
+      const descendants = candidates.flatMap(path => {
+        const locations: string[] = [];
+        if (isWithin(item.path!, path)) locations.push(join(canonicalRoot, relative(item.path!, path)));
+        const canonical = physical.get(path)!;
+        if (isWithin(canonicalRoot, canonical)) locations.push(canonical);
+        return locations;
+      });
+      const excludes = [...new Set(descendants)].filter(path => !descendants.some(parent => parent !== path && isWithin(parent, path)));
+      if (excludes.length) item.excludePaths = excludes;
+      else delete item.excludePaths;
+    }
+  };
+  await assignExclusions();
   const protectedPaths = [pluginRoot, ...roots.filter(item => item.id !== 'other').flatMap(sourcePaths)]
     .filter((path): path is string => path !== undefined);
   const isInternal = (path: string, boundary: string) => samePath(path, boundary) || isWithin(boundary, path);
@@ -365,15 +386,21 @@ export async function getStorageSources(ctx: HostContext, workspaceId?: string):
   if (workspaceId === undefined) {
     // Registered project folders require an explicit workspace scan even when
     // they live below DSH_HOME. Metadata enumeration does not read the project.
-    const projects = getStorageWorkspaces(ctx).flatMap(workspace => {
+    const physicalBoundaries = await Promise.all(protectedPaths.map(observedPath));
+    const physicalHome = home === undefined ? undefined : await observedPath(home);
+    const physicalUserHome = await observedPath(userHome);
+    const projectCandidates = getStorageWorkspaces(ctx).flatMap(workspace => {
       const path = storagePath(registeredStorageWorkspace(ctx, workspace.id)?.path);
       return path && !protectedWorkspace(path) ? [path] : [];
     });
-    for (const item of roots) if (item.path && !item.file) {
-      const paths = [...(item.excludePaths ?? []), ...projects.filter(path => isWithin(item.path!, path))];
-      const minimal = [...new Set(paths)].filter(path => !paths.some(parent => parent !== path && isWithin(parent, path)));
-      if (minimal.length) item.excludePaths = minimal;
-    }
+    const projects = (await Promise.all(projectCandidates.map(async path => {
+      const physical = await observedPath(path);
+      const protectedPhysical = samePath(physical, parse(physical).root) || samePath(physical, physicalUserHome)
+        || isWithin(physical, physicalUserHome) || (physicalHome !== undefined && samePath(physical, physicalHome))
+        || physicalBoundaries.some(boundary => isInternal(physical, boundary));
+      return protectedPhysical ? [] : [path];
+    }))).flat();
+    await assignExclusions(projects);
     return roots;
   }
   if (!workspaceId || workspaceId.length > 512 || workspaceId.includes('\0')) throw new ArchiveError('invalid-request', 'A registered workspace ID is required.');
