@@ -17,9 +17,10 @@ const codeNames = new Set(['dockerfile', 'makefile', 'gnumakefile', 'cmakelists.
 const documentNames = new Set(['readme', 'license', 'licence', 'notice', 'changelog', 'authors', 'copying']);
 
 /** Recognized relative folders take precedence over extensions. The leaf name
- * is never treated as a directory, and both platform separators are accepted. */
-export function classifyStorageFile(relativePath: string): FileKind {
-  const parts = relativePath.toLowerCase().split(/[/\\]/).filter(Boolean);
+ * is never a directory. Native POSIX scans preserve literal backslashes; the
+ * default also accepts Windows-style paths from portable callers. */
+export function classifyStorageFile(relativePath: string, pathStyle: 'portable' | 'posix' = 'portable'): FileKind {
+  const parts = relativePath.toLowerCase().split(pathStyle === 'posix' ? '/' : /[/\\]/).filter(Boolean);
   const name = parts.pop() ?? '';
   if (parts.some(part => versionControl.has(part))) return 'version-control';
   if (parts.some(part => dependencies.has(part))) return 'dependencies';

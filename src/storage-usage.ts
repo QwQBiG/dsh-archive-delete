@@ -204,7 +204,7 @@ export async function scanStorage(roots: UsageRoot[], options: UsageScanOptions 
       if (stat.size < 0n || stat.size > BigInt(Number.MAX_SAFE_INTEGER)) { category.counters.unsupported++; issue(category, 'size-unrepresentable', rel); return; }
       const bytes = Number(stat.size); const key = pathKey(canonicalFor(rel));
       const identity = stat.ino > 0n && stat.dev > 0n ? `${stat.dev}:${stat.ino}` : undefined;
-      const kind = classifyStorageFile(rel);
+      const kind = classifyStorageFile(rel, process.platform === 'win32' ? 'portable' : 'posix');
       const classificationKey = identity ? `identity:${identity}` : `path:${key}`;
       category.fileCount++; category.counters.files++; fileCount++;
       category.referencedBytes = add(category.referencedBytes!, bytes); referencedBytes = add(referencedBytes, bytes);
