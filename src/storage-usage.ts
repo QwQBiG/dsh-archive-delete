@@ -1,9 +1,10 @@
 import { lstat, opendir, realpath } from 'node:fs/promises';
 import type { BigIntStats } from 'node:fs';
-import { basename, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { assertCanonicalStoragePath, assertLocalStoragePath, isWithin, samePath } from './filesystem.js';
 import { classifyStorageFile, preferredFileKind, type FileKind } from './storage-classification.js';
+import { SQLITE_SIDECAR_SUFFIXES } from './storage-sqlite.js';
 
 export interface UsageRoot {
   id: string; kind: string; label?: string; path?: string; unavailableReason?: string; readOnly: true;
@@ -11,6 +12,8 @@ export interface UsageRoot {
   excludePaths?: string[];
   /** Measure exactly this regular file, never its parent. Omitted means directory-only. */
   file?: true;
+  /** Include SQLite's exact optional -wal, -shm and -journal siblings; never scan the parent. */
+  sqliteSidecars?: true;
 }
 export interface UsageFile { relativePath: string; sizeBytes: number; source: 'unknown'; kind?: FileKind }
 /** Mutually exclusive within a category; separate categories may overlap. */
@@ -104,15 +107,43 @@ export async function scanStorage(roots: UsageRoot[], options: UsageScanOptions 
     const folders = new Map<string, UsageDirectory>();
     const observations: { path: string; relativePath: string; signature: string }[] = [];
     const rootIsFile = root.file === true;
-    let rootPath: string; let canonicalRoot: string; let rootDevice: bigint; let rootSignature: string; let excludes: string[];
+    let rootPath: string; let canonicalRoot: string; let rootDevice: bigint; let rootSignature: string | undefined; let excludes: string[];
     try {
+      if (root.sqliteSidecars && !rootIsFile) throw Object.assign(new Error('SQLite sidecars require a regular-file root.'), { code: 'unsafe-root' });
       assertLocalStoragePath(root.path); rootPath = resolve(root.path);
-      const before = await lstat(rootPath, { bigint: true });
+      let anchorPath = rootPath;
+      let before: BigIntStats;
+      try { before = await lstat(anchorPath, { bigint: true }); }
+      catch (error) {
+        if (!root.sqliteSidecars || code(error) !== 'ENOENT') throw error;
+        // An interrupted or manually removed database can leave sidecars behind.
+        // Keep measuring those exact files rather than hiding them with exclusions.
+        let remaining: { path: string; stat: BigIntStats } | undefined;
+        let invalidAnchor: { path: string; link: boolean } | undefined;
+        for (const suffix of SQLITE_SIDECAR_SUFFIXES) {
+          try {
+            const path = `${rootPath}${suffix}`; const stat = await lstat(path, { bigint: true });
+            if (stat.isSymbolicLink() || !stat.isFile()) { invalidAnchor ??= { path, link: stat.isSymbolicLink() }; continue; }
+            remaining = { path, stat }; break;
+          } catch (candidateError) { if (code(candidateError) !== 'ENOENT') throw candidateError; }
+        }
+        if (!remaining) {
+          if (invalidAnchor) {
+            if (invalidAnchor.link) category.counters.symlinks++; else category.counters.unsupported++;
+            issue(category, invalidAnchor.link ? 'link-skipped' : 'special-file-skipped', basename(invalidAnchor.path));
+            throw Object.assign(new Error('No regular SQLite file remains.'), { code: 'unsafe-root' });
+          }
+          throw error;
+        }
+        anchorPath = remaining.path; before = remaining.stat;
+        issue(category, 'entry-disappeared', basename(rootPath)); category.counters.changed++;
+      }
       if (before.isSymbolicLink() || (rootIsFile ? !before.isFile() : !before.isDirectory())) throw Object.assign(new Error('Unsafe root.'), { code: 'unsafe-root' });
-      canonicalRoot = await realpath(rootPath); await assertCanonicalStoragePath(rootPath, canonicalRoot);
-      const after = await lstat(rootPath, { bigint: true });
+      const canonicalAnchor = await realpath(anchorPath); await assertCanonicalStoragePath(anchorPath, canonicalAnchor);
+      canonicalRoot = samePath(anchorPath, rootPath) ? canonicalAnchor : join(dirname(canonicalAnchor), basename(rootPath));
+      const after = await lstat(anchorPath, { bigint: true });
       if ((rootIsFile ? !after.isFile() : !after.isDirectory()) || after.isSymbolicLink() || signature(before) !== signature(after)) throw Object.assign(new Error('Changed root.'), { code: 'root-changed' });
-      rootDevice = after.dev; rootSignature = signature(after);
+      rootDevice = after.dev; rootSignature = samePath(anchorPath, rootPath) ? signature(after) : undefined;
       if ((root.excludePaths?.length ?? 0) > 128) throw Object.assign(new Error('Too many exclusions.'), { code: 'unsafe-exclusion' });
       excludes = (root.excludePaths ?? []).map(path => {
         assertLocalStoragePath(path); const normalized = resolve(path);
@@ -121,24 +152,28 @@ export async function scanStorage(roots: UsageRoot[], options: UsageScanOptions 
         return isWithin(rootPath, normalized) ? join(canonicalRoot, relative(rootPath, normalized)) : normalized;
       });
       category.fileBytes = 0; category.referencedBytes = 0;
-      for (const known of measuredRoots) if (samePath(known.path, canonicalRoot)
-        || (isWithin(known.path, canonicalRoot) && !excluded(known.excludes, canonicalRoot))
-        || (isWithin(canonicalRoot, known.path) && !excluded(excludes, known.path))) {
-        category.overlaps.push(known.id); categories.find(item => item.id === known.id)!.overlaps.push(root.id);
+      const ownedPaths = [canonicalRoot, ...(root.sqliteSidecars ? SQLITE_SIDECAR_SUFFIXES.map(suffix => `${canonicalRoot}${suffix}`) : [])];
+      for (const ownedPath of ownedPaths) for (const known of measuredRoots) if (samePath(known.path, ownedPath)
+        || (isWithin(known.path, ownedPath) && !excluded(known.excludes, ownedPath))
+        || (isWithin(ownedPath, known.path) && !excluded(excludes, known.path))) {
+        if (!category.overlaps.includes(known.id)) category.overlaps.push(known.id);
+        const other = categories.find(item => item.id === known.id)!;
+        if (!other.overlaps.includes(root.id)) other.overlaps.push(root.id);
       }
-      measuredRoots.push({ id: root.id, path: canonicalRoot, excludes });
+      for (const path of ownedPaths) measuredRoots.push({ id: root.id, path, excludes });
     } catch (error) {
       category.status = code(error) === 'ENOENT' ? 'missing' : 'unavailable';
       category.issues.push({ code: code(error) }); continue;
     }
 
-    const canonicalFor = (rel: string) => rootIsFile ? canonicalRoot : join(canonicalRoot, rel === '.' ? '' : rel);
-    const inspect = async (path: string, rel: string): Promise<BigIntStats | undefined> => {
+    const canonicalFor = (rel: string) => rootIsFile ? join(dirname(canonicalRoot), rel) : join(canonicalRoot, rel === '.' ? '' : rel);
+    const inspect = async (path: string, rel: string, optional = false): Promise<BigIntStats | undefined> => {
       if (!await checkpoint(category)) return undefined;
       entries++; category.counters.entries++;
+      let observed = false;
       try {
-        const before = await lstat(path, { bigint: true });
-        if (samePath(path, rootPath) && signature(before) !== rootSignature) {
+        const before = await lstat(path, { bigint: true }); observed = true;
+        if (samePath(path, rootPath) && rootSignature !== undefined && signature(before) !== rootSignature) {
           category.counters.changed++; issue(category, 'root-changed', rel); return undefined;
         }
         if (before.isSymbolicLink()) { category.counters.symlinks++; issue(category, 'link-skipped', rel); return undefined; }
@@ -156,6 +191,7 @@ export async function scanStorage(roots: UsageRoot[], options: UsageScanOptions 
         observations.push({ path, relativePath: rel, signature: signature(after) });
         return after;
       } catch (error) {
+        if (optional && !observed && code(error) === 'ENOENT') return undefined;
         if (code(error) === 'ENOENT') category.counters.changed++; else category.counters.unreadable++;
         issue(category, code(error) === 'ENOENT' ? 'entry-disappeared' : 'entry-unreadable', rel); return undefined;
       }
@@ -201,13 +237,14 @@ export async function scanStorage(roots: UsageRoot[], options: UsageScanOptions 
       category.largestFiles.sort((a, b) => b.sizeBytes - a.sizeBytes || a.relativePath.localeCompare(b.relativePath));
       category.largestFiles.length = Math.min(category.largestFiles.length, largestLimit);
     };
-    const walk = async (path: string, rel: string, depth: number): Promise<void> => {
+    const walk = async (path: string, rel: string, depth: number, optional = false): Promise<void> => {
       if (excluded(excludes, canonicalFor(rel))) {
         if (await checkpoint(category)) { entries++; category.counters.entries++; category.counters.excluded++; }
         return;
       }
-      const stat = await inspect(path, rel); if (!stat) return;
+      const stat = await inspect(path, rel, optional); if (!stat) return;
       if (stat.isFile()) { addFile(rel, stat); return; }
+      if (rootIsFile) { category.counters.unsupported++; issue(category, 'special-file-skipped', rel); return; }
       category.counters.directories++;
       if (depth > maxDepth) { category.counters.depthLimit++; issue(category, 'depth-limit', rel); return; }
       let directory;
@@ -225,7 +262,9 @@ export async function scanStorage(roots: UsageRoot[], options: UsageScanOptions 
       } catch (error) { category.counters.unreadable++; issue(category, 'directory-unreadable', rel); }
       finally { if (directory) await directory.close().catch(() => {}); }
     };
-    await walk(rootPath, rootIsFile ? basename(canonicalRoot) : '.', 0);
+    await walk(rootPath, rootIsFile ? basename(canonicalRoot) : '.', 0, root.sqliteSidecars === true && rootSignature === undefined);
+    if (root.sqliteSidecars) for (const suffix of SQLITE_SIDECAR_SUFFIXES)
+      await walk(`${rootPath}${suffix}`, `${basename(canonicalRoot)}${suffix}`, 0, true);
     // A scan is an observation window, not a snapshot. Recheck counted identities
     // so concurrent writes/removals are disclosed instead of called complete.
     for (const observation of observations) {
