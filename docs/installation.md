@@ -20,18 +20,20 @@ Install the plugin in the profile you use. Desktop normally uses `desktop`, whil
 
 Open **Manage archives, trash and storage** in plugin details, or **Move to trash** in an archived conversation's menu.
 
+Use the tabs and refresh control at the top of the dialog. The current operation result and alerts that need attention appear above the list.
+
 | View | Action |
 | --- | --- |
 | Archived | Select conversations, review their subagents and confirm the move to trash |
 | Pending restart | Review a fresh attempt to move now, or cancel the request |
-| Trash | Restore selected groups or confirm permanent deletion |
+| Trash | Restore selected conversations, or choose **Delete permanently** and confirm separately |
 | Storage overview | Scan DSH or a selected workspace |
 
 Select up to 100 targets at a time. Select-all covers the current page, and changing the page, tab or sort clears your selection. You can keep the default order or sort largest first.
 
 DSH can release idle conversations and move them without a restart. Running tasks, pending input or another process holding a session can leave a group pending or blocked; check the result for the reason. To try a pending move again, choose **Cancel waiting and review**. This cancels the old request and opens a fresh confirmation.
 
-Restored conversations return to their original workspace and stay archived. If that workspace is gone, they appear under Ungrouped. Any damaged records are listed separately with an explanation.
+Restored conversations return to their original workspace and stay archived. If that workspace is gone, they appear under Ungrouped. Damaged records show a notice with expandable details.
 
 Trash stays until you clear it. Permanent deletion removes the selected conversation logs, dedicated subagent logs and recovery records, and cannot be undone. Shared attachments, spill files and project files stay in their own locations.
 
@@ -39,7 +41,7 @@ Trash stays until you clear it. Permanent deletion removes the selected conversa
 
 Choose **Scan DSH storage**, or pick a registered workspace and choose **Scan selected workspace**. Scanning starts when you press the button. Use **Refresh workspace list** to update the choices or **Cancel scan** to stop a scan.
 
-The category list shows where space is used. Expand a category to see large files, top-level folders and scan notes. File types come from directory names and extensions: dependencies, build folders, version-control data, logs, media, archives, code/configuration, documents and other files. Each large file has a type label.
+The summary shows the measured total and flags partial results. Expand a category or the workspace's **File types**, **Largest files** or **Top-level folders** sections to see what uses the space. Expand **Statistics details** for scan notes.
 
 A DSH scan covers the host's configured storage locations and excludes registered project directories. To inspect a project, select its workspace instead. When you scan the same location again, the previous result and timestamp stay visible until the new result is ready. If you cancel or the scan fails, that result remains marked as an earlier observation. Choosing a different scope clears it.
 
@@ -49,7 +51,7 @@ Sizes use the logical length of each file. The overall total counts verified dup
 
 If you use **v0.0.1**, enter the v0.0.4 URL above in **Plugins → Add plugin**. The manager replaces the existing installation. After that, you can upgrade through the version row.
 
-The version row has **Check**, **Review update** and **Details**. The plugin checks GitHub daily; manual checks must be at least one minute apart. After a failure, it waits at least one hour before retrying, or longer if GitHub requires it.
+The version row at the bottom of the management dialog is also available in plugin details. It has **Check**, **Review update** and **Details**. The plugin checks GitHub daily. Manual checks must be at least one minute apart. After a failure, it waits at least one hour before retrying, or longer if GitHub requires it.
 
 Choose **Review update**, read the release notes, then **Confirm upgrade**. The plugin verifies the package and asks DSH's manager to replace it in the current profile. If the installed version differs from the running version, fully quit and reopen DSH to load it.
 
@@ -148,7 +150,7 @@ Get-Content .\qwqbig-dsh-archive-delete-0.0.4.tgz.sha256
 
 ## Diagnostics and deletion history
 
-The management dialog shows one line for local idle-release readiness. Expand it to see the checks and reason codes, or choose **Refresh** to check again. When no sessions are loaded, the session-specific checks remain untested.
+Expand **Help and diagnostics** below the list for the host's idle-release checks, retention notes and the previous operation result. Choose **Refresh** to run the host checks again. When no sessions are loaded, session-specific checks remain untested.
 
 In **Trash**, expand **Recent permanent deletions** to see conversation IDs, confirmation times and sizes. It shows up to 200 records from the last 30 days and stays readable when archive operations are unavailable. See [operations](operations.md) for retention and recovery details.
 
