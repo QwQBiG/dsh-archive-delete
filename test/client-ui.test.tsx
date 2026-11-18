@@ -126,7 +126,9 @@ test('partial storage reports retain unknown bytes and scan notes without per-fi
 });
 
 test('archive and trash size sort controls render native selects in either language', async () => {
-  const controller = new ArchiveClientController(api);
+  const controller = new ArchiveClientController({ ...api, list: async () => ({ ...overview, trash: [
+    { id: 'trash-1', sessionId: 'session-2', title: 'Trashed conversation', sizeBytes: 512, memberCount: 1, trashedAt: 1000 },
+  ] }) });
   await controller.open(); controller.setSort('size-desc');
   for (const tab of ['archived', 'trash'] as const) {
     controller.setTab(tab);
@@ -333,7 +335,9 @@ test('live capability status is compact, localized and separate from confirmatio
       const props = { controller, primitives, t };
       const html = renderToStaticMarkup(<ArchiveDialogView {...props} state={controller.getSnapshot()} />);
       assert.ok(html.includes(t(status === 'available' ? 'idleAvailable' : status === 'unavailable' ? 'idleUnavailable' : 'idleUnverified')));
-      assert.match(html, /<details class="dad-capability"><summary>/);
+      assert.match(html, /<details class="dad-info dad-help"><summary>/);
+      assert.ok(html.indexOf('dad-capability') > html.indexOf('dad-help'));
+      assert.ok(html.indexOf('dad-tabs') < html.indexOf('dad-capability'));
       if (status === 'unavailable') assert.ok(html.includes(language === 'zh' ? '代理循环与工厂的运行时身份不一致' : 'share a verifiable runtime'));
       else assert.ok(!html.includes(language === 'zh' ? '身份不一致' : 'do not share'));
       const confirmation = renderToStaticMarkup(<ArchiveDialogView {...props} state={{ ...controller.getSnapshot(), preview }} />);
@@ -343,16 +347,20 @@ test('live capability status is compact, localized and separate from confirmatio
   }
 });
 
-test('trash shows deletion evidence without retaining a title or offering restore controls', async () => {
+test('empty, disabled trash keeps deletion history reachable in one disclosure', async () => {
   const entry = { entryId: 'a6a57567-ae5f-473e-a02d-bb1d3a6fe0ae', sessionId: '<private-id>', titleHash: 'f'.repeat(64), sizeBytes: 2048, memberCount: 2, purgedAt: 1000 };
-  const controller = new ArchiveClientController({ ...api, list: async () => ({ ...overview, archived: [], purgeHistory: [entry] }) });
+  const controller = new ArchiveClientController({ ...api, list: async () => ({ ...overview, archived: [], support: { ...overview.support, supported: false }, purgeHistory: [entry] }) });
   await controller.open();
   const archived = renderToStaticMarkup(<ArchiveDialogView state={controller.getSnapshot()} controller={controller} primitives={primitives} t={translator('en')} />);
   assert.ok(!archived.includes('dad-purge-history'));
   controller.setTab('trash');
   for (const language of ['en', 'zh'] as const) {
     const html = renderToStaticMarkup(<ArchiveDialogView state={controller.getSnapshot()} controller={controller} primitives={primitives} t={translator(language)} />);
-    assert.ok(html.includes(translator(language)('purgeHistory', { n: 1 })));
+    const t = translator(language);
+    assert.ok(html.includes(t('unsupported')));
+    assert.ok(html.includes(t('noTrash')));
+    assert.ok(html.includes(t('purgeHistory', { n: 1 })));
+    assert.ok(!html.includes(t('selectAll', { n: 0 })));
     assert.ok(html.includes('&lt;private-id&gt;')); assert.ok(!html.includes('<private-id>'));
     assert.ok(!html.includes(entry.titleHash));
     assert.ok(html.includes('1970-01-01T00:00:01.000Z'));
@@ -391,6 +399,21 @@ test('diagnostic warnings preserve healthy list controls and localize known corr
     assert.ok(html.includes(t('moveSelected')));
     assert.equal(localizeReason('request-failed', 'Hardcoded English transport diagnostic', t), t('reasonTransport'));
   }
+  controller.dispose();
+});
+
+test('a new failure stays visible above the list while an earlier result stays inside help', async () => {
+  const controller = new ArchiveClientController({ ...api, list: async () => ({ ...overview, recentResults: [result] }) });
+  await controller.open();
+  const props = { controller, primitives, t: translator('en') };
+  const state = controller.getSnapshot();
+  const historical = renderToStaticMarkup(<ArchiveDialogView {...props} state={state} />);
+  assert.ok(historical.indexOf('dad-list-heading') < historical.indexOf('dad-help'));
+  assert.ok(historical.indexOf('dad-help') < historical.indexOf('dad-results'));
+  assert.match(historical, /<details class="dad-results" aria-label="Latest result">/);
+  const current = renderToStaticMarkup(<ArchiveDialogView {...props} state={{ ...state, result }} />);
+  assert.ok(current.indexOf('dad-results') < current.indexOf('dad-list-heading'));
+  assert.match(current, /<details class="dad-results" aria-label="Latest result" open=""/);
   controller.dispose();
 });
 
@@ -503,7 +526,8 @@ test('workspace storage highlights recognized file types and large files, with d
     assert.ok(html.includes(t('storageFileCount', { n: 9 })));
     assert.ok(html.indexOf('dad-storage-kinds') < html.indexOf('dad-storage-scan-details'));
     assert.ok(html.includes('folder-0/sample.bin'));
-    assert.ok(html.includes(t('storageMoreFiles', { n: 4 })));
+    assert.ok(html.includes('folder-8/sample.bin'));
+    assert.equal(html.match(/<details class="dad-info"><summary>/g)?.length, 3);
     assert.match(html, /<details class="dad-storage-scan-details dad-storage-details"><summary>/);
     assert.ok(html.indexOf(t('storageMetric')) > html.indexOf('dad-storage-scan-details'));
     assert.ok(!html.includes(t('storageSource')));

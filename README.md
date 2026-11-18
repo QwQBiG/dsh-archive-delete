@@ -52,10 +52,10 @@ Archived conversations, trash and storage overview with sample data.
 ## Use
 
 1. Archive a conversation in DSH, then choose **Move to trash** from its menu. To handle several conversations, open **Manage archives, trash and storage** in the plugin details.
-2. Review the conversations and confirm the move. Open **Trash** to restore them or delete them permanently. Trash stays until you clear it, including after uninstalling the plugin.
-3. Open **Storage overview** and scan DSH or a workspace to see which categories and file types use the most space. When you scan the same location again, the previous result stays visible until the new one is ready.
+2. Review the conversations and confirm the move. In **Trash**, use **Restore selected** to recover conversations, or choose **Delete permanently** and confirm. Expand **Recent permanent deletions** for the deletion history.
+3. Open **Storage overview** and scan DSH or a workspace. The measured total appears first. Expand the results to inspect file types, large files and top-level folders. Rescanning the same location keeps the previous result visible until the new one is ready.
 
-If a move is pending, find it in **Archived** and choose **Cancel waiting and review** to try again. Permanent deletion removes the selected logs and recovery records and cannot be undone.
+If a move is pending, find it in **Archived** and choose **Cancel waiting and review** to try again. Trash stays until you clear it, including after uninstalling the plugin. Permanent deletion removes the selected logs and recovery records and cannot be undone.
 
 ## Updates
 

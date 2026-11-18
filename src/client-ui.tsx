@@ -15,7 +15,6 @@ export const en = {
   title: 'Archives, trash & storage', manage: 'Manage archives, trash and storage', menuTrash: 'Move to trash',
   archived: 'Archived', trash: 'Trash', storage: 'Storage overview', close: 'Close', refresh: 'Refresh', cancel: 'Cancel', back: 'Back',
   loading: 'Loading…', working: 'Processing the selected records…',
-  intro: 'Clean up archived conversations, with the option to restore them.',
   scope: 'Session logs and their dedicated subagent logs are included. Shared attachments, spill files, project files and other plugins’ caches are retained.',
   noArchives: 'No archived conversations', noTrash: 'Your trash is empty',
   emptyArchivesHint: 'Conversations you archive in DSH will appear here.', emptyTrashHint: 'Moved conversations stay here until you restore or delete them.',
@@ -30,7 +29,8 @@ export const en = {
   previewEmpty: 'No eligible records remain. Go back and refresh the list.',
   archivedHint: 'Running work and uncertain relationships stay protected.',
   trashHint: 'Restored conversations remain archived.',
-  retention: 'No automatic deletion', scopeTitle: 'What this includes',
+  retention: 'Trash is kept until you restore or delete it.', scopeTitle: 'What this includes',
+  helpAndDiagnostics: 'Help and diagnostics',
   pages: 'Conversation pages', previousPage: 'Previous', nextPage: 'Next', pageNumber: 'Page {page} of {pages}',
   pending: 'Pending restart', pendingHint: 'Still in the original location. Review again to try moving now.',
   cancelPending: 'Cancel pending move', reviewPending: 'Cancel waiting and review', pendingCancelled: 'Pending move cancelled',
@@ -79,7 +79,6 @@ export const en = {
   dataIssues: '{n} records or storage areas need attention', dataIssuesHint: 'These records are unavailable for selection. Expand details to see why.',
   storagePrevious: 'Showing the previous scan.',
   sort: 'Sort', sortDefault: 'Default order', sortSize: 'Largest first',
-  storageIntro: 'File sizes and types in DSH or a selected workspace.',
   storageHost: 'DSH storage', storageHostScan: 'Scan DSH storage', storageWorkspace: 'Workspace', storageWorkspaceChoose: 'Choose a workspace…', storageWorkspaceScan: 'Scan selected workspace',
   storageWorkspaceHint: 'Choose a workspace, then scan.',
   storageReadOnly: 'Read-only', storageScanning: 'Reading file metadata…', storageCancel: 'Cancel scan',
@@ -95,7 +94,7 @@ export const en = {
   storageUnknown: 'Unknown', storageMissing: 'Not found', storageCategoryUnavailable: 'Unavailable', storageCategoryComplete: 'Complete', storageCategoryPartial: 'Partial',
   storageBreakdown: 'Storage categories', storageOverlap: 'Some categories overlap. Their sizes cannot be added together; the total above removes verified duplicates.', storageIdentity: 'File identity was unavailable for {n} paths; duplicate detection may be incomplete.', storageDeduplicated: 'Counted once: {links} duplicate hard links and {paths} repeated paths.',
   storageTypeBreakdown: 'File types', storageFileCount: 'Files: {n}', storageUpdated: 'Updated {time}',
-  storageOtherLocations: 'Other locations ({n})', storageUnavailableCount: '{n} unavailable', storageScanDetails: 'Statistics details', storageMoreFiles: 'More files ({n})',
+  storageOtherLocations: 'Other locations ({n})', storageUnavailableCount: '{n} unavailable', storageScanDetails: 'Statistics details',
   storageKindDependencies: 'Dependencies', storageKindBuild: 'Build folders', storageKindVersionControl: 'Version control', storageKindLogs: 'Logs', storageKindMedia: 'Media', storageKindArchives: 'Archives', storageKindCode: 'Code & config', storageKindDocuments: 'Documents', storageKindOther: 'Other files',
   storageDetails: 'Details', storageLargest: 'Largest files', storageDirectories: 'Top-level folders', storageRootFiles: 'Files at the root',
   storageDirectoryMetric: 'Folder totals count file paths, including hard-link aliases, and may overlap other categories.',
@@ -113,7 +112,6 @@ export const zh: Record<TextKey, string> = {
   title: '归档、回收站与存储', manage: '管理归档、回收站与存储', menuTrash: '移入回收站',
   archived: '已归档', trash: '回收站', storage: '存储概览', close: '关闭', refresh: '刷新', cancel: '取消', back: '返回',
   loading: '正在读取…', working: '正在处理选中的记录…',
-  intro: '清理已归档会话，需要时可以恢复。',
   scope: '处理范围包含会话日志及其专属子代理日志。共享附件、spill 文件、项目文件和其他插件缓存会保留。',
   noArchives: '暂无已归档会话', noTrash: '回收站为空',
   emptyArchivesHint: '在 DSH 中归档的会话会显示在这里。', emptyTrashHint: '移入的会话会保留，直到你选择恢复或清除。',
@@ -128,7 +126,8 @@ export const zh: Record<TextKey, string> = {
   previewEmpty: '没有可操作记录，请返回并刷新列表。',
   archivedHint: '运行中的工作与关联不明的会话会受到保护。',
   trashHint: '恢复后仍保持已归档。',
-  retention: '不会自动清除', scopeTitle: '处理范围',
+  retention: '回收站内容会保留到你恢复或清除为止。', scopeTitle: '处理范围',
+  helpAndDiagnostics: '说明与诊断',
   pages: '会话分页', previousPage: '上一页', nextPage: '下一页', pageNumber: '第 {page} / {pages} 页',
   pending: '待重启处理', pendingHint: '仍在原位置。可以重新核对，尝试立即移入回收站。',
   cancelPending: '取消待处理', reviewPending: '取消等待并重新核对', pendingCancelled: '已取消待处理',
@@ -177,7 +176,6 @@ export const zh: Record<TextKey, string> = {
   dataIssues: '{n} 条记录或存储区域需要检查', dataIssuesHint: '这些记录暂不可选，可展开详情查看原因。',
   storagePrevious: '上次扫描结果。',
   sort: '排序', sortDefault: '默认顺序', sortSize: '按大小从大到小',
-  storageIntro: '查看 DSH 或工作区的文件大小与类型。',
   storageHost: 'DSH 存储', storageHostScan: '扫描 DSH 存储', storageWorkspace: '工作区', storageWorkspaceChoose: '请选择工作区…', storageWorkspaceScan: '扫描所选工作区',
   storageWorkspaceHint: '选择工作区后点击扫描。',
   storageReadOnly: '只读', storageScanning: '正在读取文件信息…', storageCancel: '取消扫描',
@@ -193,7 +191,7 @@ export const zh: Record<TextKey, string> = {
   storageUnknown: '未知', storageMissing: '未找到', storageCategoryUnavailable: '不可用', storageCategoryComplete: '完整', storageCategoryPartial: '部分',
   storageBreakdown: '存储分类', storageOverlap: '部分分类存在重叠，大小不能直接相加；上方总计已移除能够验证的重复项。', storageIdentity: '有 {n} 个路径无法验证文件标识，可能无法完整识别重复项。', storageDeduplicated: '已合并计数：重复硬链接 {links} 个，重复路径 {paths} 个。',
   storageTypeBreakdown: '文件类型', storageFileCount: '{n} 个文件', storageUpdated: '统计于 {time}',
-  storageOtherLocations: '其他位置（{n}）', storageUnavailableCount: '{n} 处不可用', storageScanDetails: '统计详情', storageMoreFiles: '更多文件（{n}）',
+  storageOtherLocations: '其他位置（{n}）', storageUnavailableCount: '{n} 处不可用', storageScanDetails: '统计详情',
   storageKindDependencies: '依赖目录', storageKindBuild: '构建目录', storageKindVersionControl: '版本控制', storageKindLogs: '日志', storageKindMedia: '图片、音视频', storageKindArchives: '压缩包', storageKindCode: '代码与配置', storageKindDocuments: '文档', storageKindOther: '其他文件',
   storageDetails: '详情', storageLargest: '大文件', storageDirectories: '一级目录', storageRootFiles: '根目录下的文件',
   storageDirectoryMetric: '目录大小按文件路径统计，包含硬链接别名，也可能与其他分类重叠。',
@@ -262,17 +260,17 @@ export function HostCapability({ diagnostic, t }: { diagnostic: IdleReleaseDiagn
   const checks = idleReleaseChecks(t('dateLocale').startsWith('zh') ? 'zh' : 'en');
   const label = diagnostic.status === 'available' ? 'idleAvailable' : diagnostic.status === 'unavailable' ? 'idleUnavailable' : 'idleUnverified';
   const statusKeys = { pass: 'probePass', fail: 'probeFail', untested: 'probeUntested' } as const;
-  return <details className="dad-capability">
-    <summary>{t(label)}{diagnostic.reasonCode && <> · <code>{diagnostic.reasonCode}</code></>}</summary>
+  return <section className="dad-capability">
+    <h3>{t(label)}{diagnostic.reasonCode && <> · <code>{diagnostic.reasonCode}</code></>}</h3>
     <p>{t('idleObservation')}</p>
     <ul>{diagnostic.checks.map(check => <li key={check.code}><span>{t(statusKeys[check.status])}</span><code>{check.code}</code><span>{check.status === 'fail' ? reasons[check.code] : checks[check.code]}</span></li>)}</ul>
-  </details>;
+  </section>;
 }
 
 export function PurgeHistoryContent({ entries, t }: { entries: readonly PurgeHistoryEntry[]; t: Translate }) {
   if (!entries.length) return null;
   return <details className="dad-results dad-purge-history">
-    <summary>{t('purgeHistory', { n: entries.length })}</summary>
+    <summary><span className="dad-result-label">{t('purgeHistory', { n: entries.length })}</span><span className="dad-result-disclosure" aria-hidden="true">⌄</span></summary>
     <p className="dad-hint">{t('purgeHistoryHint')}</p>
     <ul>{entries.map(entry => <li key={entry.entryId}><div><code>{entry.sessionId}</code><div className="dad-meta"><time dateTime={isoTime(entry.purgedAt)}>{formatTimestamp(entry.purgedAt, t)}</time><span>{formatBytes(entry.sizeBytes)}</span><span>{t('memberCount', { n: entry.memberCount })}</span></div></div></li>)}</ul>
   </details>;
@@ -354,11 +352,11 @@ const fileKindLabels: Record<string, TextKey> = {
   logs: 'storageKindLogs', media: 'storageKindMedia', archives: 'storageKindArchives', code: 'storageKindCode', documents: 'storageKindDocuments', other: 'storageKindOther',
 };
 
-function FileKindsContent({ category, t }: { category: UsageCategory; t: Translate }) {
+function FileKindsContent({ category, t, showHeading = true }: { category: UsageCategory; t: Translate; showHeading?: boolean }) {
   const kinds = category.fileKinds?.filter(item => item.fileCount > 0).toSorted((a, b) => b.fileBytes - a.fileBytes || a.kind.localeCompare(b.kind));
   if (!kinds?.length) return null;
   return <section className="dad-storage-kinds" aria-label={t('storageTypeBreakdown')}>
-    <h3>{t('storageTypeBreakdown')}</h3>
+    {showHeading && <h3>{t('storageTypeBreakdown')}</h3>}
     <ul>{kinds.map(item => <li key={item.kind}><span>{t(fileKindLabels[item.kind] ?? 'storageKindOther')}</span><strong>{formatBytes(item.fileBytes)}</strong><small>{t('storageFileCount', { n: item.fileCount })}</small></li>)}</ul>
   </section>;
 }
@@ -400,11 +398,11 @@ export function StorageResultContent({ result, t }: { result: StorageOverview; t
       <time dateTime={isoTime(result.finishedAt)} className="dad-hint">{t('storageUpdated', { time: formatTimestamp(result.finishedAt, t) })}</time>
       {!result.complete && <p className="dad-storage-partial" role="status">{t('storagePartialHint')}</p>}
     </section>
-    {project && <>
-      <FileKindsContent category={project} t={t} />
-      <section className="dad-storage-project-files" aria-label={t('storageLargest')}><h3>{t('storageLargest')}</h3><StorageFileList files={project.largestFiles.slice(0, 5)} t={t} />{project.largestFiles.length > 5 && <details className="dad-storage-details"><summary>{t('storageMoreFiles', { n: project.largestFiles.length - 5 })}</summary><StorageFileList files={project.largestFiles.slice(5)} t={t} /></details>}</section>
-      {project.directories.length > 0 && <details className="dad-storage-details dad-storage-folders"><summary>{t('storageDirectories')}</summary><StorageDirectories category={project} t={t} /></details>}
-    </>}
+    {project && <div className="dad-storage-workspace-details">
+      {project.fileKinds?.some(item => item.fileCount > 0) && <details className="dad-info"><summary>{t('storageTypeBreakdown')}</summary><div className="dad-info-body"><FileKindsContent category={project} t={t} showHeading={false} /></div></details>}
+      {project.largestFiles.length > 0 && <details className="dad-info"><summary>{t('storageLargest')}</summary><div className="dad-info-body"><StorageFileList files={project.largestFiles} t={t} /></div></details>}
+      {project.directories.length > 0 && <details className="dad-info"><summary>{t('storageDirectories')}</summary><div className="dad-info-body"><StorageDirectories category={project} t={t} /></div></details>}
+    </div>}
     {visible.length > 0 && <section aria-label={t('storageBreakdown')} className="dad-storage-categories"><h3>{t('storageBreakdown')}</h3>{visible.map(category => <StorageCategoryRow key={category.id} category={category} t={t} />)}</section>}
     {other.length > 0 && <details className="dad-storage-other"><summary>{t('storageOtherLocations', { n: other.length })}{unavailable > 0 && <span className="dad-badge">{t('storageUnavailableCount', { n: unavailable })}</span>}</summary><div className="dad-storage-categories">{other.map(category => <StorageCategoryRow key={category.id} category={category} t={t} />)}</div></details>}
     <details className="dad-storage-scan-details dad-storage-details"><summary>{t('storageScanDetails')}</summary>
@@ -431,10 +429,9 @@ export function StorageContent({ state, workspaces, controller, supported, t, Bu
     'workspace-changed': 'storageReasonWorkspaceChanged', 'workspace-not-found': 'storageReasonWorkspaceMissing',
     'unsafe-workspace': 'storageReasonUnsafeWorkspace', 'scan-cancelled': 'storageCancelled', 'unsupported-host': 'storageUnavailable' };
   return <div className="dad-storage">
-    <div className="dad-storage-intro"><span className="dad-badge">{t('storageReadOnly')}</span></div>
     {!available && <p className="dad-alert" role="status">{t('storageUnavailable')}</p>}
     <div className="dad-storage-controls">
-      <Button variant="outline" disabled={!available || state.scanning} onClick={() => { void controller.scanStorage('host'); }}>{t('storageHostScan')}</Button>
+      <div className="dad-storage-host"><Button variant="outline" disabled={!available || state.scanning} onClick={() => { void controller.scanStorage('host'); }}>{t('storageHostScan')}</Button><span className="dad-badge">{t('storageReadOnly')}</span></div>
       <div className="dad-storage-workspace"><label htmlFor={workspaceId}>{t('storageWorkspace')}</label><select id={workspaceId} value={state.workspaceId} disabled={!available} onChange={event => controller.setStorageWorkspace(event.target.value)}><option value="">{t('storageWorkspaceChoose')}</option>{workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.title}</option>)}</select><Button variant="outline" disabled={!available || state.scanning || !workspaces.some(workspace => workspace.id === state.workspaceId)} onClick={() => { void controller.scanStorage('workspace'); }}>{t('storageWorkspaceScan')}</Button></div>
     </div>
     {state.scanning && <div className="dad-storage-scanning" role="status"><span>{t('storageScanning')}</span><Button size="sm" variant="ghost" onClick={controller.cancelStorage}>{t('storageCancel')}</Button></div>}
@@ -464,11 +461,11 @@ export function PreviewContent({ preview, t }: { preview: Preview; t: Translate 
   </div>;
 }
 
-export function ResultContent({ result, t, retry, disabled, Button }: {
-  result: BatchResult; t: Translate; retry(id: string): void; disabled: boolean; Button: NativePrimitives['Button'];
+export function ResultContent({ result, t, retry, disabled, Button, isCurrent = true }: {
+  result: BatchResult; t: Translate; retry(id: string): void; disabled: boolean; Button: NativePrimitives['Button']; isCurrent?: boolean;
 }) {
   const hasProblems = result.counts.failed > 0 || result.counts.skipped > 0;
-  return <details className="dad-results" aria-label={t('result')} open={hasProblems || undefined}>
+  return <details className="dad-results" aria-label={t('result')} open={isCurrent && hasProblems || undefined}>
     <summary><span className="dad-result-label">{t('result')}</span><span className={hasProblems ? 'dad-result-summary dad-result-attention' : 'dad-result-summary'} role="status">{t('resultSummary', result.counts)}</span><span className="dad-result-disclosure" aria-label={t('resultDetails')}>⌄</span></summary>
     <ul>{result.items.map((item) => <li key={item.id}>
       <div><strong>{item.title || item.id}</strong><span className={`dad-result-status dad-result-${item.status}`}>{t(`status.${item.status}` as `status.${ItemStatus}`)}</span>{item.message && <p>{localizeReason(item.code, item.message, t)}</p>}</div>
@@ -508,7 +505,9 @@ export function ArchiveDialogView({ state, controller, primitives, t, updates }:
   const preview = state.preview;
   const previewId = preview?.id;
   const [, updateExpiry] = useState(0);
-  const result = state.result ?? state.overview?.recentResults[0] ?? null;
+  const recentResult = state.overview?.recentResults[0];
+  const idleRelease = state.overview?.support.idleRelease;
+  const showListControls = state.tab === 'archived' ? archivedItems.length > 0 : trashItems.length > 0;
   const actionTitle: Record<Action, TextKey> = { trash: 'moveTitle', restore: 'restoreTitle', purge: 'purgeTitle' };
   const actionDescription: Record<Action, TextKey> = { trash: 'moveDescription', restore: 'restoreDescription', purge: 'purgeDescription' };
   const actionConfirm: Record<Action, TextKey> = { trash: 'confirmTrash', restore: 'confirmRestore', purge: 'confirmPurge' };
@@ -535,47 +534,57 @@ export function ArchiveDialogView({ state, controller, primitives, t, updates }:
     <Button variant="outline" onClick={controller.close}>{t('close')}</Button>
     {state.tab === 'archived'
       ? <Button variant="primary" disabled={locked || !supported || selected.length === 0} onClick={() => { void controller.preview('trash'); }}>{t('moveSelected')}</Button>
-      : <><Button variant="outline" disabled={locked || !supported || selected.length === 0} onClick={() => { void controller.preview('restore'); }}>{t('restoreSelected')}</Button><Button variant="outline" className="dad-danger" disabled={locked || !supported || selected.length === 0} onClick={() => { void controller.preview('purge'); }}>{t('purgeSelected')}</Button></>}
+      : <><Button variant="outline" className="dad-danger" disabled={locked || !supported || selected.length === 0} onClick={() => { void controller.preview('purge'); }}>{t('purgeSelected')}</Button><Button variant="primary" disabled={locked || !supported || selected.length === 0} onClick={() => { void controller.preview('restore'); }}>{t('restoreSelected')}</Button></>}
   </>;
 
-  return <Modal open={state.open} onClose={controller.close} title={preview ? t(actionTitle[preview.action]) : t('title')} description={preview ? t(actionDescription[preview.action]) : state.tab === 'storage' ? t('storageIntro') : t('intro')} closeLabel={t('close')} className="dad-dialog" contentClassName="dad-content" footer={footer}>
+  const versionRow = updates && <div className="dad-version-row"><UpdateCard controller={updates} Button={Button} t={t} archiveBusy={state.busy || state.loading || uncertain} /></div>;
+
+  return <Modal open={state.open} onClose={controller.close} title={preview ? t(actionTitle[preview.action]) : t('title')} {...(preview ? { description: t(actionDescription[preview.action]) } : {})} closeLabel={t('close')} className="dad-dialog" contentClassName="dad-content" footer={<div className="dad-footer">{footer}</div>}>
     <div className="dad-shell">
-      {updates && !preview && <UpdateCard controller={updates} Button={Button} t={t} archiveBusy={state.busy || state.loading || uncertain} />}
-      {!preview && state.overview?.support.idleRelease && <HostCapability diagnostic={state.overview.support.idleRelease} t={t} />}
-      {state.maintenance && <p className="dad-muted" role="status">{t('updateWaiting')}</p>}
+      {!preview && <div className="dad-toolbar">
+        <div className="dad-tabs" role="tablist" aria-label={t('title')} onKeyDown={(event) => {
+          if (locked) return;
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const index = tabs.indexOf(state.tab);
+          changeTab(event.key === 'Home' ? 'archived' : event.key === 'End' ? 'storage' : tabs[(index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]!, true);
+        }}>
+          {tabs.map((tab, index) => <button key={tab} ref={(element) => { tabRefs.current[index] = element; }} type="button" role="tab" id={`${tabsId}-${tab}`} aria-controls={`${tabsId}-panel`} aria-selected={state.tab === tab} tabIndex={state.tab === tab ? 0 : -1} disabled={locked} data-modal-autofocus={state.tab === tab ? '' : undefined} onClick={() => changeTab(tab)}>{t(tab)}{tab !== 'storage' && <span className="dad-count">{state.overview?.[tab].length ?? 0}</span>}</button>)}
+        </div>
+        <Button size="sm" variant="outline" disabled={state.loading || state.busy} onClick={() => { void controller.refresh(); }}>{t(state.tab === 'storage' ? 'storageRefreshWorkspaces' : 'refresh')}</Button>
+      </div>}
+      {state.maintenance && <><p className="dad-muted" role="status">{t('updateWaiting')}</p>{!preview && versionRow}</>}
       {state.error && <ErrorNotice error={uncertain ? { ...state.error, uncertain: true } : state.error} t={t} onRefresh={() => { void controller.refresh(); }} onRetry={() => { void controller.retryUncertain(); }} disabled={state.busy || state.loading} Button={Button} />}
       {state.overview && !supported && <section className="dad-alert" role="status"><strong>{t('unsupported')}</strong><p>{supportReason(state.overview.support, t)}</p><small>{t('supportDetails', { version: state.overview.support.version, platform: state.overview.support.platform })}</small></section>}
-      {!!state.overview?.issues?.length && <section className="dad-alert" role="status"><strong>{t('dataIssues', { n: state.overview.issues.length })}</strong><p>{t('dataIssuesHint')}</p><details><summary>{t('errorDetails')}</summary><ul>{diagnosticRows(state.overview.issues, issue => JSON.stringify([issue.scope, issue.id, issue.code, issue.message])).map(({ item: issue, key }) => <li key={key}>{t(issue.scope === 'archive' ? 'archived' : 'trash')}{issue.id && <> · <code>{issue.id}</code></>} — {localizeReason(issue.code, issue.message, t)} <code>{issue.code}</code></li>)}</ul></details></section>}
+      {!!state.overview?.issues?.length && <details className="dad-alert dad-record-issues"><summary><strong>{t('dataIssues', { n: state.overview.issues.length })}</strong></summary><p>{t('dataIssuesHint')}</p><ul>{diagnosticRows(state.overview.issues, issue => JSON.stringify([issue.scope, issue.id, issue.code, issue.message])).map(({ item: issue, key }) => <li key={key}>{t(issue.scope === 'archive' ? 'archived' : 'trash')}{issue.id && <> · <code>{issue.id}</code></>} — {localizeReason(issue.code, issue.message, t)} <code>{issue.code}</code></li>)}</ul></details>}
       {state.busy && <p className="dad-progress" role="status">{t('working')}</p>}
       {preview ? <><PreviewContent preview={preview} t={t} />{preview.expiresAt <= Date.now() && <p className="dad-muted" role="status">{t('previewExpired')}</p>}</> : <>
-        <div className="dad-toolbar">
-          <div className="dad-tabs" role="tablist" aria-label={t('title')} onKeyDown={(event) => {
-            if (locked) return;
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-            event.preventDefault();
-            const index = tabs.indexOf(state.tab);
-            changeTab(event.key === 'Home' ? 'archived' : event.key === 'End' ? 'storage' : tabs[(index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]!, true);
-          }}>
-            {tabs.map((tab, index) => <button key={tab} ref={(element) => { tabRefs.current[index] = element; }} type="button" role="tab" id={`${tabsId}-${tab}`} aria-controls={`${tabsId}-panel`} aria-selected={state.tab === tab} tabIndex={state.tab === tab ? 0 : -1} disabled={locked} data-modal-autofocus={state.tab === tab ? '' : undefined} onClick={() => changeTab(tab)}>{t(tab)}{tab !== 'storage' && <span className="dad-count">{state.overview?.[tab].length ?? 0}</span>}</button>)}
+        {state.tab === 'storage' ? <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-storage`} aria-busy={state.storage.scanning}><StorageContent state={state.storage} workspaces={state.overview?.storageWorkspaces ?? []} controller={controller} supported={supported} t={t} Button={Button} /></div> :
+        <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${state.tab}`} aria-busy={state.loading} className="dad-list-panel">
+          {state.result && <ResultContent result={state.result} t={t} retry={id => { void controller.retryItem(id); }} disabled={locked || !supported} Button={Button} />}
+          {showListControls && <div className="dad-list-heading"><Checkbox checked={eligibleIds.length > 0 && selected.length === eligibleIds.length} disabled={locked || !supported || eligibleIds.length === 0} onChange={controller.selectAll} label={t('selectAll', { n: eligibleIds.length })} /><label className="dad-sort"><span>{t('sort')}</span><select value={state.sort} disabled={locked} onChange={event => controller.setSort(event.target.value as ArchiveSort)}><option value="default">{t('sortDefault')}</option><option value="size-desc">{t('sortSize')}</option></select></label></div>}
+          <div className="dad-list">
+            {state.loading && <p role="status">{t('loading')}</p>}
+            {!state.loading && state.overview && state.overview[state.tab].length === 0 && <EmptyState tab={state.tab} t={t} />}
+            {state.tab === 'archived' ? archivedPage.map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)} data-pending={item.pending === true}>
+              <div className="dad-row-main"><div className="dad-row-head"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported || item.pending === true} onChange={() => controller.toggle(item.id)} label={item.title || item.id} /><span className="dad-row-size">{formatBytes(item.sizeBytes)}</span></div><div className="dad-meta"><span className="dad-workspace">{item.workspace || t('ungrouped')}</span>{item.descendantCount > 0 && <span className="dad-badge">{t('childCount', { n: item.descendantCount })}</span>}{item.pending && <span className="dad-badge dad-badge-pending">{t('pending')}</span>}</div>{item.pending && <p className="dad-pending">{t('pendingHint')}</p>}</div>
+              {item.pending && <div className="dad-row-actions"><Button size="sm" variant="outline" disabled={locked || !supported} onClick={() => { void controller.reviewPending(item.id); }}>{t('reviewPending')}</Button><Button size="sm" variant="ghost" disabled={locked || !supported} onClick={() => { void controller.cancelPending([item.id]); }}>{t('cancelPending')}</Button></div>}
+            </div>) : trashPage.map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)}>
+              <div className="dad-row-main"><div className="dad-row-head"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported} onChange={() => controller.toggle(item.id)} label={item.title || item.sessionId} /><span className="dad-row-size">{formatBytes(item.sizeBytes)}</span></div><div className="dad-meta"><time dateTime={isoTime(item.trashedAt)}>{formatTimestamp(item.trashedAt, t)}</time><span className="dad-badge">{t('memberCount', { n: item.memberCount })}</span></div></div>
+            </div>)}
           </div>
-          <Button size="sm" variant="outline" disabled={state.loading || state.busy} onClick={() => { void controller.refresh(); }}>{t(state.tab === 'storage' ? 'storageRefreshWorkspaces' : 'refresh')}</Button>
-        </div>
-        {state.tab === 'storage' ? <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-storage`} aria-busy={state.storage.scanning}><StorageContent state={state.storage} workspaces={state.overview?.storageWorkspaces ?? []} controller={controller} supported={supported} t={t} Button={Button} /></div> : <>
-        <div className="dad-list-heading"><Checkbox checked={eligibleIds.length > 0 && selected.length === eligibleIds.length} disabled={locked || !supported || eligibleIds.length === 0} onChange={controller.selectAll} label={t('selectAll', { n: eligibleIds.length })} /><label className="dad-sort"><span>{t('sort')}</span><select value={state.sort} disabled={locked} onChange={event => controller.setSort(event.target.value as ArchiveSort)}><option value="default">{t('sortDefault')}</option><option value="size-desc">{t('sortSize')}</option></select></label><span className="dad-retention"><span aria-hidden="true">◷</span>{t('retention')}</span></div>
-        <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${state.tab}`} aria-busy={state.loading} className="dad-list">
-          {state.loading && <p role="status">{t('loading')}</p>}
-          {!state.loading && state.overview && state.overview[state.tab].length === 0 && <EmptyState tab={state.tab} t={t} />}
-          {state.tab === 'archived' ? archivedPage.map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)} data-pending={item.pending === true}>
-            <div className="dad-row-main"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported || item.pending === true} onChange={() => controller.toggle(item.id)} label={item.title || item.id} /><div className="dad-meta"><span className="dad-workspace">{item.workspace || t('ungrouped')}</span><span>{formatBytes(item.sizeBytes)}</span>{item.descendantCount > 0 && <span className="dad-badge">{t('childCount', { n: item.descendantCount })}</span>}{item.pending && <span className="dad-badge dad-badge-pending">{t('pending')}</span>}</div>{item.pending && <p className="dad-pending">{t('pendingHint')}</p>}</div>
-            {item.pending && <div className="dad-row-actions"><Button size="sm" variant="outline" disabled={locked || !supported} onClick={() => { void controller.reviewPending(item.id); }}>{t('reviewPending')}</Button><Button size="sm" variant="ghost" disabled={locked || !supported} onClick={() => { void controller.cancelPending([item.id]); }}>{t('cancelPending')}</Button></div>}
-          </div>) : trashPage.map((item) => <div className="dad-row" key={item.id} data-selected={selectedSet.has(item.id)}>
-            <div className="dad-row-main"><Checkbox checked={selectedSet.has(item.id)} disabled={locked || !supported} onChange={() => controller.toggle(item.id)} label={item.title || item.sessionId} /><div className="dad-meta"><time dateTime={isoTime(item.trashedAt)}>{formatTimestamp(item.trashedAt, t)}</time><span>{formatBytes(item.sizeBytes)}</span><span className="dad-badge">{t('memberCount', { n: item.memberCount })}</span></div></div>
-          </div>)}
-        </div>
-        <div className="dad-list-foot"><p className="dad-hint">{t(state.tab === 'archived' ? 'archivedHint' : 'trashHint')}</p>{pages > 1 && <nav className="dad-pagination" aria-label={t('pages')}><Button size="sm" variant="ghost" disabled={locked || state.page === 0} onClick={() => controller.setPage(state.page - 1)}>{t('previousPage')}</Button><span>{t('pageNumber', { page: state.page + 1, pages })}</span><Button size="sm" variant="ghost" disabled={locked || state.page + 1 >= pages} onClick={() => controller.setPage(state.page + 1)}>{t('nextPage')}</Button></nav>}</div>
-        {result && <ResultContent result={result} t={t} retry={(id) => { void controller.retryItem(id); }} disabled={locked || !supported} Button={Button} />}
-        {state.tab === 'trash' && <PurgeHistoryContent entries={state.overview?.purgeHistory ?? []} t={t} />}
-        </>}
+          {pages > 1 && <nav className="dad-pagination" aria-label={t('pages')}><Button size="sm" variant="ghost" disabled={locked || state.page === 0} onClick={() => controller.setPage(state.page - 1)}>{t('previousPage')}</Button><span>{t('pageNumber', { page: state.page + 1, pages })}</span><Button size="sm" variant="ghost" disabled={locked || state.page + 1 >= pages} onClick={() => controller.setPage(state.page + 1)}>{t('nextPage')}</Button></nav>}
+          {state.tab === 'trash' && <PurgeHistoryContent entries={state.overview?.purgeHistory ?? []} t={t} />}
+        </div>}
+        {(state.tab !== 'storage' || idleRelease) && <details className="dad-info dad-help"><summary>{t('helpAndDiagnostics')}</summary>
+          <div className="dad-info-body">
+            {state.tab === 'archived' && <p>{t('archivedHint')}</p>}
+            {state.tab === 'trash' && <p>{t('retention')} {t('trashHint')}</p>}
+            {idleRelease && <HostCapability diagnostic={idleRelease} t={t} />}
+            {state.tab !== 'storage' && !state.result && recentResult && <ResultContent result={recentResult} t={t} retry={id => { void controller.retryItem(id); }} disabled={locked || !supported} Button={Button} isCurrent={false} />}
+          </div>
+        </details>}
+        {!state.maintenance && versionRow}
       </>}
       {(state.busy || uncertain) && <p className="dad-muted">{t('operationContinues')}</p>}
     </div>
@@ -583,28 +592,34 @@ export function ArchiveDialogView({ state, controller, primitives, t, updates }:
 }
 
 export const CLIENT_CSS = UPDATE_CSS + `
-.dad-capability{color:var(--dad-muted);font-size:11px;line-height:1.6}.dad-capability summary{cursor:pointer;overflow-wrap:anywhere}.dad-capability p{margin:6px 0}.dad-capability ul{padding:0;list-style:none;max-height:240px;overflow:auto}.dad-capability li{display:flex;flex-wrap:wrap;gap:4px 10px;padding:5px 0}.dad-capability li>span:first-child{min-width:70px}.dad-capability code{overflow-wrap:anywhere}.dad-purge-history>.dad-hint{padding:8px 12px}.dad-purge-history li code{overflow-wrap:anywhere}.dad-purge-history .dad-meta{padding-left:0}.dad-capability summary:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px}
+.dad-capability h3{color:var(--dad-primary);font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.dad-capability p{margin:6px 0}.dad-capability ul{margin:6px 0 0;padding:0;list-style:none}.dad-capability li{display:flex;flex-wrap:wrap;gap:4px 9px;padding:5px 0;border-bottom:1px solid var(--dad-border)}.dad-capability li:last-child{border:0}.dad-capability li>span:first-child{min-width:70px}.dad-capability code{overflow-wrap:anywhere}
+.dad-purge-history>.dad-hint{padding:8px 12px}.dad-purge-history li code{overflow-wrap:anywhere}.dad-purge-history .dad-meta{padding-left:0}.dad-purge-history .dad-result-disclosure{margin-left:auto}
+.dad-info{border:1px solid var(--dad-border);border-radius:9px;font-size:12px}.dad-info>summary{display:flex;align-items:center;gap:8px;min-height:36px;padding:6px 11px;box-sizing:border-box;list-style:none;cursor:pointer;color:var(--dad-primary);font-weight:500;overflow-wrap:anywhere}.dad-info>summary::-webkit-details-marker{display:none}.dad-info>summary::before{content:'›';flex:none;width:10px;text-align:center;font-size:17px;color:var(--dad-muted)}.dad-info[open]>summary::before{transform:rotate(90deg)}.dad-info[open]>summary{border-bottom:1px solid var(--dad-border)}.dad-info-body{display:flex;flex-direction:column;gap:10px;padding:10px 12px;color:var(--dad-muted);overflow-wrap:anywhere}.dad-info>summary:hover,.dad-record-issues>summary:hover{background:color-mix(in srgb,var(--dad-primary) 4%,transparent)}.dad-info>summary:focus-visible,.dad-record-issues>summary:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px;border-radius:7px}
+.dad-help>summary{color:var(--dad-muted)}.dad-record-issues>summary{cursor:pointer}.dad-record-issues[open]>summary{margin-bottom:7px}.dad-record-issues ul{margin:5px 0;padding-left:18px}.dad-version-row{border-top:1px solid var(--dad-border);padding-top:2px}
+.dad-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;min-width:0;width:100%}.dad-footer button{white-space:normal}.dad-footer .dad-selection{align-self:center}
 .dad-dialog{width:min(780px,calc(100vw - 32px));max-width:calc(100vw - 32px)}
 .dad-content{max-height:min(65vh,540px);overflow:auto}
 .dad-shell{--dad-border:var(--dsw-alias-border-l1,#8883);--dad-muted:var(--dsw-alias-label-secondary,GrayText);--dad-primary:var(--dsw-alias-label-primary,CanvasText);display:flex;flex-direction:column;gap:12px;min-width:0;color:var(--dad-primary);font-size:13px;line-height:1.5}
 .dad-shell p,.dad-shell h3{margin:0}.dad-shell button{font:inherit}
-.dad-toolbar,.dad-actions,.dad-row-title,.dad-meta,.dad-summary,.dad-list-heading,.dad-list-foot,.dad-pagination{display:flex;align-items:center;gap:10px}
+.dad-toolbar,.dad-actions,.dad-row-title,.dad-meta,.dad-summary,.dad-list-heading,.dad-pagination{display:flex;align-items:center;gap:10px}
 .dad-toolbar{justify-content:space-between;gap:16px}
 .dad-tabs{display:flex;gap:3px;padding:3px;border:1px solid var(--dad-border);border-radius:11px;background:var(--dsw-alias-bg-layer-1,#8881)}
 .dad-tabs button{display:flex;align-items:center;gap:8px;border:0;background:transparent;color:var(--dad-muted);padding:7px 13px;font-size:13px;font-weight:500;border-radius:8px;cursor:pointer}
 .dad-tabs button[aria-selected=true]{color:var(--dad-primary);background:var(--dsw-alias-bg-base,Canvas);box-shadow:0 1px 3px #0001}
 .dad-tabs button:focus-visible,.dad-row:focus-within{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px}
 .dad-tabs button:disabled{cursor:default;opacity:.55}.dad-count{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:18px;padding:0 4px;border-radius:5px;background:color-mix(in srgb,var(--dad-primary) 6%,transparent);font-size:10px;font-weight:600;font-variant-numeric:tabular-nums}
-.dad-list-heading{justify-content:space-between;gap:12px;padding:1px 2px;color:var(--dad-muted);font-size:12px}.dad-retention{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:11px}.dad-retention>span{font-size:15px;line-height:1}
-.dad-list{display:flex;flex-direction:column;gap:7px;min-height:70px;max-height:290px;overflow:auto;padding:3px 3px 4px;scrollbar-gutter:stable}
+.dad-list-panel{display:flex;flex-direction:column;gap:10px;min-width:0}
+.dad-list-heading{justify-content:space-between;gap:12px;padding:1px 2px;color:var(--dad-muted);font-size:12px}
+.dad-list{display:flex;flex-direction:column;gap:7px;min-width:0;padding:2px}
 .dad-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:11px 12px;border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#88805);transition:border-color .15s,background .15s}
 .dad-row[data-selected=true]{border-color:color-mix(in srgb,var(--dad-primary) 32%,transparent);background:color-mix(in srgb,var(--dad-primary) 6%,transparent)}
-.dad-row[data-pending=true]{border-style:dashed}.dad-row-main{flex:1;min-width:0}.dad-row-main>label{min-width:0;align-items:flex-start;font-size:13px;font-weight:500}.dad-row-main>label>span{overflow-wrap:anywhere}
+.dad-row[data-pending=true]{border-style:dashed}.dad-row-main{flex:1;min-width:0}.dad-row-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:10px}.dad-row-head>label{min-width:0;align-items:flex-start;font-size:13px;font-weight:500;overflow-wrap:anywhere}.dad-row-head>label>span{min-width:0;overflow-wrap:anywhere}.dad-row-size{font-size:12px;color:var(--dad-muted);font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
 .dad-meta{gap:5px 10px;flex-wrap:wrap;margin-top:5px;padding-left:25px;color:var(--dad-muted);font-size:11px;line-height:1.5}.dad-meta>span,.dad-meta>time{overflow-wrap:anywhere}.dad-workspace{max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dad-badge{padding:1px 6px;border-radius:5px;background:color-mix(in srgb,var(--dad-primary) 5%,transparent);font-size:10px}.dad-badge-pending{border:1px solid var(--dad-border);background:transparent}
 .dad-pending{margin:6px 0 0 25px!important;color:var(--dad-muted);font-size:11px;line-height:1.5}.dad-row-actions{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;margin-top:1px}.dad-row-actions>button{max-width:190px;white-space:normal;text-align:right}
-.dad-list-foot{align-items:flex-start;justify-content:space-between;gap:12px}.dad-hint,.dad-expiry{color:var(--dad-muted);font-size:11px;line-height:1.5}.dad-hint{padding:1px 2px}.dad-pagination{flex-shrink:0;gap:5px;font-size:11px;color:var(--dad-muted)}.dad-pagination button{padding:1px 5px;min-height:22px}.dad-pagination>span{font-variant-numeric:tabular-nums;white-space:nowrap}
+.dad-hint,.dad-expiry{color:var(--dad-muted);font-size:11px;line-height:1.5}.dad-hint{padding:1px 2px}.dad-pagination{align-self:flex-end;flex-shrink:0;gap:5px;font-size:11px;color:var(--dad-muted)}.dad-pagination button{padding:1px 5px;min-height:22px}.dad-pagination>span{font-variant-numeric:tabular-nums;white-space:nowrap}
 .dad-selection{margin-right:auto;font-size:12px;color:var(--dsw-alias-label-secondary,GrayText)}
-.dad-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:180px;padding:25px 18px;text-align:center;border:1px dashed var(--dad-border);border-radius:12px;color:var(--dad-muted)}.dad-empty strong{color:var(--dad-primary);font-size:13px;font-weight:500}.dad-empty p{max-width:340px;font-size:12px}.dad-empty-icon{display:flex;align-items:center;justify-content:center;width:42px;height:42px;margin-bottom:5px;border:1px solid var(--dad-border);border-radius:13px;background:var(--dsw-alias-bg-layer-1,#8881)}
+.dad-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:132px;padding:18px;text-align:center;border:1px dashed var(--dad-border);border-radius:12px;color:var(--dad-muted)}.dad-empty strong{color:var(--dad-primary);font-size:13px;font-weight:500}.dad-empty p{max-width:340px;font-size:12px}.dad-empty-icon{display:flex;align-items:center;justify-content:center;width:42px;height:42px;margin-bottom:5px;border:1px solid var(--dad-border);border-radius:13px;background:var(--dsw-alias-bg-layer-1,#8881)}
 .dad-alert{padding:10px 12px;border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#8881);font-size:12px;line-height:1.6}.dad-alert p+p{margin-top:5px}.dad-alert details{margin-top:5px}.dad-alert code{font-size:11px;overflow-wrap:anywhere}
 .dad-error{border-color:var(--dsw-alias-status-error,#bd3d3d)}.dad-actions{margin-top:8px;flex-wrap:wrap}.dad-progress{font-size:12px;padding:3px 0;color:var(--dad-muted)}.dad-muted{color:var(--dad-muted);font-size:12px;line-height:1.6}
 .dad-summary{gap:8px;flex-wrap:wrap;padding:0 1px;font-size:12px}.dad-summary>strong{font-weight:600}.dad-summary>span{color:var(--dad-muted)}.dad-summary>span:before{content:'·';margin-right:8px;opacity:.6}
@@ -613,11 +628,18 @@ export const CLIENT_CSS = UPDATE_CSS + `
 .dad-boundary{display:flex;align-items:flex-start;gap:10px;margin:13px 2px 10px;padding:11px 12px;border:1px solid var(--dad-border);border-radius:10px;font-size:11px;line-height:1.6;color:var(--dad-muted)}.dad-boundary-icon{display:flex;flex-shrink:0;margin-top:1px}.dad-boundary strong{display:block;margin-bottom:3px;font-size:11px;font-weight:600;color:var(--dad-primary)}.dad-boundary-danger{border-color:color-mix(in srgb,var(--dsw-alias-status-error,#bd3d3d) 30%,transparent)}.dad-boundary-danger .dad-boundary-icon{color:var(--dsw-alias-status-error,#bd3d3d)}.dad-expiry{padding:0 3px}
 .dad-danger{color:var(--dsw-alias-status-error,#bd3d3d)!important}.dad-danger-confirm{background:#b91c1c!important;border-color:#b91c1c!important;color:#fff!important}.dad-danger-confirm:not(:disabled):hover{background:#991b1b!important}.dad-results{border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#88805);font-size:11px}.dad-results summary{display:flex;align-items:center;gap:10px;list-style:none;padding:10px 12px;cursor:pointer}.dad-results summary::-webkit-details-marker{display:none}.dad-results summary:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px;border-radius:9px}.dad-result-label{font-weight:500;white-space:nowrap}.dad-result-summary{flex:1;color:var(--dad-muted);font-variant-numeric:tabular-nums}.dad-result-disclosure{font-size:16px;line-height:1;color:var(--dad-muted);transition:transform .15s}.dad-results[open] .dad-result-disclosure{transform:rotate(180deg)}.dad-results[open] summary{border-bottom:1px solid var(--dad-border)}.dad-results ul{padding:0 12px;max-height:190px;overflow:auto}.dad-results li{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--dad-border)}.dad-results li:last-child{border-bottom:0}.dad-results li>div{min-width:0}.dad-results li strong{font-weight:500;overflow-wrap:anywhere}.dad-result-status{display:inline-block;margin-left:8px;font-size:10px;color:var(--dad-muted)}.dad-result-failed{color:var(--dsw-alias-status-error,#bd3d3d)}.dad-results li p{font-size:11px;line-height:1.5;margin-top:4px;overflow-wrap:anywhere}
 .dad-sort{display:flex;align-items:center;gap:6px;margin-left:auto}.dad-shell select{max-width:100%;min-height:30px;padding:4px 26px 4px 8px;border:1px solid var(--dad-border);border-radius:7px;background:var(--dsw-alias-bg-base,Canvas);color:var(--dad-primary);font:inherit}.dad-shell select:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px}.dad-shell select:disabled{opacity:.55}
-.dad-storage,.dad-storage-result,.dad-storage-categories{display:flex;flex-direction:column;gap:10px}.dad-storage-intro{display:flex;justify-content:flex-end;color:var(--dad-muted);font-size:11px}.dad-storage-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.dad-storage-workspace{display:flex;align-items:center;gap:8px;flex:1;min-width:290px;flex-wrap:wrap}.dad-storage-workspace label{font-size:12px;color:var(--dad-muted)}.dad-storage-workspace select{flex:1;min-width:120px;max-width:330px}.dad-storage-workspace button{flex-shrink:0}.dad-storage-scanning{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--dad-muted)}.dad-storage-empty{min-height:100px}
-.dad-storage-total{display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding:14px 16px;border:1px solid var(--dad-border);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#88805);font-size:12px}.dad-storage-total-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin-bottom:3px;font-weight:500}.dad-storage-total-heading>span:first-child{min-width:0;overflow-wrap:anywhere}.dad-storage-size-row{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}.dad-storage-size-row>span{color:var(--dad-muted);font-size:11px}.dad-storage-size{font-size:28px;font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums}.dad-storage-partial{font-size:11px;color:var(--dad-muted)}.dad-storage h3,.dad-storage-result h3{font-size:12px;font-weight:600;margin:0 0 4px}.dad-storage-category{border-bottom:1px solid var(--dad-border);font-size:12px}.dad-storage-category>summary{display:flex;align-items:center;gap:8px;padding:10px 2px;list-style:none;cursor:pointer}.dad-storage-category>summary::-webkit-details-marker{display:none}.dad-storage-category>summary::before{content:'›';font-size:16px;color:var(--dad-muted);transform:rotate(0);width:10px;text-align:center}.dad-storage-category[open]>summary::before{transform:rotate(90deg)}.dad-storage-category>summary strong{flex:1;font-size:12px;font-weight:500;overflow-wrap:anywhere}.dad-storage-category>summary small{color:var(--dad-muted);font-size:10px;white-space:nowrap}.dad-storage-category-size{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}.dad-storage-category-body{padding:2px 4px 12px 20px}.dad-storage-category-body h4{font-size:11px;margin:10px 0 4px;font-weight:500}.dad-storage-category-body .dad-storage-kinds{margin-bottom:12px}.dad-storage-kinds ul{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;list-style:none;padding:0;margin:0}.dad-storage-kinds li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:8px 10px;border:1px solid var(--dad-border);border-radius:8px;font-size:11px}.dad-storage-kinds li>span{overflow-wrap:anywhere}.dad-storage-kinds li>strong{font-size:11px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}.dad-storage-kinds li>small{grid-column:1/-1;color:var(--dad-muted);font-size:10px}.dad-storage-project-files{padding:3px 0}.dad-storage-other{font-size:12px}.dad-storage-other>summary{display:flex;align-items:center;gap:8px;padding:8px 2px;cursor:pointer;color:var(--dad-muted)}.dad-storage-other>.dad-storage-categories{padding-left:8px}
+.dad-storage,.dad-storage-result,.dad-storage-categories{display:flex;flex-direction:column;gap:10px}.dad-storage-controls{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;padding:10px 12px;border:1px solid var(--dad-border);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#88805)}.dad-storage-host{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.dad-storage-host .dad-badge{color:var(--dad-muted)}.dad-storage-workspace{display:flex;align-items:center;gap:8px;flex:1;min-width:min(100%,320px);flex-wrap:wrap}.dad-storage-workspace label{font-size:12px;color:var(--dad-muted)}.dad-storage-workspace select{flex:1;min-width:0}.dad-storage-workspace button{max-width:100%;white-space:normal}.dad-storage-scanning{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--dad-muted)}.dad-storage-empty{min-height:100px}
+.dad-storage-total{display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding:14px 16px;border:1px solid var(--dad-border);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#88805);font-size:12px}.dad-storage-total-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin-bottom:3px;font-weight:500}.dad-storage-total-heading>span:first-child{min-width:0;overflow-wrap:anywhere}.dad-storage-size-row{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}.dad-storage-size-row>span{color:var(--dad-muted);font-size:11px}.dad-storage-size{font-size:28px;font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums}.dad-storage-partial{font-size:11px;color:var(--dad-muted)}.dad-storage h3,.dad-storage-result h3{font-size:12px;font-weight:600;margin:0 0 4px}.dad-storage-category{border-bottom:1px solid var(--dad-border);font-size:12px}.dad-storage-category>summary{display:flex;align-items:center;gap:8px;padding:10px 2px;list-style:none;cursor:pointer}.dad-storage-category>summary::-webkit-details-marker{display:none}.dad-storage-category>summary::before{content:'›';font-size:16px;color:var(--dad-muted);transform:rotate(0);width:10px;text-align:center}.dad-storage-category[open]>summary::before{transform:rotate(90deg)}.dad-storage-category>summary strong{flex:1;font-size:12px;font-weight:500;overflow-wrap:anywhere}.dad-storage-category>summary small{color:var(--dad-muted);font-size:10px;white-space:nowrap}.dad-storage-category-size{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}.dad-storage-category-body{padding:2px 4px 12px 20px}.dad-storage-category-body h4{font-size:11px;margin:10px 0 4px;font-weight:500}.dad-storage-category-body .dad-storage-kinds{margin-bottom:12px}.dad-storage-kinds ul{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;list-style:none;padding:0;margin:0}.dad-storage-kinds li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:8px 10px;border:1px solid var(--dad-border);border-radius:8px;font-size:11px}.dad-storage-kinds li>span{overflow-wrap:anywhere}.dad-storage-kinds li>strong{font-size:11px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}.dad-storage-kinds li>small{grid-column:1/-1;color:var(--dad-muted);font-size:10px}.dad-storage-workspace-details{display:grid;gap:6px;min-width:0}.dad-storage-other{font-size:12px}.dad-storage-other>summary{display:flex;align-items:center;gap:8px;padding:8px 2px;cursor:pointer;color:var(--dad-muted)}.dad-storage-other>.dad-storage-categories{padding-left:8px}
 .dad-storage-details{font-size:11px}.dad-storage-details summary{padding:5px 0;color:var(--dad-muted);cursor:pointer}.dad-storage-details summary:focus-visible,.dad-storage-category>summary:focus-visible,.dad-storage-other>summary:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px;border-radius:4px}.dad-storage-scan-details{border-top:1px solid var(--dad-border);padding-top:5px}.dad-storage-scan-details>p{margin:5px 0}.dad-storage-category-notes h4{margin:10px 0 4px;font-size:11px;font-weight:500}.dad-storage-paths,.dad-storage-notes{list-style:none;margin:0;padding:0}.dad-storage-paths li{display:flex;align-items:baseline;gap:5px 10px;flex-wrap:wrap;border-bottom:1px solid var(--dad-border);padding:7px 0;font-size:11px}.dad-storage-paths li:last-child{border-bottom:0}.dad-storage-paths code{flex:1;min-width:100px;overflow-wrap:anywhere;font-size:11px}.dad-storage-paths small{width:100%;color:var(--dad-muted);font-size:10px}.dad-storage-paths li>span{font-variant-numeric:tabular-nums}.dad-storage-paths .dad-file-kind{font-size:10px;padding:1px 5px;border-radius:4px;background:var(--dsw-alias-bg-layer-1,#8881);color:var(--dad-muted);white-space:nowrap}.dad-storage-notes{color:var(--dad-muted)}.dad-storage-notes li{padding:2px 0;overflow-wrap:anywhere}.dad-storage-notes code{font-size:10px}
 @media(prefers-reduced-motion:reduce){.dad-row,.dad-result-disclosure{transition:none}}
-@media(max-width:560px){.dad-dialog{width:calc(100vw - 20px);max-width:calc(100vw - 20px)}.dad-content{max-height:65vh}.dad-toolbar{gap:8px}.dad-tabs button{padding:6px 9px}.dad-row{padding:10px;gap:8px}.dad-row-title{flex-wrap:wrap;gap:6px}.dad-list-foot{flex-direction:column;gap:6px}.dad-retention{font-size:10px}.dad-results summary{flex-wrap:wrap;gap:4px 9px}.dad-result-summary{flex-basis:75%}.dad-result-disclosure{margin-left:auto}.dad-workspace{max-width:100%}}
+@media(max-width:560px){.dad-dialog{width:calc(100vw - 20px);max-width:calc(100vw - 20px)}.dad-content{max-height:65vh}.dad-toolbar{gap:8px}.dad-tabs button{padding:6px 9px}.dad-row{padding:10px;gap:8px}.dad-row-title{flex-wrap:wrap;gap:6px}.dad-results summary{flex-wrap:wrap;gap:4px 9px}.dad-result-summary{flex-basis:75%}.dad-result-disclosure{margin-left:auto}.dad-workspace{max-width:100%}}
 @media(max-width:560px){.dad-row[data-pending=true]{flex-wrap:wrap}.dad-row-actions{width:100%;flex-direction:row;flex-wrap:wrap;justify-content:flex-end}.dad-row-actions>button{max-width:100%}}
-@media(max-width:560px){.dad-toolbar{flex-wrap:wrap}.dad-tabs{max-width:100%;flex:1}.dad-tabs button{justify-content:center;gap:5px;padding:6px 8px;flex:1;font-size:12px}.dad-list-heading{flex-wrap:wrap}.dad-sort{font-size:11px}.dad-retention{width:100%;justify-content:flex-end}.dad-storage-workspace{align-items:stretch}.dad-storage-workspace label{width:100%}.dad-storage-workspace select{min-width:0;max-width:none;width:100%;flex-basis:100%}.dad-storage-workspace button{width:100%}.dad-storage-total-heading{align-items:flex-start}.dad-storage-category>summary>.dad-badge{font-size:9px}.dad-storage-kinds ul{grid-template-columns:repeat(2,minmax(0,1fr))}.dad-storage-category>summary small{display:none}.dad-storage-workspace{min-width:0}}
+@media(max-width:560px){.dad-toolbar{flex-wrap:wrap}.dad-tabs{min-width:0;max-width:100%;flex:1 0 100%}.dad-tabs button{justify-content:center;gap:5px;padding:6px;flex:1;min-width:0;white-space:normal;font-size:12px}.dad-list-heading{flex-wrap:wrap}.dad-sort{font-size:11px}.dad-storage-workspace{align-items:stretch}.dad-footer .dad-selection{flex:1 0 100%;text-align:right;margin-right:0}.dad-version-row .dad-update-controls{flex-wrap:wrap;flex-shrink:1}.dad-version-row .dad-update-controls button{white-space:normal}.dad-storage-workspace label{width:100%}.dad-storage-workspace select{min-width:0;max-width:none;width:100%;flex-basis:100%}.dad-storage-workspace button{width:100%}.dad-storage-total-heading{align-items:flex-start}.dad-storage-category>summary>.dad-badge{font-size:9px}.dad-storage-kinds ul{grid-template-columns:repeat(2,minmax(0,1fr))}.dad-storage-category>summary small{display:none}.dad-storage-workspace{min-width:0}}
+@media(max-width:420px){
+  .dad-storage-host,.dad-storage-workspace{flex:1 1 100%;min-width:0}
+  .dad-storage-workspace{border-top:1px solid var(--dad-border);padding-top:8px}
+  .dad-storage-workspace label{flex-basis:100%}
+  .dad-storage-workspace select{flex:1 1 110px;width:auto}
+  .dad-storage-workspace button{width:auto}
+}
 `;
