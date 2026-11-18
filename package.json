@@ -2,6 +2,7 @@
   "name": "@qwqbig/dsh-archive-delete",
   "version": "0.0.4",
   "description": "Recoverable archived-session cleanup for DeepSeek Harness · DSH 归档会话回收站",
+  "icon": "./assets/icon.svg",
   "type": "module",
   "license": "Apache-2.0",
   "author": "QwQBiG",
@@ -9,7 +10,7 @@
   "main": "./lib/index.js",
   "bin": { "dsh-archive-delete-doctor": "./lib/doctor.js" },
   "exports": { ".": "./lib/index.js", "./client": "./lib/client.js", "./package.json": "./package.json" },
-  "files": ["lib", "docs", "cordis.patch.yml", "README.md", "README.zh-CN.md", "CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md", "CHANGELOG.md", "CHANGELOG.zh-CN.md", "LICENSE"],
+  "files": ["lib", "docs", "assets/icon.svg", "cordis.patch.yml", "README.md", "README.zh-CN.md", "CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md", "CHANGELOG.md", "CHANGELOG.zh-CN.md", "LICENSE"],
   "engines": { "node": ">=24", "dsh": "0.2.1-rc.3 || 0.2.1-rc.5" },
   "packageManager": "pnpm@11.28.5",
   "scripts": {

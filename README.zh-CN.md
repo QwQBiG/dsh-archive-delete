@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/icon-180.png" alt="归档回收站图标" width="84" height="84">
+  <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/icon-180.png?view=desktop" alt="归档回收站图标" width="84" height="84">
 </p>
 
 <h1 align="center">dsh-archive-delete</h1>
@@ -14,12 +14,12 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archives.png">
-    <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-zh.gif" alt="演示将归档会话移入回收站、恢复其中一条，并扫描存储空间" width="900">
+    <source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archives.png?view=desktop">
+    <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-zh.gif?view=desktop" alt="在 DSH 桌面端将会话移入回收站、恢复会话，并扫描工作区存储" width="900">
   </picture>
 </p>
 
-<p align="center">移入回收站、恢复会话、扫描存储 · v0.0.2 布局，使用示例数据</p>
+<p align="center">使用示例数据录制于 DSH 桌面端，界面来自当前主分支。</p>
 
 ## 安装
 
@@ -46,17 +46,17 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.4/qwqbig-dsh
 <details>
 <summary>展开查看截图</summary>
 
-**主分支的存储概览**
+**已归档**
 
-![DSH 桌面端的存储概览，显示已测得的总量和可展开的分类](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/main-storage-desktop.png)
+![DSH 桌面端归档列表里的三条示例会话](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archives.png?view=desktop)
 
-**v0.0.2 的归档会话**
+**回收站**
 
-![归档会话列表及批量选择操作](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archives.png)
+![回收站中已选中的会话和恢复按钮](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-trash.png?view=desktop)
 
-**v0.0.2 的回收站**
+**工作区存储**
 
-![回收站列表及恢复、永久清除操作](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-trash.png)
+![工作区扫描完成后显示总大小，并展开文件类型](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-storage.png?view=desktop)
 
 </details>
 

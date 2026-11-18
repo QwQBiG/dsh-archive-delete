@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/icon-180.png" alt="Archive Delete icon" width="84" height="84">
+  <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/icon-180.png?view=desktop" alt="Archive Delete icon" width="84" height="84">
 </p>
 
 <h1 align="center">dsh-archive-delete</h1>
@@ -14,12 +14,12 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archives.png">
-    <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-en.gif" alt="Demo of moving archived conversations to trash, restoring one, and scanning storage" width="900">
+    <source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archives.png?view=desktop">
+    <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-en.gif?view=desktop" alt="DSH Desktop demo of moving a conversation to trash, restoring it, and scanning workspace storage" width="900">
   </picture>
 </p>
 
-<p align="center">Move to trash, restore a conversation, and scan storage · v0.0.2 layout with sample data</p>
+<p align="center">Recorded in DSH Desktop using the current main branch layout and sample data.</p>
 
 ## Install
 
@@ -46,17 +46,17 @@ Trash stays until you restore or delete it, including after uninstalling the plu
 <details>
 <summary>View screenshots</summary>
 
-**Storage overview on `main`**
+**Archived conversations**
 
-![DSH Desktop storage overview with a measured total and expandable categories](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/main-storage-desktop.png)
+![DSH Desktop archive list with three sample conversations](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archives.png?view=desktop)
 
-**Archived conversations in v0.0.2**
+**Trash**
 
-![Archived conversations with batch selection](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archives.png)
+![A selected conversation in the trash with the restore action visible](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-trash.png?view=desktop)
 
-**Trash in v0.0.2**
+**Workspace storage**
 
-![Trash with restore and permanent-delete actions](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-trash.png)
+![A completed workspace scan with the size total and file types expanded](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-storage.png?view=desktop)
 
 </details>
 
