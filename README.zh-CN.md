@@ -8,9 +8,18 @@
 
 <div align="center">
 
-[安装](#安装) · [界面预览](#界面预览) · [最新发行版](https://github.com/QwQBiG/dsh-archive-delete/releases/latest) · [English](README.md)
+[安装](#安装) · [界面截图](#界面预览) · [最新发行版](https://github.com/QwQBiG/dsh-archive-delete/releases/latest) · [English](README.md)
 
 </div>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archives.png">
+    <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-zh.gif" alt="演示将归档会话移入回收站、恢复其中一条，并扫描存储空间" width="900">
+  </picture>
+</p>
+
+<p align="center">移入回收站、恢复会话、扫描存储 · v0.0.2 布局，使用示例数据</p>
 
 ## 安装
 
@@ -34,26 +43,20 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.4/qwqbig-dsh
 
 ## 界面预览
 
-这是当前 `main` 分支的存储概览，使用示例数据。上方安装地址对应稳定发行版。
+<details>
+<summary>展开查看截图</summary>
+
+**主分支的存储概览**
 
 ![DSH 桌面端的存储概览，显示已测得的总量和可展开的分类](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/main-storage-desktop.png)
 
-<details>
-<summary>早期截图与操作演示</summary>
-
-以下示例采用 v0.0.2 的布局。 [观看操作演示](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-zh.gif)
-
-**归档会话**
+**v0.0.2 的归档会话**
 
 ![归档会话列表及批量选择操作](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archives.png)
 
-**回收站**
+**v0.0.2 的回收站**
 
 ![回收站列表及恢复、永久清除操作](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-trash.png)
-
-**存储分类**
-
-![展示文件类型和大文件的存储概览](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-storage.png)
 
 </details>
 
