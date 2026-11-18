@@ -8,9 +8,18 @@
 
 <div align="center">
 
-[Install](#install) · [Preview](#preview) · [Latest release](https://github.com/QwQBiG/dsh-archive-delete/releases/latest) · [简体中文](README.zh-CN.md)
+[Install](#install) · [Screenshots](#preview) · [Latest release](https://github.com/QwQBiG/dsh-archive-delete/releases/latest) · [简体中文](README.zh-CN.md)
 
 </div>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archives.png">
+    <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-en.gif" alt="Demo of moving archived conversations to trash, restoring one, and scanning storage" width="900">
+  </picture>
+</p>
+
+<p align="center">Move to trash, restore a conversation, and scan storage · v0.0.2 layout with sample data</p>
 
 ## Install
 
@@ -34,26 +43,20 @@ Trash stays until you restore or delete it, including after uninstalling the plu
 
 ## Preview
 
-Storage overview in the current `main` branch, shown with sample data. The install link above selects the stable release.
+<details>
+<summary>View screenshots</summary>
+
+**Storage overview on `main`**
 
 ![DSH Desktop storage overview with a measured total and expandable categories](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/main-storage-desktop.png)
 
-<details>
-<summary>Earlier screenshots and walkthrough</summary>
-
-These examples use the v0.0.2 layout. [Watch the short walkthrough](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-en.gif)
-
-**Archived conversations**
+**Archived conversations in v0.0.2**
 
 ![Archived conversations with batch selection](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archives.png)
 
-**Trash**
+**Trash in v0.0.2**
 
 ![Trash with restore and permanent-delete actions](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-trash.png)
-
-**Storage breakdown**
-
-![Storage overview with file types and large files](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-storage.png)
 
 </details>
 
