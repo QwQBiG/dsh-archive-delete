@@ -5,5 +5,5 @@
     "esModuleInterop": true, "jsx": "react-jsx", "skipLibCheck": true, "noEmit": true,
     "types": ["node", "react", "react-dom"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "scripts/probe-host.mts"]
 }

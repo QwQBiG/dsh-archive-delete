@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { ArchiveError, PACKAGE_NAME, SUPPORTED_DSH_VERSION_LABEL, type ArchiveApi, type DshAdapter, type Lease, type SupportStatus } from './contracts.js';
-import { acquirePluginLease, createDshAdapter, getHostPaths, getNativeLockExclusive, getNativeWindowsLock, getStorageSources, getStorageWorkspaces, type HostContext } from './dsh-adapter.js';
+import { acquirePluginLease, createDshAdapter, getHostPaths, getNativeLockExclusive, getNativeWindowsLock, getStorageSources, getStorageWorkspaces, resolveDshHomePath, type HostContext } from './dsh-adapter.js';
 import { registerHostRoutes } from './host-routes.js';
 import { ArchiveService } from './service.js';
 import { TrashStore } from './storage.js';
@@ -9,13 +9,17 @@ import { PLUGIN_VERSION } from './version.js';
 import { UpdateService } from './update-service.js';
 import { createUpdateHost } from './update-host.js';
 import { createGithubUpdateSource } from './update-source.js';
+import { PurgeHistory } from './purge-history.js';
 
 export const name = 'dsh-archive-delete';
 export const inject = ['connection', 'workspaceRegistry', 'sessionPersistence', 'sessions', 'sessionProjectionCache', 'sessionProjections', 'profileContext', 'dshHomePath'];
 
-function unavailableApi(status: SupportStatus): ArchiveApi {
+function unavailableApi(status: SupportStatus, history?: PurgeHistory): ArchiveApi {
   const reject = async (): Promise<never> => { throw new ArchiveError('unsupported-host', status.reason ?? 'The archive plugin is unavailable.'); };
-  return { list: async () => ({ support: status, archived: [], trash: [], recentResults: [] }), preview: reject, execute: reject, cancelPending: reject, storage: reject };
+  return {
+    list: async () => ({ support: status, archived: [], trash: [], recentResults: [], purgeHistory: await history?.recent() ?? [] }),
+    preview: reject, execute: reject, cancelPending: reject, storage: reject,
+  };
 }
 /** Load without replacing any native service. Startup failures leave a readable, disabled UI. */
 export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
@@ -25,18 +29,21 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
   let inspector: StorageInspector | undefined;
   let updater: UpdateService | undefined;
   let loaded: { version: string; trash: string } | undefined;
+  let history: PurgeHistory | undefined;
   try {
-    const adapter: DshAdapter = await createDshAdapter(ctx);
+    const home = await resolveDshHomePath(ctx);
+    history = new PurgeHistory(join(home, 'archive-delete'), { warn: message => ctx.logger?.warn(message) });
+    const adapter: DshAdapter = await createDshAdapter(ctx, { home });
     const support = await adapter.capabilities();
     if (!support.supported) {
       ctx.logger?.warn(`${PACKAGE_NAME}: ${support.reason ?? 'This host is unsupported.'} Archive operations are disabled.`);
-      api = unavailableApi(support);
+      api = unavailableApi(support, history);
     }
     else {
-      const paths = await getHostPaths(ctx);
+      const paths = await getHostPaths(ctx, home);
       const store = new TrashStore({ root: paths.root, sessionsRoot: paths.sessionsRoot });
       lease = await acquirePluginLease(paths.root, getNativeLockExclusive(ctx), { lockNamed: getNativeWindowsLock(ctx) });
-      archive = new ArchiveService(adapter, store);
+      archive = new ArchiveService(adapter, store, { warn: message => ctx.logger?.warn(message) });
       await archive.initialize();
       inspector = new StorageInspector({ workspaces: () => getStorageWorkspaces(ctx), sources: workspaceId => getStorageSources(ctx, workspaceId) });
       api = wrapArchiveApi(archive, inspector);
@@ -64,7 +71,7 @@ export async function apply(ctx: HostContext): Promise<() => Promise<void>> {
     lease = undefined;
     ctx.logger?.warn(`${PACKAGE_NAME}: initialization failed; archive operations are disabled. ${error instanceof Error ? error.message : String(error)}`);
     api = unavailableApi({ supported: false, version: 'unknown', platform: process.platform,
-      reason: error instanceof ArchiveError && error.code === 'store-busy' ? error.message : 'Archive storage could not be initialized. Check the host diagnostics, then reload the plugin.' });
+      reason: error instanceof ArchiveError && error.code === 'store-busy' ? error.message : 'Archive storage could not be initialized. Check the host diagnostics, then reload the plugin.' }, history);
   }
   try {
     const unmount = registerHostRoutes(ctx, api);

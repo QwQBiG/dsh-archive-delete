@@ -2,25 +2,36 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
+## 0.0.4
+
+- Show the running host's idle-release status; expand it to see checks and reason codes.
+- Log a warning when a capability fails again after recovery. Missing-owner warnings include diagnostic counts.
+- Show recent permanent deletions with the completion time, conversation ID and log size. The last 30 days of history (up to 200 records) remain readable when archive operations are unavailable.
+- List reason-code explanations in Doctor's selected language, and run a separate host probe for an isolated diagnostic report.
+- Recheck archive operations with the original request after a timeout or an uncertain response. Startup finishes interrupted cancellations before queued moves and keeps later confirmations separate.
+- Restore and rollback recreate a missing internal session bucket under the existing session store.
+- Keep a separate receipt for each upgrade so rechecking an older request cannot start installation again. The version row reflects the latest update check, including after a clock rollback.
+- Count SQLite companion files with the search index, use physical locations to exclude workspaces, and preserve valid POSIX filenames in storage results.
+
 ## 0.0.3
 
-- Refresh recent-result ordering after one minute, including in-place receipt edits.
-- Identify unavailable idle-release probes with specific reason codes and the host version, recorded once per reason.
-- Verify probe failure and recovery against the native host while retaining live session owners until release can proceed.
+- Rebuild the recent-results index on the first read after its one-minute expiry, so edits to existing receipt files appear in the correct order.
+- Log the host version and a specific reason code when an idle-release probe fails, once per reason.
+- Add native-host tests for probe failure and recovery, checking that session owners remain in place until release can proceed.
 
 ## 0.0.2
 
-- Supports DSH Desktop `0.2.1-rc.3` and `0.2.1-rc.5` on macOS and Windows.
-- Compact storage categories and file-type breakdowns, with readable kinds for large files.
-- Keep the previous result visible during same-scope rescans.
-- Improve staging/purge durability and isolate damaged records from healthy lists.
-- Add single-use previews, expiry feedback, clearer batch counts and consistent localized times.
-- Index recent receipts and session relationships; combine overlapping refreshes.
-- Reconcile uncertain updates, continue installation observation and respect GitHub backoff. Verify release checksums and metadata against the actual install package.
+- Support DSH Desktop `0.2.1-rc.3` and `0.2.1-rc.5` on macOS and Windows.
+- Show compact storage categories and file-type totals, with type labels for large files.
+- Keep the previous scan result visible while rescanning the same scope.
+- Improve persistence during staging and permanent deletion, and list damaged-record diagnostics separately.
+- Use each preview once, show when it expires, and make batch counts and localized times consistent.
+- Index recent receipts and session relationships, and share the result of overlapping list refreshes.
+- Recheck uncertain update results, keep tracking installation status and follow GitHub's retry delays. Check release checksums and metadata against the install package.
 
 ## 0.0.1
 
-- Native archived-session actions, recoverable trash and confirmed permanent deletion.
-- Immediate processing of idle managed conversations, with parent/subagent grouping and restoration.
-- DSH/workspace storage scans, batch selection and largest-first sorting.
-- GitHub Release installation, confirmed updates and packaged Doctor for macOS/Windows Desktop `0.2.1-rc.3`.
+- Add native archived-session menu actions, recoverable trash and permanent deletion after confirmation.
+- Process idle host-managed conversations immediately, keeping parent sessions and dedicated subagents together for moves and restoration.
+- Scan DSH and workspace storage, select conversations in batches and sort largest first.
+- Install from GitHub Releases, confirm updates in the plugin and run the included Doctor on macOS/Windows Desktop `0.2.1-rc.3`.

@@ -5,6 +5,7 @@ import {
 } from './contracts.js';
 import { TrashStore, groupFingerprint, type Operation, type OperationContext } from './storage.js';
 import { RequestJournal, type RequestRecord } from './request-journal.js';
+import { PurgeHistory, type PurgeHistoryOptions } from './purge-history.js';
 
 interface Prepared { preview: Preview; groups: Map<string, SessionGroup>; fingerprints: Map<string, string> }
 const REQUEST_ID = /^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
@@ -44,6 +45,12 @@ function groupReady(group: SessionGroup): void {
   if (!root?.archived) throw new ArchiveError('not-archived', MESSAGE['not-archived']!);
   if (group.members.some(m => m.activity.length)) throw new ArchiveError('active', MESSAGE.active!);
 }
+function purgeEvidence(operation: Operation, related: readonly Operation[]): Operation {
+  const candidates = related.filter(item => item.entryId === operation.entryId && ['purging', 'purged'].includes(item.phase));
+  const completed = candidates.filter(item => item.phase === 'purged');
+  const latest = (completed.length ? completed : candidates).sort((a, b) => b.createdAt - a.createdAt)[0] ?? operation;
+  return { ...latest, phase: 'purged' };
+}
 
 /** Serializes user operations; the adapter is the only dependency that knows DSH internals. */
 export class ArchiveService implements ArchiveApi {
@@ -55,7 +62,10 @@ export class ArchiveService implements ArchiveApi {
   private maintenance: 'update-in-progress' | 'update-restart-required' | undefined;
   private listing: Promise<Overview> | undefined;
   private readonly requests: RequestJournal;
-  constructor(readonly adapter: DshAdapter, readonly store: TrashStore) { this.requests = new RequestJournal(store.root); }
+  private readonly purgeHistory: PurgeHistory;
+  constructor(readonly adapter: DshAdapter, readonly store: TrashStore, diagnostics: Pick<PurgeHistoryOptions, 'warn'> = {}) {
+    this.requests = new RequestJournal(store.root); this.purgeHistory = new PurgeHistory(store.root, diagnostics);
+  }
   private serialize<T>(work: () => Promise<T>): Promise<T> {
     if (this.closing) return Promise.reject(new ArchiveError('plugin-stopping', 'The plugin is stopping. Refresh after it reloads.'));
     const guarded = () => {
@@ -95,7 +105,7 @@ export class ArchiveService implements ArchiveApi {
       // Repair first, then make exactly one pass over requests explicitly queued by the user.
       const operations = await this.store.operations();
       for (const op of operations.filter(o => o.phase !== 'pending')) {
-        try { await this.recover(op); }
+        try { await this.recover(op, operations); }
         catch (e) { this.startupFailures.push(failure(op.group.sessionId, op.group.title, e)); }
       }
       // Cancellation intents take precedence over automatic pending moves. Keep
@@ -146,7 +156,7 @@ export class ArchiveService implements ArchiveApi {
       this.initialized = true;
     });
   }
-  private async recover(op: Operation): Promise<void> {
+  private async recover(op: Operation, related: readonly Operation[] = [op]): Promise<void> {
     const directories = await this.store.locations(op);
     const held = await this.adapter.acquireLocated(op.group, directories);
     if (held && held.kind !== 'acquired') throw new ArchiveError('busy', 'Recovery is waiting for the session write lock.');
@@ -178,16 +188,22 @@ export class ArchiveService implements ArchiveApi {
           this.startupFailures.push(outcome); retain = true;
         }
       }
+      if (outcome?.status === 'purged') await this.purgeHistory.record(purgeEvidence(op, related));
       if (outcome && op.requestId) await this.requests.record(op.requestId, outcome);
       if (!retain) await this.store.finish(op);
     } finally { if (held?.kind === 'acquired') await held.lease.release(); }
   }
   private async finishTerminals(requestId?: string, targetId?: string, purgedEntryId?: string): Promise<void> {
-    for (const op of await this.store.operations()) {
+    const operations = await this.store.operations();
+    for (const op of operations) {
       if (purgedEntryId && op.entryId === purgedEntryId && ['purging', 'purged'].includes(op.phase)) {
+        await this.purgeHistory.record(purgeEvidence(op, operations));
         if (op.requestId) await this.requests.record(op.requestId, { id: op.targetId!, title: '', status: 'purged' });
         await this.store.finish(op);
-      } else if (requestId && op.requestId === requestId && op.targetId === targetId && ['trashed', 'restored', 'purged'].includes(op.phase)) await this.store.finish(op);
+      } else if (requestId && op.requestId === requestId && op.targetId === targetId && ['trashed', 'restored', 'purged'].includes(op.phase)) {
+        if (op.phase === 'purged') await this.purgeHistory.record(purgeEvidence(op, operations));
+        await this.store.finish(op);
+      }
     }
   }
   async list(): Promise<Overview> {
@@ -195,7 +211,11 @@ export class ArchiveService implements ArchiveApi {
     if (this.listing) return this.listing;
     const listing = this.serialize(async () => {
       const support = await this.adapter.capabilities();
-      if (!support.supported) return { support, archived: [], trash: [], recentResults: [] };
+      if (!support.supported) return { support, archived: [], trash: [], recentResults: [], purgeHistory: await this.purgeHistory.recent() };
+      if (this.adapter.probeIdleRelease) {
+        try { support.idleRelease = await this.adapter.probeIdleRelease(); }
+        catch { /* Optional diagnostics cannot prevent archive listing. */ }
+      }
       const pending = new Map((await this.store.operations()).filter(o => o.phase === 'pending').map(o => [o.group.sessionId, o]));
       const archived = (await this.adapter.listArchived()).map(s => {
         const p = pending.get(s.id); return p ? { ...s, pending: true, pendingReason: p.reason ?? 'Waiting for the next DSH start.' } : s;
@@ -204,7 +224,7 @@ export class ArchiveService implements ArchiveApi {
       if (this.startupFailures.length) recent.unshift(result('startup-recovery', 'trash', this.startupFailures));
       const trash = await this.store.list();
       const issues = [...this.adapter.listIssues?.() ?? [], ...this.store.listIssues()];
-      return { support, archived, trash, recentResults: recent, ...(issues.length ? { issues } : {}) };
+      return { support, archived, trash, recentResults: recent, purgeHistory: await this.purgeHistory.recent({ prune: true }), ...(issues.length ? { issues } : {}) };
     });
     this.listing = listing;
     try { return await listing; }
@@ -252,7 +272,8 @@ export class ArchiveService implements ArchiveApi {
       if (saved?.complete) return saved.result;
       if (saved) {
         admit();
-        for (const op of await this.store.operations()) if (op.requestId === requestId && op.phase !== 'pending') await this.recover(op);
+        const operations = await this.store.operations();
+        for (const op of operations) if (op.requestId === requestId && op.phase !== 'pending') await this.recover(op, operations);
         saved = (await this.requests.load(requestId, fingerprint))!;
       }
       let prepared: Prepared;
@@ -295,8 +316,9 @@ export class ArchiveService implements ArchiveApi {
         } catch (e) {
           // A rename can commit before its next journal write. Resolve that durable
           // operation before reporting its outcome or allowing a retry.
-          const interrupted = (await this.store.operations()).filter(op => op.requestId === requestId && op.targetId === item.id && op.phase !== 'pending');
-          for (const op of interrupted) await this.recover(op);
+          const operations = await this.store.operations();
+          const interrupted = operations.filter(op => op.requestId === requestId && op.targetId === item.id && op.phase !== 'pending');
+          for (const op of interrupted) await this.recover(op, operations);
           const recovered = (await this.requests.load(requestId, fingerprint))?.result.items.find(previous => previous.id === item.id);
           outcome = recovered ?? failure(item.id, item.title, e);
         }
@@ -360,7 +382,8 @@ export class ArchiveService implements ArchiveApi {
     if (held.kind !== 'acquired') throw new ArchiveError('busy', 'Permanent deletion is waiting for the session write lock.');
     try {
       if (await this.store.entryFingerprint(entryId) !== expectedFingerprint) throw new ArchiveError('source-changed', MESSAGE['source-changed']!);
-      await this.store.purge(entryId, context);
+      const operation = await this.store.purge(entryId, context);
+      await this.purgeHistory.record(operation);
     } finally { await held.lease.release(); }
   }
   async cancelPending(ids: string[], requestId: string): Promise<BatchResult> {

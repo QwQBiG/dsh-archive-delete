@@ -128,6 +128,13 @@ test(`stock ${runtimeVersion}: true JSONL and registry trash/restore/purge, offi
   const again = (await f.api.list()).trash[0]!;
   assert.equal((await f.execute('purge', [again.id])).items[0]!.status, 'purged');
   assert.equal((await f.api.list()).trash.length, 0);
+  const history = (await f.api.list()).purgeHistory!;
+  assert.equal(history.length, 1); assert.equal(history[0]!.entryId, again.id);
+  assert.equal(history[0]!.sessionId, 'permanent-target');
+  assert.equal(history[0]!.memberCount, 1);
+  assert.equal(JSON.stringify(history).includes('Title permanent-target'), false);
+  const reloaded = new ArchiveService(f.adapter, f.store); await reloaded.initialize();
+  assert.deepEqual((await reloaded.list()).purgeHistory, history); await reloaded.close();
   await f.domains.get(projectionCacheDomainSpec.name).close();
   const reopened = await f.domains.open(projectionCacheDomainSpec);
   assert.equal(reopened.table('sessions').get(parent.id).rows.title.val, 'Native synthetic title');
@@ -323,19 +330,40 @@ test('runtime version comes from the live profile installation, independent of p
   assert.equal((await absent.capabilities()).supported, false);
 });
 
-test('a second plugin instance obtains no data areas before the native store lease', async t => {
+test('a second plugin instance reads history without writing while the native store lease is held', async t => {
   const f = await fixture(t); const home = join(f.home, 'second-instance-home'); await mkdir(home);
   const root = join(home, 'archive-delete');
   const held = await acquirePluginLease(root, getNativeLockExclusive(f.ctx), { lockNamed: getNativeWindowsLock(f.ctx) });
   t.after(() => held.release());
+  const folder = join(root, 'purge-history');
+  await mkdir(folder, { mode: 0o700 });
+  const historyFile = join(folder, 'history.json');
+  const now = Date.now();
+  const fresh = { entryId: randomUUID(), sessionId: 'synthetic-fresh', titleHash: 'a'.repeat(64), sizeBytes: 128, memberCount: 1, purgedAt: now };
+  const expired = { ...fresh, entryId: randomUUID(), sessionId: 'synthetic-expired', purgedAt: now - 31 * 24 * 60 * 60_000 };
+  const bytes = Buffer.from(JSON.stringify({ schema: 1, entries: [expired, fresh] }));
+  await writeFile(historyFile, bytes, { mode: 0o600 });
   const warnings: string[] = [];
+  let handler: ((request: Request) => Promise<Response>) | undefined;
   const close = await applyPlugin({ get: name => f.ctx.get(name), dshHomePath: () => home,
     waterfall: (event, request, next) => f.ctx.waterfall(event, request, next), emit: (event, ...args) => f.ctx.emit(event, ...args),
     logger: { warn: message => warnings.push(message) },
-    connection: { fetch: { register: () => () => {} } },
+    connection: { fetch: { register: (route: { fetch: (request: Request) => Promise<Response> }) => {
+      handler = route.fetch;
+      return () => {};
+    } } },
   });
   t.after(close);
   assert.ok(warnings.some(message => message.includes('Another DSH process owns')));
+  assert.ok(handler);
+  const response = await handler(new Request('http://127.0.0.1/api/dsh-archive-delete', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'list' }),
+  }));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.value.support.supported, false);
+  assert.deepEqual(payload.value.purgeHistory, [fresh]);
+  assert.deepEqual(await readFile(historyFile), bytes);
   for (const area of ['trash', 'staging', 'operations', 'receipts']) await assert.rejects(access(join(root, area)), { code: 'ENOENT' });
 });
 
@@ -556,15 +584,27 @@ test(`stock ${runtimeVersion}: idle-release diagnostics identify a missing probe
     const adapter = await createDshAdapter(context, { home: f.home });
     const group = await adapter.inspect(handle.agent.id);
     const file = join(group.members[0]!.directory, 'session.v4.jsonl'); const before = await readFile(file);
+    assert.equal((await adapter.probeIdleRelease!()).reasonCode, 'agent-inventory');
+    assert.equal(warnings.length, 0, 'read-only observation does not emit release warnings');
     assert.equal(await adapter.releaseIdle!(group), false); assert.equal(await adapter.releaseIdle!(group), false);
     assert.equal(warnings.length, 1); assert.ok(warnings[0]!.includes(`host=${runtimeVersion} reason=agent-inventory.`));
     for (const privateValue of [handle.agent.id, 'Private diagnostic title', f.home]) assert.equal(warnings[0]!.includes(privateValue), false);
     assert.equal(f.ctx.agents.get(handle.agent.id), handle.agent); assert.equal(f.ctx.sessions.get(handle.agent.id), handle.agent.session);
     assert.deepEqual(await readFile(file), before);
     broken = false;
+    const readiness = await adapter.probeIdleRelease!();
+    assert.equal(readiness.status, 'available'); assert.equal(readiness.checks.length, 13);
+    assert.equal(readiness.checks.every(check => check.status === 'pass'), true);
+    assert.equal(f.ctx.agents.get(handle.agent.id), handle.agent);
+    assert.equal(f.ctx.sessions.get(handle.agent.id), handle.agent.session);
+    assert.deepEqual(await readFile(file), before);
     assert.equal(await adapter.releaseIdle!(group), true); assert.equal(warnings.length, 1);
     assert.equal(f.ctx.agents.get(handle.agent.id), undefined); assert.equal(f.ctx.sessions.get(handle.agent.id), undefined);
     assert.ok(await f.persistence.stat(handle.agent.id));
+    assert.equal((await adapter.probeIdleRelease!()).status, 'unverified', 'a cold runtime does not prove per-session ownership');
+    await managed.resume(handle.agent.id);
+    broken = true;
+    assert.equal(await adapter.releaseIdle!(group), false); assert.equal(warnings.length, 2, 'a recovered capability failure logs again');
   } finally { await managed.close(); }
 });
 

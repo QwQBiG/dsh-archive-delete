@@ -1,5 +1,7 @@
 import type { UsageScanResult } from './storage-usage.js';
 import type { UpdateOverview } from './update-contracts.js';
+import type { IdleReleaseDiagnostics } from './host-diagnostics.js';
+import type { PurgeHistoryEntry } from './purge-history.js';
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 export const PACKAGE_NAME = '@qwqbig/dsh-archive-delete';
@@ -9,7 +11,10 @@ export const SUPPORTED_DSH_VERSIONS = [SUPPORTED_DSH_VERSION, '0.2.1-rc.5'] as c
 export const SUPPORTED_DSH_VERSION_LABEL = SUPPORTED_DSH_VERSIONS.join(' / ');
 export function isSupportedDshVersion(version: string): boolean { return (SUPPORTED_DSH_VERSIONS as readonly string[]).includes(version); }
 
-export interface SupportStatus { supported: boolean; version: string; platform: string; reason?: string }
+export interface SupportStatus {
+  supported: boolean; version: string; platform: string; reason?: string; reasonCode?: string;
+  idleRelease?: IdleReleaseDiagnostics;
+}
 export interface Activity { kind: string; label: string }
 export interface SessionMember {
   id: string;
@@ -47,7 +52,7 @@ export interface PreviewItem {
 }
 export interface Preview { id: string; action: Action; items: PreviewItem[]; expiresAt: number }
 export interface DataIssue { scope: 'archive' | 'trash'; id?: string; code: string; message: string }
-export interface Overview { support: SupportStatus; archived: ArchivedSession[]; trash: TrashEntry[]; recentResults: BatchResult[]; storageWorkspaces?: StorageWorkspace[]; issues?: DataIssue[] }
+export interface Overview { support: SupportStatus; archived: ArchivedSession[]; trash: TrashEntry[]; recentResults: BatchResult[]; storageWorkspaces?: StorageWorkspace[]; issues?: DataIssue[]; purgeHistory?: PurgeHistoryEntry[] }
 export interface StorageWorkspace { id: string; title: string }
 export interface StorageOverview extends UsageScanResult {
   scope: 'host' | 'workspace';
@@ -83,6 +88,8 @@ export interface DshAdapter {
   acquire(group: SessionGroup): Promise<LeaseResult>;
   /** Optional pinned host lifecycle capability. No active work or raw locks may be forced closed. */
   releaseIdle?(group: SessionGroup): Promise<boolean>;
+  /** Read-only observation of the live host; it never releases owners or writes session data. */
+  probeIdleRelease?(): Promise<IdleReleaseDiagnostics>;
   acquireLocated(group: SessionGroup, directories: (string | undefined)[]): Promise<LeaseResult>;
   removeRegistry(group: SessionGroup): Promise<void>;
   restoreRegistry(group: SessionGroup): Promise<void>;

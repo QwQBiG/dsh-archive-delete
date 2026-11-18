@@ -12,37 +12,43 @@
 | Failed / skipped | Listed in the per-item result | Read the reason and retry the target |
 | Purged | Selected logs and recovery metadata removed | Completed |
 
-Batch results count successes, pending items, skips and failures separately. Damaged records have their own notice while healthy records remain listed.
+Batch results show separate counts for successful, pending, skipped and failed targets. A damaged record gets its own notice, while healthy records remain in the list.
 
 Refreshing updates the displayed outcome from the same request receipt, including a cancellation in another window or startup processing. Other requests do not replace the local result.
 
 ## Confirmation
 
-Preview resolves selected IDs into parent/subagent groups and displays size, members, ready/idle-release/protected counts and expiry. It lasts five minutes. Changes to content, registration or relationships require a new preview.
+The preview expands the selected IDs into parent/subagent groups and shows their members, size and expiry, along with counts for ready, idle-release and protected targets. It lasts five minutes. If content, registration or relationships change, review a new preview.
 
-One preview authorizes one request. It is consumed before durable intent publication, including a publication error. The same request ID recovers the existing intent/result. Maintenance clears active previews and ignores late preview responses.
+Each preview authorizes one request. The service marks it used before publishing the durable intent, so a publication error leaves it used. Retrying with the same request ID recovers the existing intent and result. During maintenance, the client clears active previews and ignores preview responses that arrive later.
 
 An error after the request may have been recorded keeps the outcome unconfirmed. Use **Retry the same request**; a temporary refusal during retry keeps the original request available. If the service verifies that neither its receipt nor an associated operation exists, it returns to preview review instead.
 
 ## Move and pending requests
 
-1. Inspect the archived group and its activity.
-2. For an idle host-managed writer, complete the native lifecycle release and inspect the group again.
-3. Acquire member leases and persist the request/operation metadata.
+1. Check the archived group and its activity.
+2. If DSH holds an idle writer, release it through its native lifecycle and check the group again.
+3. Acquire member leases and persist the request and operation metadata.
 4. Move member directories through staging, update native registration and commit the trash entry.
-5. Persist per-item outcomes and finish terminal journals.
+5. Persist each result and remove the completed operation journals.
 
-When a writer remains held, the request stays pending. **Cancel waiting and review** cancels that queue and opens a new preview. Cancelling or closing the preview leaves the original logs in place. Startup recovers interrupted operations, then checks each queued move once. Content changes or unarchiving end the old request and require another confirmation.
+If the writer remains held, the request stays pending. Choose **Cancel waiting and review** to cancel the queued request and open a new preview. Cancelling or closing that preview leaves the original logs in place. At startup, the plugin recovers interrupted operations and cancellations before checking each remaining queued move once. Changed content or an unarchived conversation ends the old request and requires a new confirmation.
 
 Cancellation records the exact queued operation IDs. If it is interrupted, startup finishes cancelling those operations; later confirmations for the same conversation remain separate. A cancellation from an older build may lack these IDs. In that case, the affected queued move stays paused until you confirm cancellation again. Other queued conversations can still proceed.
 
 ## Restore and permanent deletion
 
-Restoration returns the group to its original workspace in archived state. A missing workspace becomes Ungrouped. Existing destinations produce a conflict for that target.
+Restore returns the group to its original workspace in archived state, or to Ungrouped if the workspace is missing. If a destination already exists, that target reports a conflict.
 
 If an empty internal session bucket was removed while its logs were in trash or staging, restore or rollback recreates that bucket under the existing session-storage root. Project folders are not recreated.
 
-Permanent deletion works on selected trash entries in the current process. It removes their logs and recovery metadata and cannot be undone. A partial deletion reports the remaining state and supports a new explicit retry; only a complete remaining group can be restored.
+Permanent deletion runs on the selected trash entries in the current process. It removes their logs and recovery metadata and cannot be undone. If deletion stops partway through, the result describes what remains so you can review and retry. Restore is available only when the remaining group is complete.
+
+## Recent permanent deletions
+
+Expand **Recent permanent deletions** in Trash to see the session ID, confirmed completion time, original log size and member count for up to 200 deletions from the last 30 days. The view can read existing history even if archive operations are unavailable. The active store removes expired records when it reads or writes the history.
+
+An interrupted history write may leave a gap. If startup recovery confirms a deletion, the recorded time is when recovery confirmed it.
 
 ## Journal recovery
 
@@ -54,29 +60,29 @@ Permanent deletion works on selected trash entries in the current process. It re
 | `purging` / `purged` | Finish an empty entry; report remaining files for explicit retry |
 | `pending` | Recheck the original group and attempt its queued move once |
 
-Recovery checks observed paths and leases against recorded ownership. A missing original empty bucket is accepted for recorded cleanup; conflicting or unreadable data produces a diagnostic. Keep the affected entry and journals together when reporting an issue.
+Recovery compares the paths and leases it finds with the recorded ownership. For recorded cleanup, it accepts a missing original empty bucket. Conflicting or unreadable data produces a diagnostic. When reporting an issue, keep the affected entry together with its operation journals.
 
-Completed request receipts retain IDs/outcomes for replay. Listing rereads displayed contents and caches their order for up to one minute; the next lookup after expiry refreshes that order. Startup explicitly cleans temporary receipt files.
+Completed request receipts keep IDs and outcomes for replay. The list rereads the displayed contents each time and caches their order for up to one minute. The first lookup after expiry refreshes the order. Startup also cleans temporary receipt files.
 
 ## Storage observations
 
-Storage scans have their own cancellation lifetime. They carry observation time, complete/partial status, category/type totals and skipped-entry details. Same-scope rescans keep the previous result until replacement; changing scope clears it. Cancelling a scan affects the scan only.
+Each storage scan can be cancelled independently of other operations. Its result includes the observation time, complete or partial status, category and file-type totals, and skipped entries. Rescanning the same scope keeps the previous result until a new one arrives; changing scope clears it. Cancelling the scan leaves other operations running.
 
 ## Update recovery
 
 | Status | Action |
 | --- | --- |
-| `installing` | Wait for the native manager; status observation continues |
-| `installed` | The target is installed; load it with a full restart if prompted |
+| `installing` | Wait for the native manager; the plugin keeps checking its status |
+| `installed` | The target is installed; fully restart to load it if prompted |
 | `restart-required` | Fully quit and reopen DSH |
-| `failed` | Read the diagnostic, check the installed version and review a new attempt |
+| `failed` | Read the diagnostic, check the installed version and review another attempt |
 | `interrupted` | Recheck the release and current installation |
 | `unknown` | Check installation status or recheck the confirmed request; fully restart if unresolved |
 
-Check and installation journals are profile-scoped under `updates/`; verified packages stay in `updates/packages/`. Same-request checks read native installation state without repeating a recorded manager call. Polling backs off from 3 to 15 to 60 seconds.
+Check and installation journals are stored separately for each profile under `updates/`, and verified packages stay in `updates/packages/`. Rechecking the same request reads the native installation state without repeating a recorded manager call. The polling interval increases from 3 to 15 to 60 seconds.
+
+Before package replacement, the plugin finishes queued archive work and pauses new mutations. Unloading cancels verification that has not yet been delegated; once the native manager accepts an installation, it controls the remaining work. At startup, the plugin compares the saved target with the installed and loaded versions.
 
 Each confirmed installation keeps its own receipt across later attempts and restarts. Rechecking an older request returns its recorded outcome; an active or unresolved newer installation keeps archive changes paused. Existing latest-only installation records migrate on startup.
-
-Before replacement, archive work drains and new mutations pause. Unloading cancels verification before delegation; the native manager owns an admitted installation. Startup reconciles the saved target with the installed and loaded versions.
 
 [Installation and troubleshooting](installation.md) · [Architecture](architecture.md) · [Verification](acceptance.md)

@@ -12,6 +12,7 @@ const help = text(`Usage: dsh-archive-delete-doctor [options]
   --runtime PATH   Actual DSH runtime directory (or DSH_RUNTIME_ROOT)
   --lang en|zh     Output language
   --json           Structured JSON output
+  --codes          List idle-release reason codes without inspecting a profile
   --help           Show help without inspecting a profile
 
 Requires Node 24+. This is read-only configuration and access checking.
@@ -23,6 +24,7 @@ Exit 0: all static checks passed; 1: failed or incomplete checks; 2: usage error
   --runtime PATH   DSH 实际运行时目录（或 DSH_RUNTIME_ROOT）
   --lang en|zh     输出语言
   --json           输出结构化 JSON
+  --codes          列出即时释放原因码，不检查 profile
   --help           显示帮助，不检查 profile
 
 需要 Node 24+。仅只读核对配置与访问权限，无法证明正在运行的 DSH 已加载插件。
@@ -32,10 +34,11 @@ Exit 0: all static checks passed; 1: failed or incomplete checks; 2: usage error
 async function main(): Promise<void> {
   if (args.includes('--help') || args.includes('-h')) { process.stdout.write(help); return; }
   try {
-    const values = new Map<string, string>(); let json = false;
+    const values = new Map<string, string>(); let json = false; let codes = false;
     for (let i = 0; i < args.length; i++) {
       const key = args[i]!;
       if (key === '--json' && !json) { json = true; continue; }
+      if (key === '--codes' && !codes) { codes = true; continue; }
       if (!['--home', '--profile', '--runtime', '--lang'].includes(key) || values.has(key)) throw new Error(text(`Unknown or duplicate option: ${key}`, `未知或重复的选项：${key}`));
       const value = args[++i];
       if (!value || value.startsWith('--')) throw new Error(text(`Missing value for ${key}`, `${key} 缺少参数`));
@@ -43,7 +46,13 @@ async function main(): Promise<void> {
     }
     if (values.has('--lang') && !['en', 'zh'].includes(values.get('--lang')!)) throw new Error(text('--lang must be en or zh.', '--lang 必须为 en 或 zh。'));
     if (Number(process.versions.node.split('.')[0]) < 24) throw new Error(text(`Node 24+ is required; current Node is ${process.versions.node}.`, `需要 Node 24+，当前为 ${process.versions.node}。`));
-    const { runDoctor, formatDoctorReport } = await import('./doctor.js');
+    const { runDoctor, formatDoctorReport, doctorCodeReference, formatDoctorCodeReference } = await import('./doctor.js');
+    if (codes) {
+      if (['--home', '--profile', '--runtime'].some(key => values.has(key)))
+        throw new Error(text('--codes lists a reference table; omit --home, --profile and --runtime.', '--codes 用于列出参考码表，请移除 --home、--profile 和 --runtime。'));
+      process.stdout.write(json ? JSON.stringify(doctorCodeReference(language), null, 2) + '\n' : formatDoctorCodeReference(language));
+      return;
+    }
     const runtimeRoot = values.get('--runtime') ?? process.env.DSH_RUNTIME_ROOT?.trim();
     const report = await runDoctor({ home: values.get('--home') ?? (process.env.DSH_HOME?.trim() || join(homedir(), '.dsh')),
       profile: values.get('--profile') ?? 'desktop', language, ...(runtimeRoot ? { runtimeRoot } : {}) });

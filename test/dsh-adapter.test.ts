@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { access, mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +9,7 @@ import type { JsonObject } from '../src/contracts.js';
 import { createRequestHandler, parseApiRequest, registerHostRoutes } from '../src/host-routes.js';
 import type { ArchiveApi } from '../src/contracts.js';
 import { apply } from '../src/index.js';
+import { IDLE_RELEASE_REFUSALS, idleReleaseReasons } from '../src/host-diagnostics.js';
 
 async function fixture() {
   const home = await realpath(await mkdtemp(join(tmpdir(), 'archive-adapter-')));
@@ -79,9 +81,11 @@ test('adapter gates unsupported versions and platforms without touching session 
   try {
     const wrongVersion = await createDshAdapter(f.ctx, { home: f.home, version: '0.3.0', platform: 'darwin' });
     assert.equal((await wrongVersion.capabilities()).supported, false);
+    assert.equal((await wrongVersion.capabilities()).reasonCode, 'host-version');
     await assert.rejects(() => wrongVersion.listArchived(), { code: 'unsupported-host' });
     const wrongPlatform = await createDshAdapter(f.ctx, { home: f.home, version: '0.2.1-rc.3', platform: 'linux' });
     assert.equal((await wrongPlatform.capabilities()).supported, false);
+    assert.equal((await wrongPlatform.capabilities()).reasonCode, 'host-platform');
   } finally { await f.cleanup(); }
 });
 
@@ -138,6 +142,52 @@ test('startup reports the required and current version before creating storage a
     assert.match(await rejected.text(), /unsupported-host/);
     await close(); assert.equal(unmounted, true);
   } finally { await f.cleanup(); }
+});
+
+test('disabled startup serves filtered purge history without changing it', async t => {
+  const cases = [
+    { name: 'unsupported host', manifest: JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.2.1-rc.2' }) },
+    { name: 'initialization failure', manifest: '{' },
+  ];
+  for (const { name, manifest } of cases) await t.test(name, async subtest => {
+    const f = await fixture();
+    subtest.after(f.cleanup);
+    const anchor = join(f.home, 'runtime-package.json');
+    await writeFile(anchor, manifest);
+    const root = join(f.home, 'archive-delete');
+    const directory = join(root, 'purge-history');
+    await mkdir(root, { mode: 0o700 });
+    await mkdir(directory, { mode: 0o700 });
+    const path = join(directory, 'history.json');
+    const now = Date.now();
+    const fresh = { entryId: randomUUID(), sessionId: 'synthetic-fresh', titleHash: 'a'.repeat(64),
+      sizeBytes: 128, memberCount: 1, purgedAt: now };
+    const expired = { ...fresh, entryId: randomUUID(), sessionId: 'synthetic-expired', purgedAt: now - 31 * 24 * 60 * 60_000 };
+    const bytes = Buffer.from(JSON.stringify({ schema: 1, entries: [fresh, expired] }));
+    await writeFile(path, bytes, { mode: 0o600 });
+
+    let handler: ((request: Request) => Promise<Response>) | undefined;
+    const close = await apply({ ...f.ctx, profileContext: { installAnchor: anchor }, dshHomePath: () => f.home,
+      connection: { fetch: { register: (route: { fetch: (request: Request) => Promise<Response> }) => {
+        handler = route.fetch;
+        return () => {};
+      } } },
+    });
+    try {
+      assert.ok(handler);
+      const request = (body: unknown) => new Request('http://127.0.0.1/api/dsh-archive-delete', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const response = await handler(request({ action: 'list' }));
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.equal(payload.value.support.supported, false);
+      assert.deepEqual(payload.value.purgeHistory, [fresh]);
+      assert.equal((await handler(request({ action: 'preview', operation: 'trash', ids: ['session'] }))).status, 422);
+      assert.deepEqual(await readFile(path), bytes);
+      await assert.rejects(access(join(root, 'trash')), { code: 'ENOENT' });
+    } finally { await close(); }
+  });
 });
 
 test('ownership includes explicit subagent descendants and preserves independent current-format forks', async () => {
@@ -476,6 +526,11 @@ test('missing idle-release capabilities have distinct bounded diagnostics and re
   f.ctx.agentLoop = f.loop;
   assert.equal(await f.adapter.releaseIdle!(f.group), true);
   assert.equal(f.disposed(), 1); assert.equal(f.warnings.length, 2);
+  f.liveSessions.set(f.agent.id, f.agent.session); f.liveAgents.set(f.agent.id, f.agent);
+  delete f.ctx.agentLoop;
+  assert.equal(await f.adapter.releaseIdle!(f.group), false);
+  assert.equal(f.warnings.length, 3); assert.match(f.warnings[2]!, /reason=agent-loop/);
+  assert.equal(await f.adapter.releaseIdle!(f.group), false); assert.equal(f.warnings.length, 3);
 });
 
 test('idle owner-shape refusals identify the failing probe without exposing session data or disposing an owner', async t => {
@@ -514,4 +569,105 @@ test('routine active-session protection is not logged and a failing logger canno
   unavailable.fiber._disposables = {};
   assert.equal(await unavailable.adapter.releaseIdle!(unavailable.group), false);
   assert.equal(unavailable.disposed(), 0); assert.equal(unavailable.liveSessions.size, 1);
+});
+
+
+test('cold no-op release does not reset warnings for an unresolved host failure', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup); delete f.ctx.agentLoop;
+  assert.equal(await f.adapter.releaseIdle!(f.group), false);
+  assert.equal(await f.adapter.releaseIdle!({ ...f.group, members: [] }), true);
+  assert.equal(await f.adapter.releaseIdle!(f.group), false);
+  assert.equal(f.warnings.length, 1);
+});
+
+test('missing owner diagnostics summarize observed effects without exposing their labels', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup);
+  const original = f.fiber._disposables as Set<() => unknown>;
+  const effect = Object.getOwnPropertySymbols([...original][0]!)[0]!;
+  f.fiber._disposables = new Set([
+    Object.assign(() => {}, { [effect]: { label: 'agentLoop.lifecycle(Private-unrelated)' } }),
+    Object.assign(() => {}, { [effect]: { label: 'Private-other-effect' } }),
+    () => {},
+  ]);
+  assert.equal(await f.adapter.releaseIdle!(f.group), false);
+  assert.match(f.warnings[0]!, /reason=lifecycle-owner-missing.*fibers=1 effects=3 labelPrefixes=1/);
+  assert.equal(f.warnings[0]!.includes('Private'), false);
+  assert.equal(f.disposed(), 0); assert.equal(f.flushed(), 0);
+});
+
+test('read-only idle-release probe distinguishes live-owner verification from an unloaded runtime', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup);
+  const log = await readFile(join(f.group.members[0]!.directory, 'session.v4.jsonl'));
+  f.ctx.waterfall = async () => { throw new Error('probe must not invoke activity hooks'); };
+  const verified = await f.adapter.probeIdleRelease!();
+  assert.equal(verified.status, 'available'); assert.equal(verified.reasonCode, undefined);
+  assert.deepEqual(verified.checks.map(check => check.status), Object.keys(IDLE_RELEASE_REFUSALS).map(() => 'pass'));
+  assert.deepEqual(verified.counts, { fibers: 1, effects: 1, labelPrefixes: 1, loadedSessions: 1 });
+  assert.equal(f.flushed(), 0); assert.equal(f.disposed(), 0); assert.deepEqual(f.warnings, []);
+  assert.deepEqual(await readFile(join(f.group.members[0]!.directory, 'session.v4.jsonl')), log);
+  const serialized = JSON.stringify(verified);
+  for (const value of [f.agent.id, f.home, 'Private']) assert.equal(serialized.includes(value), false);
+  f.liveSessions.clear(); f.liveAgents.clear();
+  const empty = await f.adapter.probeIdleRelease!();
+  assert.equal(empty.status, 'unverified'); assert.equal(empty.reasonCode, undefined);
+  assert.equal(empty.checks.find(check => check.code === 'agent-state')!.status, 'untested');
+  assert.equal(empty.checks.find(check => check.code === 'lifecycle-owner-missing')!.status, 'untested');
+  assert.equal(empty.checks.find(check => check.code === 'lifecycle-disposables')!.status, 'pass');
+  assert.equal(f.flushed(), 0); assert.equal(f.disposed(), 0); assert.deepEqual(f.warnings, []);
+});
+
+test('read-only probes report all refusal categories and leave dependent checks untested', async t => {
+  type Fixture = Awaited<ReturnType<typeof idleLifecycleFixture>>;
+  const cases: Array<[keyof typeof IDLE_RELEASE_REFUSALS, (f: Fixture) => void | Promise<void>]> = [
+    ['lifecycle-symbols', async f => { f.adapter = await createDshAdapter(f.ctx, { home: f.home, version: '0.2.1-rc.3', platform: 'darwin' }); }],
+    ['agent-registry', f => { delete f.ctx.agents; }],
+    ['agent-loop', f => { delete f.ctx.agentLoop; }],
+    ['session-flush', f => { delete (f.sessionService as { flush?: unknown }).flush; }],
+    ['factory-unavailable', f => { f.agents.requireFactory = () => { throw new Error('Private factory'); }; }],
+    ['factory-identity', f => { f.ctx.agentLoop = {}; }],
+    ['lifecycle-registry', f => { (f.loop.runtime.ctx as unknown as Record<string, unknown>).registry = {}; }],
+    ['runtime-fibers', f => { f.loop.runtime.ctx.registry.values = () => [{ fibers: {} as Set<typeof f.fiber> }]; }],
+    ['runtime-enumeration', f => { f.loop.runtime.ctx.registry.values = () => { throw new Error('Private runtime'); }; }],
+    ['agent-inventory', f => { f.agents.list = () => ({}); }],
+    ['agent-state', f => { f.agent.phase = undefined; }],
+    ['lifecycle-disposables', f => { f.fiber._disposables = {}; }],
+    ['lifecycle-owner-missing', f => { f.fiber._disposables = new Set([() => {}]); }],
+  ];
+  for (const [reason, change] of cases) await t.test(reason, async t => {
+    const f = await idleLifecycleFixture(); t.after(f.cleanup); await change(f);
+    const report = await f.adapter.probeIdleRelease!();
+    assert.equal(report.status, 'unavailable'); assert.equal(report.reasonCode, reason);
+    assert.equal(report.checks.length, 13); assert.equal(report.checks.find(check => check.code === reason)!.status, 'fail');
+    assert.equal(f.flushed(), 0); assert.equal(f.disposed(), 0); assert.equal(f.liveSessions.size, 1);
+    assert.deepEqual(f.warnings, []);
+    for (const privateValue of [f.agent.id, f.home, 'Private']) assert.equal(JSON.stringify(report).includes(privateValue), false);
+  });
+});
+
+test('an unexpected probe exception yields unverified checks without breaking the archive adapter', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup);
+  Object.defineProperty(f.ctx, 'agents', { get: () => { throw new Error('Private getter'); } });
+  const report = await f.adapter.probeIdleRelease!();
+  assert.equal(report.status, 'unverified'); assert.equal(report.reasonCode, undefined);
+  assert.ok(report.checks.every(check => check.status === 'untested'));
+  assert.equal((await f.adapter.capabilities()).supported, true);
+  assert.equal(f.flushed(), 0); assert.equal(f.disposed(), 0); assert.deepEqual(f.warnings, []);
+});
+
+test('idle-release reason reference includes exactly the same codes in each language', () => {
+  assert.equal(Object.keys(IDLE_RELEASE_REFUSALS).length, 13);
+  assert.deepEqual(Object.keys(idleReleaseReasons('zh')), Object.keys(idleReleaseReasons('en')));
+  assert.ok(Object.values(idleReleaseReasons('zh')).every(text => /[\u4e00-\u9fff]/.test(text)));
+});
+
+
+test('a green read-only probe cannot enable mutations on an unverified host version', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup);
+  const effectSymbol = Object.getOwnPropertySymbols([...(f.fiber._disposables as Set<() => unknown>)][0]!)[0]!;
+  const candidate = await createDshAdapter(f.ctx, { home: f.home, version: '0.2.1-rc.6', platform: 'darwin', effectSymbol });
+  assert.equal((await candidate.probeIdleRelease!()).status, 'available');
+  assert.equal((await candidate.capabilities()).supported, false);
+  assert.equal((await candidate.capabilities()).reasonCode, 'host-version');
+  await assert.rejects(candidate.releaseIdle!(f.group), { code: 'unsupported-host' });
+  assert.equal(f.flushed(), 0); assert.equal(f.disposed(), 0); assert.deepEqual(f.warnings, []);
 });

@@ -3,8 +3,11 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeF
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { PACKAGE_NAME, SUPPORTED_DSH_VERSION, SUPPORTED_DSH_VERSIONS, SUPPORTED_DSH_VERSION_LABEL } from '../src/contracts.js';
-import { formatDoctorReport, runDoctor, type DoctorOptions, type DoctorReport } from '../src/doctor.js';
+import { doctorCodeReference, formatDoctorCodeReference, formatDoctorReport, runDoctor, type DoctorOptions, type DoctorReport } from '../src/doctor.js';
+import { IDLE_RELEASE_REFUSALS } from '../src/host-diagnostics.js';
 import { PLUGIN_VERSION } from '../src/version.js';
 
 async function fixture(t: TestContext) {
@@ -26,6 +29,34 @@ async function fixture(t: TestContext) {
   return { home, profile, profileFile, selected, installed, runtime, hostPackage, hostManifest, root, retained, options };
 }
 const check = (report: DoctorReport, id: string) => report.checks.find(value => value.id === id)!;
+
+test('doctor code reference describes every live probe in both languages without claiming a live result', () => {
+  for (const language of ['en', 'zh'] as const) {
+    const reference = doctorCodeReference(language);
+    assert.equal(reference.scope, 'idle-release-code-reference');
+    assert.equal(reference.runtimeState, 'unverified');
+    assert.deepEqual(reference.codes.map(item => item.code), Object.keys(IDLE_RELEASE_REFUSALS));
+    assert.equal(reference.codes.length, 13);
+    for (const item of reference.codes) {
+      assert.ok(item.message.length > 0);
+      assert.ok(formatDoctorCodeReference(language).includes(`${item.code}: ${item.message}`));
+    }
+  }
+  assert.match(formatDoctorCodeReference('zh'), /即时释放原因码/);
+  assert.match(formatDoctorCodeReference('en'), /Idle-release reason codes/);
+});
+
+test('doctor --codes prints a reference without inspecting profile or runtime arguments from the environment', async () => {
+  const result = await promisify(execFile)(process.execPath, ['--import', 'tsx', 'src/doctor-cli.ts', '--codes', '--json', '--lang', 'zh'], {
+    cwd: new URL('../', import.meta.url), env: { ...process.env, DSH_HOME: 'invalid-profile-root', DSH_RUNTIME_ROOT: 'invalid-runtime-root' }, timeout: 15000,
+  });
+  const reference = JSON.parse(result.stdout);
+  assert.equal(reference.scope, 'idle-release-code-reference');
+  assert.equal(reference.runtimeState, 'unverified');
+  assert.equal(reference.codes.length, 13);
+  assert.match(reference.codes[0].message, /生命周期/);
+  assert.equal(result.stderr, '');
+});
 
 test('doctor verifies one selected installation without executing code, writing probes or claiming live loading', async t => {
   const f = await fixture(t);
