@@ -2,6 +2,12 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
+## 0.0.5
+
+- Move the tabs and refresh action to the top of the dialog. Keep recent results above the list and put help, diagnostics and deletion history in expandable sections.
+- Show the storage total first. Open file types, largest files, folders or scan details as needed.
+- Add a violet and pink plugin icon to DSH Desktop. The README walkthrough shows the new layout in use.
+
 ## 0.0.4
 
 - Show the running host's idle-release status; expand it to see checks and reason codes.

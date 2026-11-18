@@ -19,14 +19,14 @@
   </picture>
 </p>
 
-<p align="center">Recorded in DSH Desktop using the current main branch layout and sample data.</p>
+<p align="center">Recorded in DSH Desktop with sample data.</p>
 
 ## Install
 
-**v0.0.4** supports **DSH Desktop 0.2.1-rc.3 and 0.2.1-rc.5** on macOS and Windows with JSONL storage. Open **Plugins → Add plugin** in DSH Desktop and paste the prebuilt package URL below.
+**v0.0.5** supports **DSH Desktop 0.2.1-rc.3 and 0.2.1-rc.5** on macOS and Windows with JSONL storage. Open **Plugins → Add plugin** in DSH Desktop and paste the prebuilt package URL below.
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.4/qwqbig-dsh-archive-delete-0.0.4.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.5/qwqbig-dsh-archive-delete-0.0.5.tgz
 ```
 
 Already installed? Open the plugin details and choose **Review update → Confirm upgrade**. If DSH asks you to restart, quit the app fully and reopen it. Use the install URL above if your version has no update button. [Installation and troubleshooting](docs/installation.md)
