@@ -1,0 +1,27 @@
+name: Bug report / 问题反馈
+description: Report an installation, cleanup or storage-display problem / 反馈安装、清理或存储展示问题
+body:
+  - type: input
+    id: versions
+    attributes:
+      label: Versions and system / 版本与系统
+      description: Plugin version, DSH version, macOS or Windows / 插件版本、DSH 版本及 macOS 或 Windows
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened? / 遇到了什么问题？
+      description: Steps, expected result and actual result / 操作步骤、预期结果与实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Reason codes or probe report / 原因码或探测报告
+      description: Copy the panel's reason code. Developers can attach scripts/probe-host.mts JSON from the installed runtime. / 复制面板中的原因码；开发者可附上 scripts/probe-host.mts 对已安装运行时生成的 JSON。
+      render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or other details / 截图或补充信息

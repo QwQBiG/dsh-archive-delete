@@ -4,27 +4,27 @@
 
 简体中文 · [English](README.md)
 
-在 DeepSeek Harness 中批量清理归档、恢复会话，并查看文件和目录占用。
+在 DeepSeek Harness 中管理已归档会话：移入回收站、恢复或永久清除，也能查看 DSH 和工作区的存储占用。
 
-`@qwqbig/dsh-archive-delete` · **v0.0.3** · macOS / Windows · DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5**、JSONL 存储 · [Apache-2.0](LICENSE)
+`@qwqbig/dsh-archive-delete` · **v0.0.4** · macOS / Windows · DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5**、JSONL 存储 · [Apache-2.0](LICENSE)
 
 ## 安装
 
 打开 DSH 桌面端的 **插件 → 添加插件**，粘贴：
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.4/qwqbig-dsh-archive-delete-0.0.4.tgz
 ```
 
-安装包已包含编译产物，可直接安装。[安装指南](docs/installation.zh-CN.md)
+安装包可直接使用，无需构建。安装和排错步骤见[安装指南](docs/installation.zh-CN.md)。
 
 ## 功能
 
-- 将归档会话和专属子代理移入回收站，闲置会话可立即处理。
-- 恢复到原工作区，或确认后永久清除所选回收站记录。
-- 批量选择、按大小排序、逐项结果与重试。
-- 查看 DSH 和所选工作区的存储分类、文件类型、大文件与目录大小。
-- 在插件内检查 GitHub 更新并确认升级。
+- 将归档会话和专属子代理移入回收站，支持处理 DSH 持有的闲置会话。
+- 将会话恢复到原工作区，或确认后永久清除所选回收站记录。
+- 批量选择、按大小排序，查看每项结果并单独重试。
+- 按分类、文件类型、大文件和目录查看 DSH 或所选工作区的存储占用。
+- 在插件内检查 GitHub 更新，自行决定何时升级。
 
 ## 界面预览
 
@@ -51,23 +51,24 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh
 
 ## 使用
 
-1. 在 DSH 中归档会话，从菜单选择 **移入回收站**。批量处理可打开插件详情中的 **管理归档、回收站与存储**。
-2. 核对目标后确认。**回收站** 提供恢复和永久清除操作；记录一直保留到你主动清除，卸载插件也会保留。
-3. 打开 **存储概览**，开始 DSH 或工作区扫描。分类和文件类型展示测得的大小；同范围重新扫描时，上次结果会保留到新结果返回。
+1. 在 DSH 中归档会话，再从菜单选择 **移入回收站**。需要批量处理时，打开插件详情中的 **管理归档、回收站与存储**。
+2. 核对会话后确认移动。之后可以在 **回收站** 中恢复或永久清除；记录会保留到你主动清除，卸载插件也会保留。
+3. 打开 **存储概览**，扫描 DSH 或工作区，查看哪些分类和文件类型占用较多空间。再次扫描同一位置时，上次结果会保留到新结果返回。
 
-待处理记录留在 **已归档**，可选择 **取消等待并重新核对** 再次尝试。永久清除会移除选中的回收站日志和恢复记录，无法撤销。
+移动仍在等待时，可在 **已归档** 中选择 **取消等待并重新核对** 再次尝试。永久清除会移除所选日志和恢复记录，无法撤销。
 
 ## 更新
 
-**v0.0.1** 用户请先在 **添加插件** 中粘贴上方安装 URL，升至 v0.0.3。
+如果你还在使用 **v0.0.1**，请在 **添加插件** 中粘贴上方安装 URL，升级到 v0.0.4。
 
-版本栏每天检查 GitHub。选择 **查看并升级**，再 **确认升级**；提示重启时，完整退出 DSH 后重新打开，加载已安装版本。也可在同一插件管理器中添加新版 Release URL。
+插件每天检查 GitHub，并在版本栏显示更新。选择 **查看并升级**，再 **确认升级**。提示重启时，完全退出 DSH 后重新打开，即可加载已安装版本。也可以在插件管理器中添加新版 Release URL 来升级。
 
 ## 开发
 
-使用 Node 24+ 和仓库固定的 pnpm 版本：
+使用 Node 24+ 和仓库固定的 pnpm 版本。运行测试前先确认终端里的 Node 版本。DSH Desktop 随附的 Node 路径可见[贡献指南](CONTRIBUTING.zh-CN.md)。
 
 ```sh
+node --version
 pnpm install --frozen-lockfile
 pnpm verify
 pnpm pack --pack-destination artifacts

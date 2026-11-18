@@ -5,6 +5,8 @@ import type { UsageCategory, UsageCounters, UsageFile } from './storage-usage.js
 import { UpdateCard, updateEn, updateZh, UPDATE_CSS } from './update-ui.js';
 import type { UpdateClientController } from './update-client.js';
 import { formatTimestamp } from './client-format.js';
+import { idleReleaseChecks, idleReleaseReasons, type IdleReleaseDiagnostics } from './host-diagnostics.js';
+import type { PurgeHistoryEntry } from './purge-history.js';
 
 export const CLIENT_NAMESPACE = 'qwqbig.archiveDelete';
 export const en = {
@@ -41,6 +43,10 @@ export const en = {
   retry: 'Review and retry', retryRequest: 'Retry the same request', unknown: 'The request outcome is unconfirmed. Refresh its status or retry this request.',
   error: 'The operation could not be completed.', unsupported: 'Data operations are unavailable on this host.',
   supportDetails: 'Host: {version} · {platform}', errorDetails: 'Details', ungrouped: 'Ungrouped',
+  idleAvailable: 'Local host: idle release available', idleUnavailable: 'Local host: idle release unavailable', idleUnverified: 'Local host: idle release not yet verified',
+  idleObservation: 'Live interface check. Each selected conversation is checked again before processing.',
+  probePass: 'Passed', probeFail: 'Unavailable', probeUntested: 'Not tested',
+  purgeHistory: 'Recent permanent deletions ({n})', purgeHistoryHint: 'Up to 200 records from the last 30 days: conversation ID, confirmed completion time and log size.',
   'status.moved': 'Moved to trash', 'status.pending': 'Pending restart', 'status.restored': 'Restored',
   'status.purged': 'Permanently deleted', 'status.cancelled': 'Cancelled', 'status.skipped': 'Skipped', 'status.failed': 'Failed',
   checking: 'Checking the selected records…', operationContinues: 'Started operations continue after closing this window.',
@@ -135,6 +141,10 @@ export const zh: Record<TextKey, string> = {
   retry: '重新核对并重试', retryRequest: '重试同一次请求', unknown: '请求结果尚未确认，请刷新状态或重试此次请求。',
   error: '操作未能完成。', unsupported: '当前宿主暂不支持数据操作。',
   supportDetails: '宿主：{version} · {platform}', errorDetails: '详情', ungrouped: '未分组',
+  idleAvailable: '本机：即时释放可用', idleUnavailable: '本机：即时释放不可用', idleUnverified: '本机：即时释放尚未验证',
+  idleObservation: '当前接口检查结果。处理前仍会核对所选会话的状态。',
+  probePass: '通过', probeFail: '不可用', probeUntested: '尚未验证',
+  purgeHistory: '最近永久删除（{n}）', purgeHistoryHint: '显示近 30 天内最多 200 条记录，包含会话 ID、确认清除时间和日志大小。',
   'status.moved': '已移入回收站', 'status.pending': '待重启处理', 'status.restored': '已恢复',
   'status.purged': '已永久清除', 'status.cancelled': '已取消', 'status.skipped': '已跳过', 'status.failed': '失败',
   checking: '正在核对所选记录…', operationContinues: '关闭窗口后，已开始的操作会继续。',
@@ -234,6 +244,9 @@ function diagnosticRows<T>(items: readonly T[], identity: (item: T) => string): 
 
 function supportReason(status: SupportStatus, t: Translate): string {
   const message = status.reason;
+  const reasonKeys: Record<string, keyof typeof en> = { 'host-platform': 'reasonPlatform', 'session-backend': 'reasonBackend', 'session-services': 'reasonCapabilities', 'workspace-services': 'reasonCapabilities', 'projection-services': 'reasonCapabilities' };
+  if (status.reasonCode === 'host-version') return t('reasonVersion', { required: SUPPORTED_DSH_VERSION_LABEL, current: status.version });
+  if (status.reasonCode && reasonKeys[status.reasonCode]) return t(reasonKeys[status.reasonCode]!);
   if (!message) return t('reasonCapabilities');
   if (message.startsWith('Only macOS')) return t('reasonPlatform');
   if (!isSupportedDshVersion(status.version) && message.startsWith('DSH Desktop ') && message.includes(' is required;')) return t('reasonVersion', { required: SUPPORTED_DSH_VERSION_LABEL, current: status.version });
@@ -242,6 +255,27 @@ function supportReason(status: SupportStatus, t: Translate): string {
   if (message.startsWith('Archive storage could not be initialized')) return t('reasonInitialization');
   if (message.includes('unavailable') || message.includes('incompatible')) return t('reasonCapabilities');
   return message;
+}
+
+export function HostCapability({ diagnostic, t }: { diagnostic: IdleReleaseDiagnostics; t: Translate }) {
+  const reasons = idleReleaseReasons(t('dateLocale').startsWith('zh') ? 'zh' : 'en');
+  const checks = idleReleaseChecks(t('dateLocale').startsWith('zh') ? 'zh' : 'en');
+  const label = diagnostic.status === 'available' ? 'idleAvailable' : diagnostic.status === 'unavailable' ? 'idleUnavailable' : 'idleUnverified';
+  const statusKeys = { pass: 'probePass', fail: 'probeFail', untested: 'probeUntested' } as const;
+  return <details className="dad-capability">
+    <summary>{t(label)}{diagnostic.reasonCode && <> · <code>{diagnostic.reasonCode}</code></>}</summary>
+    <p>{t('idleObservation')}</p>
+    <ul>{diagnostic.checks.map(check => <li key={check.code}><span>{t(statusKeys[check.status])}</span><code>{check.code}</code><span>{check.status === 'fail' ? reasons[check.code] : checks[check.code]}</span></li>)}</ul>
+  </details>;
+}
+
+export function PurgeHistoryContent({ entries, t }: { entries: readonly PurgeHistoryEntry[]; t: Translate }) {
+  if (!entries.length) return null;
+  return <details className="dad-results dad-purge-history">
+    <summary>{t('purgeHistory', { n: entries.length })}</summary>
+    <p className="dad-hint">{t('purgeHistoryHint')}</p>
+    <ul>{entries.map(entry => <li key={entry.entryId}><div><code>{entry.sessionId}</code><div className="dad-meta"><time dateTime={isoTime(entry.purgedAt)}>{formatTimestamp(entry.purgedAt, t)}</time><span>{formatBytes(entry.sizeBytes)}</span><span>{t('memberCount', { n: entry.memberCount })}</span></div></div></li>)}</ul>
+  </details>;
 }
 
 export interface NativePrimitives {
@@ -507,6 +541,7 @@ export function ArchiveDialogView({ state, controller, primitives, t, updates }:
   return <Modal open={state.open} onClose={controller.close} title={preview ? t(actionTitle[preview.action]) : t('title')} description={preview ? t(actionDescription[preview.action]) : state.tab === 'storage' ? t('storageIntro') : t('intro')} closeLabel={t('close')} className="dad-dialog" contentClassName="dad-content" footer={footer}>
     <div className="dad-shell">
       {updates && !preview && <UpdateCard controller={updates} Button={Button} t={t} archiveBusy={state.busy || state.loading || uncertain} />}
+      {!preview && state.overview?.support.idleRelease && <HostCapability diagnostic={state.overview.support.idleRelease} t={t} />}
       {state.maintenance && <p className="dad-muted" role="status">{t('updateWaiting')}</p>}
       {state.error && <ErrorNotice error={uncertain ? { ...state.error, uncertain: true } : state.error} t={t} onRefresh={() => { void controller.refresh(); }} onRetry={() => { void controller.retryUncertain(); }} disabled={state.busy || state.loading} Button={Button} />}
       {state.overview && !supported && <section className="dad-alert" role="status"><strong>{t('unsupported')}</strong><p>{supportReason(state.overview.support, t)}</p><small>{t('supportDetails', { version: state.overview.support.version, platform: state.overview.support.platform })}</small></section>}
@@ -539,6 +574,7 @@ export function ArchiveDialogView({ state, controller, primitives, t, updates }:
         </div>
         <div className="dad-list-foot"><p className="dad-hint">{t(state.tab === 'archived' ? 'archivedHint' : 'trashHint')}</p>{pages > 1 && <nav className="dad-pagination" aria-label={t('pages')}><Button size="sm" variant="ghost" disabled={locked || state.page === 0} onClick={() => controller.setPage(state.page - 1)}>{t('previousPage')}</Button><span>{t('pageNumber', { page: state.page + 1, pages })}</span><Button size="sm" variant="ghost" disabled={locked || state.page + 1 >= pages} onClick={() => controller.setPage(state.page + 1)}>{t('nextPage')}</Button></nav>}</div>
         {result && <ResultContent result={result} t={t} retry={(id) => { void controller.retryItem(id); }} disabled={locked || !supported} Button={Button} />}
+        {state.tab === 'trash' && <PurgeHistoryContent entries={state.overview?.purgeHistory ?? []} t={t} />}
         </>}
       </>}
       {(state.busy || uncertain) && <p className="dad-muted">{t('operationContinues')}</p>}
@@ -547,6 +583,7 @@ export function ArchiveDialogView({ state, controller, primitives, t, updates }:
 }
 
 export const CLIENT_CSS = UPDATE_CSS + `
+.dad-capability{color:var(--dad-muted);font-size:11px;line-height:1.6}.dad-capability summary{cursor:pointer;overflow-wrap:anywhere}.dad-capability p{margin:6px 0}.dad-capability ul{padding:0;list-style:none;max-height:240px;overflow:auto}.dad-capability li{display:flex;flex-wrap:wrap;gap:4px 10px;padding:5px 0}.dad-capability li>span:first-child{min-width:70px}.dad-capability code{overflow-wrap:anywhere}.dad-purge-history>.dad-hint{padding:8px 12px}.dad-purge-history li code{overflow-wrap:anywhere}.dad-purge-history .dad-meta{padding-left:0}.dad-capability summary:focus-visible{outline:2px solid var(--dsw-alias-button-primary-bg,#2878e0);outline-offset:2px}
 .dad-dialog{width:min(780px,calc(100vw - 32px));max-width:calc(100vw - 32px)}
 .dad-content{max-height:min(65vh,540px);overflow:auto}
 .dad-shell{--dad-border:var(--dsw-alias-border-l1,#8883);--dad-muted:var(--dsw-alias-label-secondary,GrayText);--dad-primary:var(--dsw-alias-label-primary,CanvasText);display:flex;flex-direction:column;gap:12px;min-width:0;color:var(--dad-primary);font-size:13px;line-height:1.5}

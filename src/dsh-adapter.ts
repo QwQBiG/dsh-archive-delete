@@ -13,6 +13,7 @@ import {
 } from './contracts.js';
 import { assertCanonicalStoragePath, assertLocalStoragePath, isWithin, samePath } from './filesystem.js';
 import type { UsageRoot } from './storage-usage.js';
+import { IDLE_RELEASE_REFUSALS, emptyIdleReleaseDiagnostics, type IdleReleaseCounts, type IdleReleaseDiagnostics, type IdleReleaseRefusal } from './host-diagnostics.js';
 import { SQLITE_SIDECAR_SUFFIXES } from './storage-sqlite.js';
 
 /** The small, version-pinned structural boundary around DSH's runtime services. */
@@ -60,23 +61,40 @@ interface AgentRegistry {
 }
 interface NativeLifecycleSymbols { effect: symbol; original?: symbol }
 interface ReleasePlan { id: string; session: unknown; agent: LiveAgent; dispose: () => unknown }
-const IDLE_RELEASE_REFUSALS = {
-  'lifecycle-symbols': 'The Cordis lifecycle effect symbol could not be resolved.',
-  'agent-registry': 'The host agent registry is unavailable or incompatible.',
-  'agent-loop': 'The host agent loop service is unavailable.',
-  'session-flush': 'The session flush capability is unavailable.',
-  'factory-unavailable': 'The agent registry could not resolve its owning factory.',
-  'factory-identity': 'The agent loop and factory do not share a verifiable runtime.',
-  'lifecycle-registry': 'The runtime context has no iterable lifecycle registry.',
-  'runtime-fibers': 'A runtime does not expose an iterable fiber collection.',
-  'runtime-enumeration': 'The runtime fiber collection could not be inspected.',
-  'agent-inventory': 'The agent registry returned an unrecognized live-agent list.',
-  'agent-state': 'A loaded session has no verifiable agent phase or inbox.',
-  'lifecycle-disposables': 'A runtime fiber does not expose iterable owner effects.',
-  'lifecycle-owner-missing': 'No lifecycle owner effect matches a loaded session.',
-} as const;
-type IdleReleaseRefusal = keyof typeof IDLE_RELEASE_REFUSALS;
-type ReleaseInspection = { kind: 'verified'; plans: ReleasePlan[] } | { kind: 'unavailable'; reason: IdleReleaseRefusal };
+type ReleaseInspection = { kind: 'verified'; plans: ReleasePlan[] } | { kind: 'unavailable'; reason: IdleReleaseRefusal; counts?: IdleReleaseCounts };
+interface ReleaseRuntime { symbols: NativeLifecycleSymbols; agents: AgentRegistry; fibers: Set<Record<string, unknown>> }
+type RuntimeInspection = { kind: 'verified'; runtime: ReleaseRuntime; report: IdleReleaseDiagnostics }
+  | { kind: 'unavailable'; reason: IdleReleaseRefusal; report: IdleReleaseDiagnostics };
+interface OwnerEffects { byLabel: Map<string, Set<() => unknown>>; counts: IdleReleaseCounts }
+function probeCheck(report: IdleReleaseDiagnostics, code: IdleReleaseRefusal, status: 'pass' | 'fail'): void {
+  report.checks.find(check => check.code === code)!.status = status;
+}
+function liveAgents(agents: AgentRegistry): LiveAgent[] | undefined {
+  try {
+    const live = agents.list();
+    return Array.isArray(live) && !live.some(agent => !object(agent) || typeof agent.id !== 'string') ? live : undefined;
+  } catch { return undefined; }
+}
+function ownerEffects(runtime: ReleaseRuntime): OwnerEffects | undefined {
+  const byLabel = new Map<string, Set<() => unknown>>();
+  const counts: IdleReleaseCounts = { fibers: runtime.fibers.size, effects: 0, labelPrefixes: 0, loadedSessions: 0 };
+  try {
+    for (const fiber of runtime.fibers) {
+      const disposables = fiber._disposables;
+      if (!object(disposables) || typeof (disposables as Record<symbol, unknown>)[Symbol.iterator] !== 'function') return undefined;
+      for (const dispose of disposables as unknown as Iterable<unknown>) {
+        if (typeof dispose !== 'function') continue;
+        counts.effects++;
+        const metadata = (dispose as unknown as Record<symbol, unknown>)[runtime.symbols.effect];
+        if (!object(metadata) || typeof metadata.label !== 'string') continue;
+        if (metadata.label.startsWith('agentLoop.lifecycle(')) counts.labelPrefixes++;
+        const matches = byLabel.get(metadata.label) ?? new Set<() => unknown>();
+        matches.add(dispose as () => unknown); byLabel.set(metadata.label, matches);
+      }
+    }
+  } catch { return undefined; }
+  return { byLabel, counts };
+}
 interface ProjectionCache {
   cachedSnapshot(header: JsonObject, keys?: string[]): { values: Record<string, unknown> } | undefined;
   cachedPredecessorTitle?(header: JsonObject): { values: Record<string, unknown> } | undefined;
@@ -255,7 +273,7 @@ function normalizeActivity(value: unknown): Activity {
   return { kind: value.kind, label: labels.join(', ') || value.kind };
 }
 
-export async function getHostPaths(ctx: HostContext, homeOverride?: string): Promise<HostPaths> {
+export async function resolveDshHomePath(ctx: HostContext, homeOverride?: string): Promise<string> {
   let home: string;
   if (homeOverride !== undefined) home = resolve(homeOverride);
   else if (typeof service(ctx, 'dshHomePath') === 'function') home = resolve((service(ctx, 'dshHomePath') as () => string)());
@@ -263,11 +281,17 @@ export async function getHostPaths(ctx: HostContext, homeOverride?: string): Pro
     const homeModule = await importHost('@deepseek-ai/dsh-home-paths');
     home = resolve((homeModule.resolveDshHome as () => string)());
   }
+  assertLocalStoragePath(home);
+  return home;
+}
+
+export async function getHostPaths(ctx: HostContext, homeOverride?: string): Promise<HostPaths> {
+  const home = await resolveDshHomePath(ctx, homeOverride);
   const persistence = service<Persistence>(ctx, 'sessionPersistence');
   const sessionsRoot = persistence && typeof persistence.root === 'string' && isAbsolute(persistence.root)
     ? resolve(persistence.root) : join(home, 'sessions');
   const root = join(home, 'archive-delete');
-  for (const path of [home, sessionsRoot, root]) assertLocalStoragePath(path);
+  for (const path of [sessionsRoot, root]) assertLocalStoragePath(path);
   return { home, sessionsRoot, root };
 }
 
@@ -467,25 +491,26 @@ class NativeAdapter implements DshAdapter {
     this.cache = service(ctx, 'sessionProjectionCache');
   }
   async capabilities(): Promise<SupportStatus> {
-    let reason: string | undefined;
-    if (this.platform !== 'darwin' && this.platform !== 'win32') reason = 'Only macOS and Windows Desktop are supported in this release.';
-    else if (!isSupportedDshVersion(this.version)) reason = `DSH Desktop ${SUPPORTED_DSH_VERSION_LABEL} is required; the current runtime is ${this.version}. Update DSH Desktop to a supported version, then restart this plugin.`;
-    else if (this.persistence?.name !== 'session-persistence-jsonl' || !isAbsolute(this.persistence.root)) reason = 'The official JSONL session backend is required.';
-    else if (!this.sessions || typeof this.sessions.get !== 'function' || !this.ctx.waterfall || !this.ctx.emit) reason = 'Session activity and lifecycle services are unavailable.';
+    let reason: string | undefined; let reasonCode: string | undefined;
+    const unavailable = (code: string, message: string) => { reasonCode = code; reason = message; };
+    if (this.platform !== 'darwin' && this.platform !== 'win32') unavailable('host-platform', 'Only macOS and Windows Desktop are supported in this release.');
+    else if (!isSupportedDshVersion(this.version)) unavailable('host-version', `DSH Desktop ${SUPPORTED_DSH_VERSION_LABEL} is required; the current runtime is ${this.version}. Update DSH Desktop to a supported version, then restart this plugin.`);
+    else if (this.persistence?.name !== 'session-persistence-jsonl' || !isAbsolute(this.persistence.root)) unavailable('session-backend', 'The official JSONL session backend is required.');
+    else if (!this.sessions || typeof this.sessions.get !== 'function' || !this.ctx.waterfall || !this.ctx.emit) unavailable('session-services', 'Session activity and lifecycle services are unavailable.');
     else if (!this.registry || !['requireState', 'requireTable', 'enqueueOperation', 'setState', 'indexHeader'].every((key) => typeof (this.registry as unknown as Record<string, unknown>)[key] === 'function')
-      || !(this.registry.headers instanceof Map) || !(this.registry.sessionPaths instanceof Map) || !(this.registry.missingSessionPaths instanceof Set) || !(this.registry.invalidSessionPaths instanceof Map)) reason = 'The DSH workspace adapter is incompatible.';
-    else if (!this.cache || typeof this.cache.requireTable !== 'function' || typeof this.cache.cachedSnapshot !== 'function' || typeof this.cache.put !== 'function' || !service<{ restore?: unknown }>(this.ctx, 'sessionProjections')?.restore || typeof this.persistence.open !== 'function') reason = 'The official projection-cache service is unavailable.';
-    return { supported: reason === undefined, version: this.version, platform: this.platform, ...(reason ? { reason } : {}) };
+      || !(this.registry.headers instanceof Map) || !(this.registry.sessionPaths instanceof Map) || !(this.registry.missingSessionPaths instanceof Set) || !(this.registry.invalidSessionPaths instanceof Map)) unavailable('workspace-services', 'The DSH workspace adapter is incompatible.');
+    else if (!this.cache || typeof this.cache.requireTable !== 'function' || typeof this.cache.cachedSnapshot !== 'function' || typeof this.cache.put !== 'function' || !service<{ restore?: unknown }>(this.ctx, 'sessionProjections')?.restore || typeof this.persistence.open !== 'function') unavailable('projection-services', 'The official projection-cache service is unavailable.');
+    return { supported: reason === undefined, version: this.version, platform: this.platform, ...(reason ? { reason, reasonCode: reasonCode! } : {}) };
   }
   private async requireSupported(): Promise<void> {
     const support = await this.capabilities();
     if (!support.supported) throw new ArchiveError('unsupported-host', support.reason ?? 'Unsupported host');
   }
   listIssues(): readonly DataIssue[] { return this.issues; }
-  private releaseUnavailable(reason: IdleReleaseRefusal): false {
+  private releaseUnavailable(reason: IdleReleaseRefusal, counts?: IdleReleaseCounts): false {
     if (!this.releaseWarnings.has(reason)) {
       this.releaseWarnings.add(reason);
-      try { this.ctx.logger?.warn(`[archive-delete] Idle release unavailable: host=${this.version} reason=${reason}. ${IDLE_RELEASE_REFUSALS[reason]}`); }
+      try { this.ctx.logger?.warn(`[archive-delete] Idle release unavailable: host=${this.version} reason=${reason}. ${IDLE_RELEASE_REFUSALS[reason]}${counts ? ` fibers=${counts.fibers} effects=${counts.effects} labelPrefixes=${counts.labelPrefixes}` : ''}`); }
       catch { /* Logging must not change a guarded cleanup decision. */ }
     }
     return false;
@@ -502,24 +527,33 @@ class NativeAdapter implements DshAdapter {
       return { effect: symbols.effect, ...(typeof symbols.original === 'symbol' ? { original: symbols.original } : {}) };
     } catch { return undefined; }
   }
-  /** Invoke the supported host's exact owner teardown after identity and activity checks. */
-  async releaseIdle(group: SessionGroup): Promise<boolean> {
-    await this.requireSupported();
-    if (group.members.every(member => this.sessions!.get(member.id) === undefined)) return true;
+  private async inspectReleaseRuntime(): Promise<RuntimeInspection> {
+    const report = emptyIdleReleaseDiagnostics();
+    const unavailable = (reason: IdleReleaseRefusal): RuntimeInspection => {
+      probeCheck(report, reason, 'fail'); report.status = 'unavailable'; report.reasonCode = reason;
+      return { kind: 'unavailable', reason, report };
+    };
     const symbols = await this.lifecycleSymbols();
     const agents = service<AgentRegistry>(this.ctx, 'agents');
     const loop = service<Record<string, unknown>>(this.ctx, 'agentLoop');
-    if (!symbols) return this.releaseUnavailable('lifecycle-symbols');
-    if (!agents || !['get', 'list', 'isOwnedBy', 'requireFactory'].every(key => typeof (agents as unknown as Record<string, unknown>)[key] === 'function')) return this.releaseUnavailable('agent-registry');
-    if (!loop) return this.releaseUnavailable('agent-loop');
-    if (typeof this.sessions!.flush !== 'function') return this.releaseUnavailable('session-flush');
+    if (!symbols) return unavailable('lifecycle-symbols');
+    probeCheck(report, 'lifecycle-symbols', 'pass');
+    if (!agents || !['get', 'list', 'isOwnedBy', 'requireFactory'].every(key => typeof (agents as unknown as Record<string, unknown>)[key] === 'function')) return unavailable('agent-registry');
+    probeCheck(report, 'agent-registry', 'pass');
+    if (!loop) return unavailable('agent-loop');
+    probeCheck(report, 'agent-loop', 'pass');
+    if (typeof this.sessions?.flush !== 'function') return unavailable('session-flush');
+    probeCheck(report, 'session-flush', 'pass');
     let factory: unknown;
-    try { factory = agents.requireFactory().target; } catch { return this.releaseUnavailable('factory-unavailable'); }
+    try { factory = agents.requireFactory().target; } catch { return unavailable('factory-unavailable'); }
+    probeCheck(report, 'factory-unavailable', 'pass');
     const originalLoop = symbols.original ? (loop as Record<symbol, unknown>)[symbols.original] ?? loop : loop;
-    if (originalLoop !== factory || !object(factory) || !object(factory.runtime) || !object(factory.runtime.ctx)) return this.releaseUnavailable('factory-identity');
+    if (originalLoop !== factory || !object(factory) || !object(factory.runtime) || !object(factory.runtime.ctx)) return unavailable('factory-identity');
+    probeCheck(report, 'factory-identity', 'pass');
     const loopContext = factory.runtime.ctx;
     const registry = loopContext.registry;
-    if (!object(registry) || typeof registry.values !== 'function') return this.releaseUnavailable('lifecycle-registry');
+    if (!object(registry) || typeof registry.values !== 'function') return unavailable('lifecycle-registry');
+    probeCheck(report, 'lifecycle-registry', 'pass');
     const fibers = new Set<Record<string, unknown>>();
     const ancestors = (candidate: unknown) => {
       while (object(candidate) && !fibers.has(candidate)) {
@@ -529,18 +563,67 @@ class NativeAdapter implements DshAdapter {
     ancestors(this.ctx.fiber); ancestors(loopContext.fiber);
     try {
       for (const runtime of (registry.values as () => Iterable<unknown>).call(registry)) {
-        if (!object(runtime) || !object(runtime.fibers) || typeof (runtime.fibers as Record<symbol, unknown>)[Symbol.iterator] !== 'function') return this.releaseUnavailable('runtime-fibers');
+        if (!object(runtime) || !object(runtime.fibers) || typeof (runtime.fibers as Record<symbol, unknown>)[Symbol.iterator] !== 'function') return unavailable('runtime-fibers');
         for (const fiber of runtime.fibers as unknown as Iterable<unknown>) ancestors(fiber);
       }
-    } catch { return this.releaseUnavailable('runtime-enumeration'); }
+    } catch { return unavailable('runtime-enumeration'); }
+    probeCheck(report, 'runtime-fibers', 'pass'); probeCheck(report, 'runtime-enumeration', 'pass');
+    report.counts.fibers = fibers.size;
+    return { kind: 'verified', runtime: { symbols, agents, fibers }, report };
+  }
+  /** Inspect live shapes and owner labels only: no flush, dispose, activity hook or file operation. */
+  async probeIdleRelease(): Promise<IdleReleaseDiagnostics> {
+    try { return await this.inspectIdleRelease(); }
+    catch { return emptyIdleReleaseDiagnostics(); }
+  }
+  private async inspectIdleRelease(): Promise<IdleReleaseDiagnostics> {
+    const inspected = await this.inspectReleaseRuntime();
+    const { report } = inspected;
+    if (inspected.kind === 'unavailable') return report;
+    const fail = (reason: IdleReleaseRefusal) => {
+      probeCheck(report, reason, 'fail'); report.status = 'unavailable'; report.reasonCode = reason; return report;
+    };
+    const { runtime } = inspected;
+    const live = liveAgents(runtime.agents);
+    if (!live) return fail('agent-inventory');
+    probeCheck(report, 'agent-inventory', 'pass');
+    const effects = ownerEffects(runtime);
+    if (!effects) return fail('lifecycle-disposables');
+    report.counts = effects.counts; probeCheck(report, 'lifecycle-disposables', 'pass');
+    let loaded = 0;
+    try {
+      for (const agent of live) {
+        const session = this.sessions?.get(agent.id);
+        if (session === undefined) return fail('agent-state');
+        loaded++; report.counts.loadedSessions = loaded;
+        if (!object(agent.phase) || typeof agent.phase.kind !== 'string' || !object(agent.inbox) || typeof agent.inbox.hasPending !== 'boolean'
+          || runtime.agents.get(agent.id) !== agent || agent.session !== session || !object(agent.session.header) || agent.session.header.id !== agent.id) return fail('agent-state');
+        probeCheck(report, 'agent-state', 'pass');
+        if (effects.byLabel.get(`agentLoop.lifecycle(${agent.id})`)?.size !== 1) return fail('lifecycle-owner-missing');
+        probeCheck(report, 'lifecycle-owner-missing', 'pass');
+      }
+    } catch { return fail('agent-state'); }
+    // A clean runtime cannot prove how an as-yet unloaded session is owned.
+    report.status = loaded ? 'available' : 'unverified';
+    return report;
+  }
+  /** Invoke the supported host's exact owner teardown after identity and activity checks. */
+  async releaseIdle(group: SessionGroup): Promise<boolean> {
+    await this.requireSupported();
+    // An already cold group is not evidence that a prior host-shape failure recovered.
+    if (group.members.every(member => this.sessions!.get(member.id) === undefined)) return true;
+    const inspected = await this.inspectReleaseRuntime();
+    if (inspected.kind === 'unavailable') return this.releaseUnavailable(inspected.reason);
+    const { agents } = inspected.runtime;
     const rootArchived = () => {
       if (!this.registry!.archivedSessionIds.includes(group.sessionId)) throw new ArchiveError('not-archived', 'Only archived sessions can be released for trash.');
     };
     const inspectPlan = (): ReleaseInspection => {
       rootArchived();
       const plans: ReleasePlan[] = []; const ids = new Set(group.members.map(member => member.id));
-      const live = agents.list();
-      if (!Array.isArray(live) || live.some(agent => !object(agent) || typeof agent.id !== 'string')) return { kind: 'unavailable', reason: 'agent-inventory' };
+      const live = liveAgents(agents);
+      if (!live) return { kind: 'unavailable', reason: 'agent-inventory' };
+      let effects: OwnerEffects | undefined;
       for (const member of group.members) {
         const session = this.sessions!.get(member.id); const agent = agents.get(member.id);
         if (session === undefined) {
@@ -556,17 +639,10 @@ class NativeAdapter implements DshAdapter {
           throw new ArchiveError('active', 'A session has active maintenance or queued input. Nothing was released.');
         if (live.some(child => !ids.has(child.id) && agents.isOwnedBy(child.id, agent)))
           throw new ArchiveError('ambiguous-lineage', 'The host owns a child outside the confirmed session group.');
-        const matches = new Set<() => unknown>();
-        for (const fiber of fibers) {
-          const disposables = fiber._disposables;
-          if (!object(disposables) || typeof (disposables as Record<symbol, unknown>)[Symbol.iterator] !== 'function') return { kind: 'unavailable', reason: 'lifecycle-disposables' };
-          for (const dispose of disposables as unknown as Iterable<unknown>) {
-            if (typeof dispose !== 'function') continue;
-            const metadata = (dispose as unknown as Record<symbol, unknown>)[symbols.effect];
-            if (object(metadata) && metadata.label === `agentLoop.lifecycle(${member.id})`) matches.add(dispose as () => unknown);
-          }
-        }
-        if (!matches.size) return { kind: 'unavailable', reason: 'lifecycle-owner-missing' };
+        effects ??= ownerEffects(inspected.runtime);
+        if (!effects) return { kind: 'unavailable', reason: 'lifecycle-disposables' };
+        const matches = effects.byLabel.get(`agentLoop.lifecycle(${member.id})`) ?? new Set<() => unknown>();
+        if (!matches.size) return { kind: 'unavailable', reason: 'lifecycle-owner-missing', counts: effects.counts };
         if (matches.size !== 1) throw new ArchiveError('ambiguous-lifecycle', 'Multiple host owners claim this session lifecycle. Nothing was released.');
         plans.push({ id: member.id, session, agent, dispose: [...matches][0]! });
       }
@@ -588,14 +664,14 @@ class NativeAdapter implements DshAdapter {
     };
     await checkActivity();
     const prepared = inspectPlan();
-    if (prepared.kind === 'unavailable') return this.releaseUnavailable(prepared.reason);
+    if (prepared.kind === 'unavailable') return this.releaseUnavailable(prepared.reason, prepared.counts);
     for (const plan of prepared.plans) await this.sessions!.flush!(plan.session);
     await checkActivity();
     // No await between the final identity/idle checks and claiming every native
     // owner disposer. Each native teardown memoizes its own ordered settlement.
     const current = inspectPlan();
     if (current.kind === 'unavailable') {
-      this.releaseUnavailable(current.reason);
+      this.releaseUnavailable(current.reason, current.counts);
       throw new ArchiveError('source-changed', 'A session lifecycle changed while release was being prepared.');
     }
     if (current.plans.length !== prepared.plans.length || current.plans.some((plan, index) => plan.agent !== prepared.plans[index]!.agent
@@ -606,6 +682,7 @@ class NativeAdapter implements DshAdapter {
     }));
     if (settlements.some(settlement => settlement.status === 'rejected') || group.members.some(member => this.sessions!.get(member.id) !== undefined || agents.get(member.id) !== undefined))
       throw new ArchiveError('release-failed', 'The host could not finish releasing this idle session. Its logs have not been moved.');
+    this.releaseWarnings.clear();
     return true;
   }
   private async catalog(): Promise<SnapshotCatalog> {

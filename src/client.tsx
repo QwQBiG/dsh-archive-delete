@@ -6,6 +6,7 @@ import { UpdateClientController } from './update-client.js';
 import { UpdateCard } from './update-ui.js';
 import type { UpdateOverview } from './update-contracts.js';
 import { FILE_KINDS } from './storage-classification.js';
+import { IDLE_RELEASE_REFUSALS } from './host-diagnostics.js';
 
 type HostRequire = (name: string) => unknown;
 type Observable<T> = { getSnapshot(): T; subscribe(listener: () => void): () => void };
@@ -55,17 +56,41 @@ function fileKinds(value: unknown, fileBytes: unknown, fileCount: unknown): bool
   return count(bytes) && count(files) && bytes === fileBytes && files === fileCount;
 }
 
+function idleReleaseDiagnostics(value: unknown): boolean {
+  if (value === undefined) return true;
+  const codes = Object.keys(IDLE_RELEASE_REFUSALS);
+  if (!object(value) || !oneOf(value.status, ['available', 'unavailable', 'unverified'])
+    || (value.reasonCode !== undefined && !oneOf(value.reasonCode, codes))
+    || !Array.isArray(value.checks) || value.checks.length !== codes.length
+    || !value.checks.every(check => object(check) && oneOf(check.code, codes) && oneOf(check.status, ['pass', 'fail', 'untested']))
+    || new Set(value.checks.map(check => check.code)).size !== value.checks.length
+    || !object(value.counts) || !['fibers', 'effects', 'labelPrefixes', 'loadedSessions'].every(key => count((value.counts as Record<string, unknown>)[key]))) return false;
+  if (value.status === 'unavailable') return value.reasonCode !== undefined && value.checks.some(check => check.code === value.reasonCode && check.status === 'fail');
+  if (value.reasonCode !== undefined || value.checks.some(check => check.status === 'fail')) return false;
+  return value.status === 'available' ? Number(value.counts.loadedSessions) > 0 && value.checks.every(check => check.status === 'pass') : value.checks.some(check => check.status === 'untested');
+}
+function purgeHistory(value: unknown): boolean {
+  const uuid = (id: unknown) => typeof id === 'string' && /^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(id);
+  return value === undefined || (Array.isArray(value) && value.length <= 200
+    && value.every(entry => object(entry) && uuid(entry.entryId) && identifier(entry.sessionId)
+      && typeof entry.titleHash === 'string' && /^[a-f\d]{64}$/.test(entry.titleHash)
+      && count(entry.sizeBytes) && count(entry.memberCount) && entry.memberCount > 0 && entry.memberCount <= 1000
+      && count(entry.purgedAt) && entry.purgedAt <= 8_640_000_000_000_000
+      && (entry.requestId === undefined || uuid(entry.requestId)))
+    && new Set(value.map(entry => entry.entryId)).size === value.length);
+}
+
 function isOverview(value: unknown): value is Overview {
   return object(value) && object(value.support) && typeof value.support.supported === 'boolean'
     && typeof value.support.version === 'string' && typeof value.support.platform === 'string'
-    && optionalText(value.support.reason)
+    && optionalText(value.support.reason) && optionalText(value.support.reasonCode) && idleReleaseDiagnostics(value.support.idleRelease)
     && Array.isArray(value.archived) && value.archived.every((item) => object(item) && identifier(item.id) && typeof item.title === 'string' && typeof item.workspace === 'string' && count(item.sizeBytes) && count(item.descendantCount)
       && (item.pending === undefined || typeof item.pending === 'boolean') && optionalText(item.pendingReason))
     && Array.isArray(value.trash) && value.trash.every((item) => object(item) && identifier(item.id) && identifier(item.sessionId) && typeof item.title === 'string' && count(item.trashedAt) && count(item.sizeBytes) && count(item.memberCount))
     && Array.isArray(value.recentResults) && value.recentResults.every(isBatchResult)
     && (value.issues === undefined || (Array.isArray(value.issues) && value.issues.every(issue => object(issue)
       && oneOf(issue.scope, ['archive', 'trash']) && (issue.id === undefined || identifier(issue.id)) && typeof issue.code === 'string' && typeof issue.message === 'string')))
-    && (value.storageWorkspaces === undefined || workspaces(value.storageWorkspaces));
+    && (value.storageWorkspaces === undefined || workspaces(value.storageWorkspaces)) && purgeHistory(value.purgeHistory);
 }
 function isStorageOverview(value: unknown): value is StorageOverview {
   if (!object(value) || value.metric !== 'logical-file-bytes' || !oneOf(value.scope, ['host', 'workspace'])

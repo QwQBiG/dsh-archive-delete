@@ -8,6 +8,7 @@ import { UpdateClientController } from '../src/update-client.js';
 import { ArchiveDialogView, PreviewContent, ResultContent, StorageResultContent, en, zh, translator, localizeReason, type NativePrimitives } from '../src/client-ui.js';
 import { FILE_KINDS } from '../src/storage-classification.js';
 import { ArchiveError, PACKAGE_NAME, type ArchiveApi, type BatchResult, type Overview, type Preview, type StorageOverview } from '../src/contracts.js';
+import { emptyIdleReleaseDiagnostics } from '../src/host-diagnostics.js';
 
 const overview: Overview = {
   support: { supported: true, version: '0.2.1-rc.3', platform: 'darwin' },
@@ -317,6 +318,63 @@ test('gateway rejects malformed optional diagnostics before they can reach React
     { ...overview, issues: [{ scope: 'disk', code: 'invalid-session', message: 'bad' }] },
   ]) await assert.rejects(send(invalid).list(), ClientTransportError);
   assert.equal((await send(preview).preview('trash', ['session-1'])).id, preview.id);
+});
+
+test('live capability status is compact, localized and separate from confirmation', async () => {
+  for (const status of ['available', 'unavailable', 'unverified'] as const) {
+    const diagnostic = { ...emptyIdleReleaseDiagnostics(), status, ...(status === 'unavailable' ? { reasonCode: 'factory-identity' as const } : {}) };
+    if (status === 'available') { diagnostic.checks.forEach(check => { check.status = 'pass'; }); diagnostic.counts.loadedSessions = 1; }
+    if (status === 'unavailable') diagnostic.checks.find(check => check.code === 'factory-identity')!.status = 'fail';
+    const current = { ...overview, support: { ...overview.support, idleRelease: diagnostic } };
+    const controller = new ArchiveClientController({ ...api, list: async () => current });
+    await controller.open();
+    for (const language of ['en', 'zh'] as const) {
+      const t = translator(language);
+      const props = { controller, primitives, t };
+      const html = renderToStaticMarkup(<ArchiveDialogView {...props} state={controller.getSnapshot()} />);
+      assert.ok(html.includes(t(status === 'available' ? 'idleAvailable' : status === 'unavailable' ? 'idleUnavailable' : 'idleUnverified')));
+      assert.match(html, /<details class="dad-capability"><summary>/);
+      if (status === 'unavailable') assert.ok(html.includes(language === 'zh' ? '代理循环与工厂的运行时身份不一致' : 'share a verifiable runtime'));
+      else assert.ok(!html.includes(language === 'zh' ? '身份不一致' : 'do not share'));
+      const confirmation = renderToStaticMarkup(<ArchiveDialogView {...props} state={{ ...controller.getSnapshot(), preview }} />);
+      assert.ok(!confirmation.includes('dad-capability'));
+    }
+    controller.dispose();
+  }
+});
+
+test('trash shows deletion evidence without retaining a title or offering restore controls', async () => {
+  const entry = { entryId: 'a6a57567-ae5f-473e-a02d-bb1d3a6fe0ae', sessionId: '<private-id>', titleHash: 'f'.repeat(64), sizeBytes: 2048, memberCount: 2, purgedAt: 1000 };
+  const controller = new ArchiveClientController({ ...api, list: async () => ({ ...overview, archived: [], purgeHistory: [entry] }) });
+  await controller.open();
+  const archived = renderToStaticMarkup(<ArchiveDialogView state={controller.getSnapshot()} controller={controller} primitives={primitives} t={translator('en')} />);
+  assert.ok(!archived.includes('dad-purge-history'));
+  controller.setTab('trash');
+  for (const language of ['en', 'zh'] as const) {
+    const html = renderToStaticMarkup(<ArchiveDialogView state={controller.getSnapshot()} controller={controller} primitives={primitives} t={translator(language)} />);
+    assert.ok(html.includes(translator(language)('purgeHistory', { n: 1 })));
+    assert.ok(html.includes('&lt;private-id&gt;')); assert.ok(!html.includes('<private-id>'));
+    assert.ok(!html.includes(entry.titleHash));
+    assert.ok(html.includes('1970-01-01T00:00:01.000Z'));
+    const start = html.indexOf('<details class="dad-results dad-purge-history"');
+    const history = html.slice(start, html.indexOf('</details>', start));
+    assert.ok(!history.includes('<button'));
+  }
+  controller.dispose();
+});
+
+test('gateway validates optional live probes and bounded deletion history while accepting earlier hosts', async () => {
+  const send = (value: unknown) => createArchiveApi(async () => new Response(JSON.stringify({ ok: true, value })), 'https://example.test/');
+  const probe = emptyIdleReleaseDiagnostics();
+  const entry = { entryId: 'a6a57567-ae5f-473e-a02d-bb1d3a6fe0ae', sessionId: 'deleted', titleHash: 'f'.repeat(64), sizeBytes: 2048, memberCount: 1, purgedAt: 1000 };
+  assert.equal((await send(overview).list()).support.idleRelease, undefined);
+  assert.deepEqual((await send({ ...overview, support: { ...overview.support, idleRelease: probe }, purgeHistory: [entry] }).list()).purgeHistory, [entry]);
+  for (const bad of [null, { ...probe, status: 'ready' }, { ...probe, reasonCode: 1 }, { ...probe, checks: [{ code: 'not-a-probe', status: 'pass' }] }, { ...probe, checks: [probe.checks[0], probe.checks[0]] }, { ...probe, counts: { ...probe.counts, fibers: -1 } }]) {
+    await assert.rejects(send({ ...overview, support: { ...overview.support, idleRelease: bad } }).list(), ClientTransportError);
+  }
+  for (const bad of [null, [entry, entry], Array(201).fill(entry), [{ ...entry, titleHash: 'plaintext' }], [{ ...entry, sizeBytes: -1 }], [{ ...entry, memberCount: 0 }], [{ ...entry, requestId: {} }]]) {
+    await assert.rejects(send({ ...overview, purgeHistory: bad }).list(), ClientTransportError);
+  }
 });
 
 test('diagnostic warnings preserve healthy list controls and localize known corruption and transport errors', async () => {

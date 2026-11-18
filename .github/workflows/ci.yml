@@ -26,6 +26,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install isolated official native runtime / 安装隔离的官方原生运行时
         run: node scripts/prepare-native-runtime.mjs
+      - name: Probe installed host structure / 探测已安装宿主结构
+        run: node --import tsx scripts/probe-host.mts > host-probe.json
+      - name: Retain host probe report / 保留宿主探测报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-probe-${{ matrix.os }}-${{ matrix.dsh }}
+          path: host-probe.json
+          if-no-files-found: warn
       - run: pnpm verify
       - name: Verify committed bundles / 核对已提交的构建产物
         run: git diff --exit-code -- lib

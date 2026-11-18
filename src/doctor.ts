@@ -6,9 +6,19 @@ import { PACKAGE_NAME, SUPPORTED_DSH_VERSIONS, SUPPORTED_DSH_VERSION_LABEL, isSu
 import { assertCanonicalStoragePath, assertLocalStoragePath, assertPlainDirectory, assertPrivateDirectory, readBoundedJson } from './filesystem.js';
 import { PLUGIN_VERSION } from './version.js';
 import { readHostManifest } from './host-manifest.js';
+import { idleReleaseReasons } from './host-diagnostics.js';
 
 export type DoctorLanguage = 'en' | 'zh';
 export type DoctorStatus = 'pass' | 'warn' | 'fail';
+export function doctorCodeReference(language: DoctorLanguage = 'en') {
+  return { schemaVersion: 1 as const, scope: 'idle-release-code-reference' as const, language,
+    runtimeState: 'unverified' as const,
+    codes: Object.entries(idleReleaseReasons(language)).map(([code, message]) => ({ code, message })) };
+}
+export function formatDoctorCodeReference(language: DoctorLanguage = 'en'): string {
+  const title = language === 'zh' ? '即时释放原因码（参考）' : 'Idle-release reason codes (reference)';
+  return `${title}\n${doctorCodeReference(language).codes.map(item => `${item.code}: ${item.message}`).join('\n')}\n`;
+}
 export interface DoctorCheck { id: string; status: DoctorStatus; code: string; message: string; path?: string }
 export interface DoctorOptions { home: string; profile?: string; runtimeRoot?: string; language?: DoctorLanguage }
 export interface DoctorReport {

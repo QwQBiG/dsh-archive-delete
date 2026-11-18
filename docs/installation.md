@@ -4,17 +4,17 @@
 
 ## Install in DSH Desktop
 
-Requires official DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5**, JSONL storage, and macOS or Windows.
+Use official DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5** on macOS or Windows, with JSONL storage.
 
 Open **Plugins → Add plugin**, enter this URL, and enable the plugin:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.4/qwqbig-dsh-archive-delete-0.0.4.tgz
 ```
 
-The Release package contains compiled files. If DSH requests a restart, use **⌘Q / Quit** on macOS or **Exit/Quit** on Windows, including the tray menu when present, then reopen it.
+The Release package is ready to use. If DSH asks for a restart, fully quit and reopen it: use **⌘Q / Quit** on macOS or **Exit/Quit** on Windows. If DSH stays in the Windows tray, quit from its tray menu too.
 
-Installation applies to the selected profile: Desktop normally uses `desktop`, and Web uses `web`. Data paths come from that host's `DSH_HOME`.
+Install the plugin in the profile you use. Desktop normally uses `desktop`, while Web uses `web`; each profile loads its own plugins. Plugin data is stored under the host's `DSH_HOME`.
 
 ## Manage conversations
 
@@ -22,49 +22,49 @@ Open **Manage archives, trash and storage** in plugin details, or **Move to tras
 
 | View | Action |
 | --- | --- |
-| Archived | Select conversations, preview the group and confirm moving to trash |
-| Pending restart | Cancel waiting and review a new move, or cancel the request |
+| Archived | Select conversations, review their subagents and confirm the move to trash |
+| Pending restart | Review a fresh attempt to move now, or cancel the request |
 | Trash | Restore selected groups or confirm permanent deletion |
 | Storage overview | Scan DSH or a selected workspace |
 
-A batch holds up to 100 targets. Select-all applies to the current page; changing page, tab or sort clears selection. Default and largest-first sorting are available.
+Select up to 100 targets at a time. Select-all covers the current page, and changing the page, tab or sort clears your selection. You can keep the default order or sort largest first.
 
-Idle host-managed conversations can move immediately. Running tasks, pending input and external writers keep a group pending or blocked; the result explains the reason. **Cancel waiting and review** ends the old queue and opens a fresh confirmation.
+DSH can release idle conversations and move them without a restart. Running tasks, pending input or another process holding a session can leave a group pending or blocked; check the result for the reason. To try a pending move again, choose **Cancel waiting and review**. This cancels the old request and opens a fresh confirmation.
 
-Restore returns a conversation to its original workspace in archived state. A missing workspace becomes Ungrouped. Damaged records have a diagnostic notice beside the healthy list.
+Restored conversations return to their original workspace and stay archived. If that workspace is gone, they appear under Ungrouped. Any damaged records are listed separately with an explanation.
 
-Permanent deletion removes the selected trash logs, dedicated subagent logs and recovery records. It cannot be undone. Shared attachments, spill and project files remain in their own locations. Trash has no automatic expiry.
+Trash stays until you clear it. Permanent deletion removes the selected conversation logs, dedicated subagent logs and recovery records, and cannot be undone. Shared attachments, spill files and project files stay in their own locations.
 
 ## Storage overview
 
-Choose **Scan DSH storage**, or select one registered workspace and **Scan selected workspace**. Scans start when you press a scan button. **Refresh workspace list** updates the choices; **Cancel scan** stops the current scan.
+Choose **Scan DSH storage**, or pick a registered workspace and choose **Scan selected workspace**. Scanning starts when you press the button. Use **Refresh workspace list** to update the choices or **Cancel scan** to stop a scan.
 
-The compact category list highlights measured storage. Details contain large files, top-level folders and scan notes. File types are classified from directory names and extensions: dependencies, build folders, version-control data, logs, media, archives, code/configuration, documents and other files. Large files carry the corresponding type label.
+The category list shows where space is used. Expand a category to see large files, top-level folders and scan notes. File types come from directory names and extensions: dependencies, build folders, version-control data, logs, media, archives, code/configuration, documents and other files. Each large file has a type label.
 
-DSH scans use the host's configured locations and exclude registered project directories. A workspace scan uses that workspace's project directory. Same-scope rescans retain the previous result and timestamp while updating; cancellation or failure keeps that result marked as an earlier observation. Choosing another scope clears it.
+A DSH scan covers the host's configured storage locations and excludes registered project directories. To inspect a project, select its workspace instead. When you scan the same location again, the previous result and timestamp stay visible until the new result is ready. If you cancel or the scan fails, that result remains marked as an earlier observation. Choosing a different scope clears it.
 
-Sizes are logical file bytes. The main total deduplicates verified paths and hard links; categories can overlap. Each scan covers up to 50,000 entries, depth 32 and about 5 seconds of work. The result shows partial coverage and skipped entries when a limit or access issue is encountered. File-type classification describes file layout; use the files themselves to decide their purpose. Storage inspection is read-only.
+Sizes use the logical length of each file. The overall total counts verified duplicate paths and hard links once. Category totals may overlap, so they should not be added together. A scan covers up to 50,000 entries, 32 directory levels and about 5 seconds of work; limits and access problems appear as partial coverage and skipped entries. Storage inspection is read-only. File types describe the layout and format of files; their contents determine their purpose.
 
 ## Updates
 
-To upgrade from **v0.0.1**, enter the v0.0.3 URL at the top of this guide in **Plugins → Add plugin**. The manager replaces the existing installation. Subsequent upgrades use the version row.
+If you use **v0.0.1**, enter the v0.0.4 URL above in **Plugins → Add plugin**. The manager replaces the existing installation. After that, you can upgrade through the version row.
 
-The version row provides **Check**, **Review update** and **Details**. GitHub checks run daily, with a one-minute manual interval. Failed checks retry after at least one hour and follow longer GitHub rate-limit windows.
+The version row has **Check**, **Review update** and **Details**. The plugin checks GitHub daily; manual checks must be at least one minute apart. After a failure, it waits at least one hour before retrying, or longer if GitHub requires it.
 
-Choose **Review update**, read the notes, then **Confirm upgrade**. The plugin verifies the package and delegates replacement to DSH's manager in the current profile. When the running and installed versions differ, fully quit and reopen DSH.
+Choose **Review update**, read the release notes, then **Confirm upgrade**. The plugin verifies the package and asks DSH's manager to replace it in the current profile. If the installed version differs from the running version, fully quit and reopen DSH to load it.
 
-For an uncertain result, use **Check installation status** or **Recheck confirmed request**. The same request reads current installation state; a recorded installation is not repeated. If it remains unresolved, fully quit and reopen DSH before another attempt.
+If the result is unclear, choose **Check installation status** or **Recheck confirmed request**. These read the current state of the request without repeating a recorded installation. If the result is still unclear, fully quit and reopen DSH before trying again.
 
-Verified packages stay in `<DSH_HOME>/archive-delete/updates/packages/`. A profile dependency can therefore use a `file:` source. Keep these files with the profile for reinstalls. Network access follows the launched runtime environment; proxy setup belongs there.
+Verified update packages stay in `<DSH_HOME>/archive-delete/updates/packages/`, so the profile may show a `file:` dependency after an upgrade. Keep these files with the profile for reinstalls. Updates use the network and proxy settings of the environment that launched DSH.
 
-For a manual upgrade, add the new versioned Release URL through **Add plugin** in the same profile. The package name stays the same, so the manager replaces its dependency. `pnpm update` does not discover a new Release URL.
+To upgrade manually, add the new version's Release URL through **Add plugin** in the same profile. The manager recognizes the package name and replaces its dependency. With URL-based installation, use the new URL for each version; `pnpm update` cannot discover it.
 
 ## CLI installation and bundle registration
 
-Use Desktop's interface for ordinary installation. For a CLI-managed Desktop profile, quit DSH first:
+For everyday use, install through the Desktop plugin manager. If you manage the Desktop profile through the CLI, quit DSH first:
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.4/qwqbig-dsh-archive-delete-0.0.4.tgz
 ```
 
 Check `<DSH_HOME>/profiles/desktop/package.json`. `dsh.profile.bundles` must contain the package name once. Add the entry if the CLI only installed the dependency, preserving the other fields:
@@ -83,13 +83,13 @@ Start DSH and open the management dialog. If a standalone CLI rejects the reserv
 
 ## Loading and Doctor
 
-The plugin component should be running and its management dialog should respond. A successful startup also logs:
+To check that the plugin has loaded, open its management dialog and look for a running component in the plugin details. A successful startup also writes this log line:
 
 ```text
-[archive-delete] v0.0.3 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.0.4 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
-Doctor checks profile registration, package files, host version and storage access. Run it with Node 24+; substitute the actual home/profile/runtime:
+If the plugin does not load, Doctor can check profile registration, package files, the host version and storage access. Use Node 24+ and substitute your actual home, profile and runtime paths:
 
 ```sh
 ELECTRON_RUN_AS_NODE=1 \
@@ -106,7 +106,7 @@ ELECTRON_RUN_AS_NODE=1 \
   --runtime 'C:\path\to\dsh-runtime'
 ```
 
-`--runtime` can be omitted when resolvable through the profile. `--json` gives structured output; `--lang en` or `--lang zh` chooses the report language. Doctor is an offline read-only check; use the current loaded log and dialog to verify a running instance.
+`--runtime` is optional when Doctor can resolve it through the profile. Use `--json` for structured output and `--lang en` or `--lang zh` to choose the language. Doctor reads configuration and access permissions; the startup log and management dialog show whether the current instance has loaded the plugin.
 
 ## Uninstall
 
@@ -120,15 +120,15 @@ Remove this package's entry from the same profile's `dsh.profile.bundles` if it 
 
 ## Download checksum
 
-Keep the matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.3/qwqbig-dsh-archive-delete-0.0.3.tgz.sha256) beside a downloaded package:
+To verify a downloaded package, save the matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.4/qwqbig-dsh-archive-delete-0.0.4.tgz.sha256) beside a downloaded package:
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.3.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.4.tgz.sha256
 ```
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.0.3.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.0.3.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.0.4.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.0.4.tgz.sha256
 ```
 
 ## Troubleshooting
@@ -145,5 +145,20 @@ Get-Content .\qwqbig-dsh-archive-delete-0.0.3.tgz.sha256
 | Package verification fails | Check again and review the current release |
 | Installed and running versions differ | Fully quit and reopen DSH |
 | Damaged-record notice or failed transition | Keep the diagnostic and use [operation recovery](operations.md) |
+
+## Diagnostics and deletion history
+
+The management dialog shows one line for local idle-release readiness. Expand it to see the checks and reason codes, or choose **Refresh** to check again. When no sessions are loaded, the session-specific checks remain untested.
+
+In **Trash**, expand **Recent permanent deletions** to see conversation IDs, confirmation times and sizes. It shows up to 200 records from the last 30 days and stays readable when archive operations are unavailable. See [operations](operations.md) for retention and recovery details.
+
+Doctor can also display the full reason-code reference without inspecting a profile:
+
+```sh
+node lib/doctor.js --codes --lang en
+node lib/doctor.js --codes --lang zh --json
+```
+
+Run these commands from the built checkout with Node 24+. For an isolated host report, follow the [contributing guide](../CONTRIBUTING.md).
 
 [Development](../CONTRIBUTING.md) · [Verification](acceptance.md)
