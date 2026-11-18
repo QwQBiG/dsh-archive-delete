@@ -10,12 +10,13 @@ const { supportedPackageDshVersions } = await tsImport('../src/update-source.ts'
 if (pkg.name !== PACKAGE_NAME || pkg.engines.dsh !== SUPPORTED_DSH_VERSIONS.join(' || ')) throw new Error('Package identity or compatibility gate drifted.');
 assert.deepEqual(supportedPackageDshVersions(pkg), SUPPORTED_DSH_VERSIONS, 'Declared and tested DSH versions must agree.');
 if (!pkg.files.includes('docs')) throw new Error('The installable package must retain the linked documentation.');
+if (pkg.icon !== './assets/icon.svg' || !pkg.files.includes('assets/icon.svg')) throw new Error('The installable package must include the declared plugin icon.');
 for (const name of Object.keys(pkg.peerDependencies ?? {})) {
   if (pkg.peerDependenciesMeta?.[name]?.optional !== true) throw new Error(`Host-provided peer ${name} must be optional.`);
 }
 if (pkg.scripts?.postinstall) throw new Error('Installation must not require a lifecycle build or automatic profile modification.');
 if (pkg.bin?.['dsh-archive-delete-doctor'] !== './lib/doctor.js') throw new Error('The read-only doctor command is missing.');
-for (const path of ['lib/index.js', 'lib/client.js', 'lib/doctor.js', 'cordis.patch.yml', 'LICENSE', 'README.md', 'README.zh-CN.md']) await access(join(root, path));
+for (const path of ['lib/index.js', 'lib/client.js', 'lib/doctor.js', 'cordis.patch.yml', 'LICENSE', 'README.md', 'README.zh-CN.md', pkg.icon]) await access(join(root, path));
 if (!(await readFile(join(root, 'lib/doctor.js'), 'utf8')).startsWith('#!/usr/bin/env node')) throw new Error('Doctor must retain its executable entry point.');
 const host = await import(new URL('../lib/index.js', import.meta.url));
 if (typeof host.apply !== 'function' || !host.inject) throw new Error('Host plugin export contract is invalid.');
