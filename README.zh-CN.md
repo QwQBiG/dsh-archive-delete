@@ -23,13 +23,15 @@
 
 ## 安装
 
-**v0.0.5** 支持 macOS 和 Windows 上使用 JSONL 存储的 **DSH Desktop 0.2.1-rc.3 和 0.2.1-rc.5**。打开 DSH 桌面端的 **插件 → 添加插件**，粘贴下方的预编译安装包地址。
+**v0.0.6** 支持 macOS 和 Windows 上使用 JSONL 存储的 **DSH Desktop 0.2.1-rc.3、0.2.1-rc.5、0.2.2-rc.3**。打开 DSH 桌面端的 **插件 → 添加插件**，粘贴下方的预编译安装包地址。
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.5/qwqbig-dsh-archive-delete-0.0.5.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.6/qwqbig-dsh-archive-delete-0.0.6.tgz
 ```
 
 已安装的用户可以在插件详情里选择 **查看并升级 → 确认升级**。如果提示重启，请完全退出 DSH 再打开。旧版没有更新按钮时，可以用上方地址升级。 [安装和排错](docs/installation.zh-CN.md)
+
+如果桌面端升级后提示插件不兼容，或插件管理器找不到内置 pnpm，见 [升级 DSH 桌面端后](docs/installation.zh-CN.md#升级-dsh-桌面端后)。
 
 ## 能做什么
 

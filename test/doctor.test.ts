@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -120,6 +120,53 @@ test('doctor accepts the explicit DSH package directory as well as its runtime c
   const f = await fixture(t);
   const report = await runDoctor({ ...f.options, runtimeRoot: f.hostPackage });
   assert.equal(report.ok, true); assert.equal(report.host.manifest, f.hostManifest);
+  assert.equal(check(report, 'plugin-manager-runtime'), undefined);
+});
+
+test('doctor checks the bundled pnpm entry point in both Desktop layouts without running it', async t => {
+  const f = await fixture(t);
+  for (const packaging of ['app', 'app.asar']) {
+    const resources = join(f.home, packaging + '-installation', 'Resources');
+    const desktop = join(resources, packaging);
+    const runtime = join(desktop, 'dsh');
+    const host = join(runtime, 'node_modules', '@deepseek-ai', 'dsh');
+    const primary = join(resources, 'runtime', 'primary-runtime');
+    const launcher = join(primary, 'dependencies', 'pnpm', 'bin', 'pnpm.mjs');
+    const options = { ...f.options, runtimeRoot: runtime };
+    await mkdir(host, { recursive: true });
+    await writeFile(join(host, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: SUPPORTED_DSH_VERSION }));
+    assert.equal(check(await runDoctor(options), 'plugin-manager-runtime'), undefined);
+    await writeFile(join(desktop, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-desktop', version: SUPPORTED_DSH_VERSION }));
+
+    const missingRuntime = await runDoctor({ ...options, language: 'zh' });
+    assert.equal(check(missingRuntime, 'host-version').status, 'pass');
+    assert.equal(check(missingRuntime, 'plugin-manager-runtime').code, 'desktop-primary-runtime-missing');
+    assert.equal(check(missingRuntime, 'plugin-manager-runtime').path, primary);
+    assert.match(check(missingRuntime, 'plugin-manager-runtime').message, /官方.*安装包.*保留 DSH home/);
+    assert.equal(missingRuntime.status, 'fail');
+
+    await mkdir(dirname(launcher), { recursive: true });
+    const missingLauncher = await runDoctor(options);
+    assert.equal(check(missingLauncher, 'plugin-manager-runtime').code, 'desktop-pnpm-missing');
+    assert.equal(check(missingLauncher, 'plugin-manager-runtime').path, launcher);
+    assert.match(check(missingLauncher, 'plugin-manager-runtime').message, /official DSH Desktop installer/);
+
+    await mkdir(launcher);
+    assert.equal(check(await runDoctor(options), 'plugin-manager-runtime').code, 'desktop-pnpm-unreadable');
+    await rm(launcher, { recursive: true });
+    const bytes = 'throw new Error("Doctor must never launch pnpm");';
+    await writeFile(launcher, bytes);
+    const healthy = await runDoctor(options);
+    assert.equal(healthy.ok, true);
+    assert.equal(check(healthy, 'plugin-manager-runtime').code, 'desktop-pnpm-present');
+    assert.equal(await readFile(launcher, 'utf8'), bytes);
+    assert.equal(await readFile(f.retained, 'utf8'), 'Must remain byte-identical.');
+
+    await writeFile(join(host, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.2.1-rc.2' }));
+    const incompatible = await runDoctor(options);
+    assert.equal(check(incompatible, 'host-version').code, 'host-version-mismatch');
+    assert.equal(check(incompatible, 'plugin-manager-runtime').status, 'pass');
+  }
 });
 
 test('doctor treats absent storage as incomplete initialization and creates no directories', async t => {
@@ -184,7 +231,7 @@ test('doctor admits each declared host exactly and reports the actual runtime an
     assert.equal(report.ok, true);
     assert.equal(report.host.version, hostVersion);
     assert.equal(check(report, 'host-version').status, 'pass');
-    assert.deepEqual(report.supportedDshVersions, ['0.2.1-rc.3', '0.2.1-rc.5']);
+    assert.deepEqual(report.supportedDshVersions, ['0.2.1-rc.3', '0.2.1-rc.5', '0.2.2-rc.3']);
     assert.equal(report.targetDshVersion, SUPPORTED_DSH_VERSION_LABEL);
     for (const supported of SUPPORTED_DSH_VERSIONS) assert.ok(check(report, 'host-version').message.includes(supported));
     assert.equal(report.runtimeState, 'unverified');

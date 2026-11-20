@@ -2,7 +2,7 @@
 
 [简体中文](architecture.zh-CN.md) · English
 
-The plugin supports DSH Desktop `0.2.1-rc.3` / `0.2.1-rc.5` on macOS and Windows with JSONL persistence. It uses the host's React instance, native controls, session storage, workspace registry and activity/lease services.
+The plugin supports DSH Desktop `0.2.1-rc.3`, `0.2.1-rc.5` and `0.2.2-rc.3` on macOS and Windows with JSONL persistence. It uses the host's React instance, native controls, session storage, workspace registry and activity/lease services.
 
 ## Modules
 
@@ -109,7 +109,7 @@ Verified packages stay in `updates/packages/`. DSH's manager replaces the existi
 
 Unloading cancels release discovery and preflight. Once installation has been delegated to the native manager, the manager controls its lifetime. Rechecking the same request reads native installation state without repeating a recorded installation. Checks back off from 3 to 15 to 60 seconds; the running and installed versions determine whether the update is active or needs a restart.
 
-The package declares its supported hosts in `engines.dsh`: `0.2.1-rc.3 || 0.2.1-rc.5`. Package validation accepts a bounded list of exact versions. Release metadata includes the default rc.3 asset and a separate rc.5 asset; both refer to the same package and checksum. To read a runtime manifest inside ASAR, the manifest reader also validates the containing archive.
+The package declares its supported hosts in `engines.dsh` as a bounded list of exact versions. The default update asset covers `0.2.1-rc.3`. Each other supported version has a host-specific asset pointing to the same package and checksum. To read a runtime manifest inside ASAR, the manifest reader also validates the containing archive.
 
 Each admitted request also has an atomic `<profile-hash>.<request-id>.request.json` receipt bound to its candidate and version. Publication writes this receipt, then the latest-state file, before calling the manager. Outcomes are saved to the request receipt first; startup uses that receipt if updating the latest-state copy was interrupted, and migrates legacy latest-only records. Replaying an older receipt leaves the latest state unchanged. Receipts are retained to keep old request IDs consumed, and lookups read only the requested file.
 

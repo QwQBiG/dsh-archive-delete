@@ -460,10 +460,10 @@ test('Windows: another process owns the plugin semaphore until process death', {
 });
 
 /** Real factory ownership and real JSONL handles, without model/network calls. */
-function managedAgents(f: Awaited<ReturnType<typeof fixture>>) {
-  new AgentRegistry(f.ctx);
+async function managedAgents(f: Awaited<ReturnType<typeof fixture>>) {
+  const agents = new AgentRegistry(f.ctx); await agents[Service.init]?.();
   f.ctx.provide('llm', {}); f.ctx.provide('tools', {}); f.ctx.provide('systemPrompt', { variable() {} });
-  new AgentLoop(f.ctx, { agents: [], maxParallelToolCalls: 10 });
+  const loop = new AgentLoop(f.ctx, { agents: [], maxParallelToolCalls: 10 }); await loop[Service.init]?.();
   const handles: any[] = [];
   return {
     async create(id: string, title: string, parent?: any) {
@@ -506,7 +506,7 @@ test(`stock ${runtimeVersion}: managed idle parent and child move and purge in t
   await createIndependentFork(f, 'hot-parent', 'hot-independent-fork');
   const fork = (await f.adapter.inspect('hot-independent-fork')).members[0]!;
   const forkFile = join(fork.directory, 'session.v4.jsonl'); const forkBytes = await readFile(forkFile);
-  const managed = managedAgents(f);
+  const managed = await managedAgents(f);
   try {
     const parent = await managed.resume('hot-parent'); await managed.resume('hot-child', parent.agent);
     const preview = await f.api.preview('trash', ['hot-parent']);
@@ -525,7 +525,7 @@ test(`stock ${runtimeVersion}: managed idle parent and child move and purge in t
 });
 
 test(`stock ${runtimeVersion}: newly created live sessions normalize the persisted default depth, then move and purge without restart`, async t => {
-  const f = await fixture(t); const managed = managedAgents(f);
+  const f = await fixture(t); const managed = await managedAgents(f);
   try {
     const parent = await managed.create('factory-new-parent', 'Factory new parent');
     const child = await managed.create('factory-new-child', 'Factory new child', parent.agent);
@@ -553,7 +553,7 @@ test(`stock ${runtimeVersion}: newly created live sessions normalize the persist
 });
 
 test(`stock ${runtimeVersion}: default-depth normalization does not accept a changed actual depth or other header metadata`, async t => {
-  const f = await fixture(t); const managed = managedAgents(f);
+  const f = await fixture(t); const managed = await managedAgents(f);
   try {
     const parent = await managed.create('factory-new-protected', 'Factory protected');
     for (const field of ['delegationDepth', 'cwd', 'createdAt', 'isSeeded'] as const) {
@@ -571,12 +571,12 @@ test(`stock ${runtimeVersion}: default-depth normalization does not accept a cha
 });
 
 test(`stock ${runtimeVersion}: idle-release diagnostics identify a missing probe and recover without touching its live owners`, async t => {
-  const f = await fixture(t); const managed = managedAgents(f); const warnings: string[] = [];
+  const f = await fixture(t); const managed = await managedAgents(f); const warnings: string[] = [];
   try {
     const handle = await managed.create('native-probe-owner', 'Private diagnostic title');
     const agents = f.ctx.agents;
     const incomplete = { get: agents.get.bind(agents), list: () => ({}),
-      isOwnedBy: agents.isOwnedBy.bind(agents), requireFactory: agents.requireFactory.bind(agents) };
+      isOwnedBy: agents.isOwnedBy?.bind(agents), requireFactory: agents.requireFactory.bind(agents) };
     let broken = true;
     const context: HostContext = { get: name => name === 'agents' && broken ? incomplete : f.ctx.get(name),
       fiber: f.ctx.fiber, waterfall: (event, request, next) => f.ctx.waterfall(event, request, next),
@@ -610,7 +610,7 @@ test(`stock ${runtimeVersion}: idle-release diagnostics identify a missing probe
 
 test(`stock ${runtimeVersion}: idle status during maintenance and a queued inbox never authorize lifecycle release`, async t => {
   const f = await fixture(t); await f.create('hot-protected');
-  const managed = managedAgents(f);
+  const managed = await managedAgents(f);
   let endMaintenance = () => {};
   const barrier = new Promise<void>(resolve => { endMaintenance = resolve; });
   let maintenance: Promise<unknown> | undefined;
@@ -634,7 +634,7 @@ test(`stock ${runtimeVersion}: idle status during maintenance and a queued inbox
 test(`stock ${runtimeVersion}: runtime child outside the confirmed group and duplicate owner effects fail closed`, async t => {
   const f = await fixture(t); await f.create('hot-owner');
   await createIndependentFork(f, 'hot-owner', 'hot-outside-fork');
-  const managed = managedAgents(f);
+  const managed = await managedAgents(f);
   let duplicate: (() => unknown) | undefined;
   try {
     const parent = await managed.resume('hot-owner'); await managed.resume('hot-outside-fork', parent.agent);

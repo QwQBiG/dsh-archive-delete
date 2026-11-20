@@ -9,6 +9,9 @@ const { PACKAGE_NAME, SUPPORTED_DSH_VERSIONS } = await tsImport('../src/contract
 const { supportedPackageDshVersions } = await tsImport('../src/update-source.ts', import.meta.url);
 if (pkg.name !== PACKAGE_NAME || pkg.engines.dsh !== SUPPORTED_DSH_VERSIONS.join(' || ')) throw new Error('Package identity or compatibility gate drifted.');
 assert.deepEqual(supportedPackageDshVersions(pkg), SUPPORTED_DSH_VERSIONS, 'Declared and tested DSH versions must agree.');
+for (const name of ['@deepseek-ai/dsh-app-boot', '@deepseek-ai/dsh-home-paths']) {
+  assert.equal(pkg.peerDependencies?.[name], pkg.engines.dsh, `The host-versioned peer ${name} must agree with engines.dsh.`);
+}
 if (!pkg.files.includes('docs')) throw new Error('The installable package must retain the linked documentation.');
 if (pkg.icon !== './assets/icon.svg' || !pkg.files.includes('assets/icon.svg')) throw new Error('The installable package must include the declared plugin icon.');
 for (const name of Object.keys(pkg.peerDependencies ?? {})) {

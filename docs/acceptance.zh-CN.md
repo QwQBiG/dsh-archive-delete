@@ -2,6 +2,12 @@
 
 简体中文 · [English](acceptance.md)
 
+## 0.0.6
+
+macOS 上分别用官方 DSH `0.2.2-rc.3` 和 `0.2.1-rc.5` 跑完原生测试，两组各通过 22 项、各跳过 1 项 Windows 专用测试。原生宿主探测也通过。新版宿主的安装包测试从已有的不兼容插件开始，在同一 profile 原位替换，并检查回收站保留和接口加载。
+
+[CI 矩阵](https://github.com/QwQBiG/dsh-archive-delete/actions/workflows/ci.yml)在 macOS 和 Windows 上验证声明支持的三个 DSH 版本。Doctor 测试使用示例目录检查运行时目录和 pnpm 入口缺失时的行为。
+
 ## 0.0.4
 
 | 检查 | 本地结果 |

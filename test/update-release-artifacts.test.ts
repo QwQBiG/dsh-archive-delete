@@ -39,11 +39,15 @@ test('release package checker binds the human checksum and updater metadata to t
   await exec(process.execPath, ['scripts/release-artifacts.mjs', directory], { cwd: root });
   const defaultName = name.replace(/\.tgz$/, '.update.json');
   const specificName = name.replace(/\.tgz$/, '.dsh-0.2.1-rc.5.update.json');
-  assert.deepEqual((await readdir(directory)).sort(), [name, `${name}.sha256`, defaultName, specificName].sort());
+  const rc3Name = name.replace(/\.tgz$/, '.dsh-0.2.2-rc.3.update.json');
+  assert.deepEqual((await readdir(directory)).sort(), [name, `${name}.sha256`, defaultName, specificName, rc3Name].sort());
   const primary = JSON.parse(await readFile(join(directory, defaultName), 'utf8'));
   const secondary = JSON.parse(await readFile(join(directory, specificName), 'utf8'));
+  const rc3 = JSON.parse(await readFile(join(directory, rc3Name), 'utf8'));
   assert.equal(primary.requiredDshVersion, '0.2.1-rc.3'); assert.equal(secondary.requiredDshVersion, '0.2.1-rc.5');
-  assert.deepEqual(primary.asset, secondary.asset, 'both hosts install the same packed bytes');
+  assert.equal(rc3.requiredDshVersion, '0.2.2-rc.3');
+  assert.deepEqual(primary.asset, secondary.asset, 'both 0.2.1 hosts install the same packed bytes');
+  assert.deepEqual(primary.asset, rc3.asset, 'the 0.2.2 host installs the same packed bytes');
   assert.deepEqual(Object.keys(primary).sort(), ['schema', 'packageName', 'version', 'requiredDshVersion', 'platforms', 'asset'].sort(), 'metadata retains an exact host gate');
   await exec(process.execPath, ['--import', 'tsx', 'scripts/check-update-package.mjs', directory], { cwd: root });
   const checksum = await readFile(join(directory, `${name}.sha256`));

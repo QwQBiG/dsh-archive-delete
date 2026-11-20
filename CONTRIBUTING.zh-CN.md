@@ -22,7 +22,7 @@ node scripts/verify-package-lifecycle.mjs artifacts
 
 ## 原生运行时
 
-原生测试覆盖官方 DSH `0.2.1-rc.3` / `0.2.1-rc.5`。macOS 默认使用已安装的 Desktop 运行时；如需指定其他运行时，填写包含 `package.json` 和 `node_modules` 的目录：
+原生测试覆盖官方 DSH `0.2.1-rc.3`、`0.2.1-rc.5` 与 `0.2.2-rc.3`。macOS 默认使用已安装的 Desktop 运行时。如需指定其他运行时，填写包含 `package.json` 和 `node_modules` 的目录：
 
 ```sh
 DSH_TEST_VERSION=0.2.1-rc.5 DSH_RUNTIME_ROOT=/absolute/path/to/isolated-runtime pnpm test:integration
@@ -75,7 +75,7 @@ ELECTRON_RUN_AS_NODE=1 \
 
 ## 发布
 
-将版本对应的 `.tgz`、`.tgz.sha256`、默认 `.update.json` 和 `.dsh-0.2.1-rc.5.update.json` 一起发布到 GitHub Releases。两份元数据指向同一个安装包。产物脚本校验包内容，检查脚本核对校验和、元数据与更新流程。安装包包含 `files` 中列出的文件，包括编译后的宿主、客户端和 Doctor 产物。
+将版本对应的 `.tgz`、`.tgz.sha256`、默认 `.update.json` 和生成的所有宿主专用 `.dsh-<host>.update.json` 一起发布到 GitHub Releases。所有元数据指向同一个安装包。产物脚本校验包内容，检查脚本核对校验和、元数据与更新流程。安装包包含 `files` 中列出的文件，包括编译后的宿主、客户端和 Doctor 产物。
 
 每次发布使用新的 tag 和资产 URL。更新器接受明确支持当前宿主的更高稳定版本。已校验安装包保留在 `updates/packages/`，供 profile 锁文件引用；安装由当前 profile 的 DSH 原生管理器完成。
 

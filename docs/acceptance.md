@@ -2,6 +2,12 @@
 
 [简体中文](acceptance.zh-CN.md) · English
 
+## 0.0.6
+
+The native macOS suites pass 22 cases each on official DSH `0.2.2-rc.3` and `0.2.1-rc.5`, with one Windows-only case skipped per run. The stock host probes also pass. On the newer runtime, the package lifecycle check starts from an existing incompatible bundle, replaces it in the same profile, and verifies the retained trash and loaded API.
+
+The [CI matrix](https://github.com/QwQBiG/dsh-archive-delete/actions/workflows/ci.yml) checks the three declared DSH versions on macOS and Windows. Doctor's fixture tests cover missing runtime directories and pnpm entries without changing the installation.
+
 ## 0.0.4
 
 | Check | Local result |
