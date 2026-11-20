@@ -56,16 +56,23 @@ interface LiveAgent {
 interface AgentRegistry {
   get(id: string): LiveAgent | undefined;
   list(): LiveAgent[];
-  isOwnedBy(id: string, owner: LiveAgent): boolean;
+  isOwnedBy?(id: string, owner: LiveAgent): boolean;
   requireFactory(): { target: unknown };
 }
 interface NativeLifecycleSymbols { effect: symbol; original?: symbol }
+type LifecycleFiber = Record<string, unknown>;
 interface ReleasePlan { id: string; session: unknown; agent: LiveAgent; dispose: () => unknown }
 type ReleaseInspection = { kind: 'verified'; plans: ReleasePlan[] } | { kind: 'unavailable'; reason: IdleReleaseRefusal; counts?: IdleReleaseCounts };
-interface ReleaseRuntime { symbols: NativeLifecycleSymbols; agents: AgentRegistry; fibers: Set<Record<string, unknown>> }
+interface ReleaseRuntime {
+  symbols: NativeLifecycleSymbols; agents: AgentRegistry; fibers: Set<LifecycleFiber>;
+  loopContext: Record<string, unknown>; usesScopeOwnership: boolean;
+}
 type RuntimeInspection = { kind: 'verified'; runtime: ReleaseRuntime; report: IdleReleaseDiagnostics }
   | { kind: 'unavailable'; reason: IdleReleaseRefusal; report: IdleReleaseDiagnostics };
-interface OwnerEffects { byLabel: Map<string, Set<() => unknown>>; counts: IdleReleaseCounts }
+interface OwnerEffect { dispose: () => unknown; fiber: LifecycleFiber }
+interface OwnerEffects { byLabel: Map<string, OwnerEffect[]>; counts: IdleReleaseCounts }
+type ScopeOwnership = { owns(child: LiveAgent, owner: LiveAgent): boolean }
+  | { reason: 'agent-state' | 'runtime-fibers' | 'lifecycle-owner-missing' | 'ambiguous-lifecycle' };
 function probeCheck(report: IdleReleaseDiagnostics, code: IdleReleaseRefusal, status: 'pass' | 'fail'): void {
   report.checks.find(check => check.code === code)!.status = status;
 }
@@ -76,7 +83,7 @@ function liveAgents(agents: AgentRegistry): LiveAgent[] | undefined {
   } catch { return undefined; }
 }
 function ownerEffects(runtime: ReleaseRuntime): OwnerEffects | undefined {
-  const byLabel = new Map<string, Set<() => unknown>>();
+  const byLabel = new Map<string, OwnerEffect[]>();
   const counts: IdleReleaseCounts = { fibers: runtime.fibers.size, effects: 0, labelPrefixes: 0, loadedSessions: 0 };
   try {
     for (const fiber of runtime.fibers) {
@@ -87,13 +94,57 @@ function ownerEffects(runtime: ReleaseRuntime): OwnerEffects | undefined {
         counts.effects++;
         const metadata = (dispose as unknown as Record<symbol, unknown>)[runtime.symbols.effect];
         if (!object(metadata) || typeof metadata.label !== 'string') continue;
-        if (metadata.label.startsWith('agentLoop.lifecycle(')) counts.labelPrefixes++;
-        const matches = byLabel.get(metadata.label) ?? new Set<() => unknown>();
-        matches.add(dispose as () => unknown); byLabel.set(metadata.label, matches);
+        if (!metadata.label.startsWith('agentLoop.lifecycle(')) continue;
+        counts.labelPrefixes++;
+        const matches = byLabel.get(metadata.label) ?? [];
+        matches.push({ dispose: dispose as () => unknown, fiber }); byLabel.set(metadata.label, matches);
       }
     }
   } catch { return undefined; }
   return { byLabel, counts };
+}
+/** Cordis 4.1 attaches each lifecycle effect to its caller's fiber, separate from the agent's own scope. */
+function scopeOwnership(runtime: ReleaseRuntime, live: LiveAgent[], effects: OwnerEffects): ScopeOwnership {
+  const verifiedChain = (fiber: LifecycleFiber): Set<LifecycleFiber> | undefined => {
+    const chain = new Set<LifecycleFiber>();
+    let cursor = fiber;
+    while (true) {
+      if (!runtime.fibers.has(cursor) || chain.has(cursor)) return undefined;
+      chain.add(cursor);
+      const parent = object(cursor.parent) ? cursor.parent.fiber : undefined;
+      if (!object(parent)) return undefined;
+      if (parent === cursor) return chain;
+      cursor = parent;
+    }
+  };
+  const loopChain = object(runtime.loopContext.fiber) ? verifiedChain(runtime.loopContext.fiber) : undefined;
+  const root = loopChain && [...loopChain].at(-1);
+  if (!root) return { reason: 'runtime-fibers' };
+  const scopes = new Map<LiveAgent, LifecycleFiber>();
+  const scopedFibers = new Set<LifecycleFiber>();
+  const ownerChains = new Map<LiveAgent, Set<LifecycleFiber>>();
+  for (const agent of live) {
+    const candidate: unknown = agent;
+    if (!object(candidate) || candidate.loopCtx !== runtime.loopContext
+      || runtime.agents.get(agent.id) !== agent
+      || !object(candidate.ctx) || !object(candidate.scope) || candidate.scope.ctx !== candidate.ctx
+      || typeof candidate.scope.rawDispose !== 'function' || !object(candidate.ctx.fiber)) return { reason: 'agent-state' };
+    const scope = candidate.ctx.fiber;
+    if (candidate.scope.rawDispose !== scope.dispose || !verifiedChain(scope)?.has(root) || scopedFibers.has(scope)) return { reason: 'runtime-fibers' };
+    scopes.set(agent, scope); scopedFibers.add(scope);
+
+    const matches = effects.byLabel.get(`agentLoop.lifecycle(${agent.id})`);
+    if (!matches?.length) return { reason: 'lifecycle-owner-missing' };
+    if (matches.length !== 1) return { reason: 'ambiguous-lifecycle' };
+    const chain = verifiedChain(matches[0]!.fiber);
+    // A live agent cannot own its own creation or be outside the runtime root.
+    if (!chain?.has(root) || chain.has(scope)) return { reason: 'runtime-fibers' };
+    ownerChains.set(agent, chain);
+  }
+  return { owns(child, owner) {
+    const scope = scopes.get(owner);
+    return scope !== undefined && ownerChains.get(child)?.has(scope) === true;
+  } };
 }
 interface ProjectionCache {
   cachedSnapshot(header: JsonObject, keys?: string[]): { values: Record<string, unknown> } | undefined;
@@ -538,7 +589,9 @@ class NativeAdapter implements DshAdapter {
     const loop = service<Record<string, unknown>>(this.ctx, 'agentLoop');
     if (!symbols) return unavailable('lifecycle-symbols');
     probeCheck(report, 'lifecycle-symbols', 'pass');
-    if (!agents || !['get', 'list', 'isOwnedBy', 'requireFactory'].every(key => typeof (agents as unknown as Record<string, unknown>)[key] === 'function')) return unavailable('agent-registry');
+    const usesScopeOwnership = this.version === '0.2.2-rc.3';
+    if (!agents || !['get', 'list', 'requireFactory'].every(key => typeof (agents as unknown as Record<string, unknown>)[key] === 'function')
+      || (!usesScopeOwnership && typeof agents.isOwnedBy !== 'function')) return unavailable('agent-registry');
     probeCheck(report, 'agent-registry', 'pass');
     if (!loop) return unavailable('agent-loop');
     probeCheck(report, 'agent-loop', 'pass');
@@ -554,7 +607,7 @@ class NativeAdapter implements DshAdapter {
     const registry = loopContext.registry;
     if (!object(registry) || typeof registry.values !== 'function') return unavailable('lifecycle-registry');
     probeCheck(report, 'lifecycle-registry', 'pass');
-    const fibers = new Set<Record<string, unknown>>();
+    const fibers = new Set<LifecycleFiber>();
     const ancestors = (candidate: unknown) => {
       while (object(candidate) && !fibers.has(candidate)) {
         fibers.add(candidate); candidate = object(candidate.parent) ? candidate.parent.fiber : undefined;
@@ -569,7 +622,7 @@ class NativeAdapter implements DshAdapter {
     } catch { return unavailable('runtime-enumeration'); }
     probeCheck(report, 'runtime-fibers', 'pass'); probeCheck(report, 'runtime-enumeration', 'pass');
     report.counts.fibers = fibers.size;
-    return { kind: 'verified', runtime: { symbols, agents, fibers }, report };
+    return { kind: 'verified', runtime: { symbols, agents, fibers, loopContext, usesScopeOwnership }, report };
   }
   /** Inspect live shapes and owner labels only: no flush, dispose, activity hook or file operation. */
   async probeIdleRelease(): Promise<IdleReleaseDiagnostics> {
@@ -599,10 +652,14 @@ class NativeAdapter implements DshAdapter {
         if (!object(agent.phase) || typeof agent.phase.kind !== 'string' || !object(agent.inbox) || typeof agent.inbox.hasPending !== 'boolean'
           || runtime.agents.get(agent.id) !== agent || agent.session !== session || !object(agent.session.header) || agent.session.header.id !== agent.id) return fail('agent-state');
         probeCheck(report, 'agent-state', 'pass');
-        if (effects.byLabel.get(`agentLoop.lifecycle(${agent.id})`)?.size !== 1) return fail('lifecycle-owner-missing');
+        if (effects.byLabel.get(`agentLoop.lifecycle(${agent.id})`)?.length !== 1) return fail('lifecycle-owner-missing');
         probeCheck(report, 'lifecycle-owner-missing', 'pass');
       }
     } catch { return fail('agent-state'); }
+    if (runtime.usesScopeOwnership) {
+      const ownership = scopeOwnership(runtime, live, effects);
+      if ('reason' in ownership) return fail(ownership.reason === 'ambiguous-lifecycle' ? 'lifecycle-owner-missing' : ownership.reason);
+    }
     // A clean runtime cannot prove how an as-yet unloaded session is owned.
     report.status = loaded ? 'available' : 'unverified';
     return report;
@@ -614,7 +671,7 @@ class NativeAdapter implements DshAdapter {
     if (group.members.every(member => this.sessions!.get(member.id) === undefined)) return true;
     const inspected = await this.inspectReleaseRuntime();
     if (inspected.kind === 'unavailable') return this.releaseUnavailable(inspected.reason);
-    const { agents } = inspected.runtime;
+    const { agents, usesScopeOwnership } = inspected.runtime;
     const rootArchived = () => {
       if (!this.registry!.archivedSessionIds.includes(group.sessionId)) throw new ArchiveError('not-archived', 'Only archived sessions can be released for trash.');
     };
@@ -624,6 +681,18 @@ class NativeAdapter implements DshAdapter {
       const live = liveAgents(agents);
       if (!live) return { kind: 'unavailable', reason: 'agent-inventory' };
       let effects: OwnerEffects | undefined;
+      let owns = (child: LiveAgent, owner: LiveAgent) => agents.isOwnedBy!(child.id, owner);
+      if (usesScopeOwnership) {
+        effects = ownerEffects(inspected.runtime);
+        if (!effects) return { kind: 'unavailable', reason: 'lifecycle-disposables' };
+        const ownership = scopeOwnership(inspected.runtime, live, effects);
+        if ('reason' in ownership) {
+          if (ownership.reason === 'ambiguous-lifecycle')
+            throw new ArchiveError('ambiguous-lifecycle', 'Multiple host owners claim a live session lifecycle. Nothing was released.');
+          return { kind: 'unavailable', reason: ownership.reason, counts: effects.counts };
+        }
+        owns = ownership.owns;
+      }
       for (const member of group.members) {
         const session = this.sessions!.get(member.id); const agent = agents.get(member.id);
         if (session === undefined) {
@@ -637,19 +706,19 @@ class NativeAdapter implements DshAdapter {
         // durable inbox are both required before a teardown that cancels input.
         if (agent.status !== 'idle' || agent.phase.kind !== 'idle' || agent.inbox.hasPending !== false)
           throw new ArchiveError('active', 'A session has active maintenance or queued input. Nothing was released.');
-        if (live.some(child => !ids.has(child.id) && agents.isOwnedBy(child.id, agent)))
+        if (live.some(child => !ids.has(child.id) && owns(child, agent)))
           throw new ArchiveError('ambiguous-lineage', 'The host owns a child outside the confirmed session group.');
         effects ??= ownerEffects(inspected.runtime);
         if (!effects) return { kind: 'unavailable', reason: 'lifecycle-disposables' };
-        const matches = effects.byLabel.get(`agentLoop.lifecycle(${member.id})`) ?? new Set<() => unknown>();
-        if (!matches.size) return { kind: 'unavailable', reason: 'lifecycle-owner-missing', counts: effects.counts };
-        if (matches.size !== 1) throw new ArchiveError('ambiguous-lifecycle', 'Multiple host owners claim this session lifecycle. Nothing was released.');
-        plans.push({ id: member.id, session, agent, dispose: [...matches][0]! });
+        const matches = effects.byLabel.get(`agentLoop.lifecycle(${member.id})`);
+        if (!matches?.length) return { kind: 'unavailable', reason: 'lifecycle-owner-missing', counts: effects.counts };
+        if (matches.length !== 1) throw new ArchiveError('ambiguous-lifecycle', 'Multiple host owners claim this session lifecycle. Nothing was released.');
+        plans.push({ id: member.id, session, agent, dispose: matches[0]!.dispose });
       }
       // Claim children first; every native teardown is awaited before return.
       const ordered: ReleasePlan[] = [];
       while (plans.length) {
-        const leaf = plans.findIndex(parent => !plans.some(child => child !== parent && agents.isOwnedBy(child.id, parent.agent)));
+        const leaf = plans.findIndex(parent => !plans.some(child => child !== parent && owns(child.agent, parent.agent)));
         if (leaf < 0) throw new ArchiveError('ambiguous-lineage', 'The host runtime ownership graph is cyclic.');
         ordered.push(plans.splice(leaf, 1)[0]!);
       }

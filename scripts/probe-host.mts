@@ -83,10 +83,10 @@ async function main(): Promise<void> {
     const sessionsRoot = join(directory, 'sessions'); await mkdir(sessionsRoot);
     await jsonl.apply(ctx, { root: sessionsRoot, compression: 'none' });
     const registry = new WorkspaceRegistry(ctx); await registry[Service.init]();
-    new AgentRegistry(ctx);
+    const agents = new AgentRegistry(ctx); await agents[Service.init]?.();
     // No agent is created; these dependencies are never invoked by the probe.
     ctx.provide('llm', {}); ctx.provide('tools', {}); ctx.provide('systemPrompt', { variable() {} });
-    new AgentLoop(ctx, { agents: [], maxParallelToolCalls: 10 });
+    const loop = new AgentLoop(ctx, { agents: [], maxParallelToolCalls: 10 }); await loop[Service.init]?.();
     stage = 'runtime-probe';
     const adapter = await createDshAdapter(ctx as HostContext, { home: directory });
     if (!adapter.probeIdleRelease) throw new Error('probe');

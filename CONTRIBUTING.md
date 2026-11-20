@@ -22,7 +22,7 @@ node scripts/verify-package-lifecycle.mjs artifacts
 
 ## Native runtime
 
-Native tests cover official DSH `0.2.1-rc.3` / `0.2.1-rc.5`. On macOS they use the installed Desktop runtime by default. To choose another runtime, point to its directory containing `package.json` and `node_modules`:
+Native tests cover official DSH `0.2.1-rc.3`, `0.2.1-rc.5` and `0.2.2-rc.3`. On macOS they use the installed Desktop runtime by default. To choose another runtime, point to its directory containing `package.json` and `node_modules`:
 
 ```sh
 DSH_TEST_VERSION=0.2.1-rc.5 DSH_RUNTIME_ROOT=/absolute/path/to/isolated-runtime pnpm test:integration
@@ -75,7 +75,7 @@ When reporting an issue, include the plugin and DSH versions, operating system, 
 
 ## Release
 
-Publish the versioned `.tgz`, its `.tgz.sha256`, the default `.update.json` and the `.dsh-0.2.1-rc.5.update.json` together on GitHub Releases. Both metadata files point to the same package. The artifact generator validates the package contents; the checker verifies the checksum, metadata and update flow. The package contains the files listed in `files`, including the compiled host, client and Doctor bundles.
+Publish the versioned `.tgz`, its `.tgz.sha256`, the default `.update.json` and every generated host-specific `.dsh-<host>.update.json` together on GitHub Releases. The metadata files point to the same package. The artifact generator validates the package contents. The checker verifies the checksum, metadata and update flow. The package contains the files listed in `files`, including the compiled host, client and Doctor bundles.
 
 Give each release a new tag and asset URL. The updater accepts newer stable versions that explicitly support the running host. Keep verified packages in `updates/packages/`, where profile lockfiles may reference them. DSH's native manager handles installation in the current profile.
 

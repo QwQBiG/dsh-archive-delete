@@ -4,12 +4,12 @@
 
 ## 在 DSH 桌面端安装
 
-适用于 macOS 和 Windows 上的官方 DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5**，会话存储需使用 JSONL。
+适用于 macOS 和 Windows 上的官方 DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.3**，会话存储需使用 JSONL。
 
 打开 **插件 → 添加插件**，输入以下 URL 并启用：
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.5/qwqbig-dsh-archive-delete-0.0.5.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.6/qwqbig-dsh-archive-delete-0.0.6.tgz
 ```
 
 Release 安装包可直接使用。提示重启时，请完全退出 DSH 再重新打开：macOS 使用 **⌘Q／退出**，Windows 使用 **退出**。如果 DSH 仍驻留在 Windows 托盘，也要从托盘菜单退出。
@@ -49,7 +49,7 @@ DSH 扫描覆盖宿主配置的存储位置，并排除已登记的项目目录�
 
 ## 更新
 
-如果你还在使用 **v0.0.1**，请在 **插件 → 添加插件** 中输入上方 v0.0.5 URL，管理器会替换现有安装。之后即可通过版本栏升级。
+如果你还在使用 **v0.0.1**，请在 **插件 → 添加插件** 中输入上方 v0.0.6 URL，管理器会替换现有安装。之后即可通过版本栏升级。
 
 在管理弹窗底部或插件详情中，都可以通过版本栏 **检查更新**、**查看并升级** 或查看 **详情**。插件每天检查一次 GitHub，手动检查需至少间隔一分钟。检查失败后至少等一小时再试。如果 GitHub 要求等得更久，就按它给出的时间执行。
 
@@ -61,12 +61,20 @@ DSH 扫描覆盖宿主配置的存储位置，并排除已登记的项目目录�
 
 手动升级时，在同一 profile 的 **添加插件** 中输入新版 Release URL，管理器会按包名替换依赖。通过 URL 安装的版本，每次升级都需要使用新 URL；`pnpm update` 无法自动找到它。
 
+## 升级 DSH 桌面端后
+
+如果 DSH 将已安装的插件标为不兼容，先看最新发行版支持哪些宿主。有兼容的新包时，在同一 profile 的 **插件 → 添加插件** 输入新包地址，管理器会原位替换已装插件。需要退回受支持的桌面端版本时，先备份 `DSH_HOME`，再使用完整的官方安装包。 [插件发行版](https://github.com/QwQBiG/dsh-archive-delete/releases/latest)
+
+如果安装、升级或卸载时提示找不到桌面端的 `resources/runtime/primary-runtime/dependencies/pnpm/bin/pnpm.mjs`，并报 `MODULE_NOT_FOUND`，请检查 DSH 桌面端的安装目录。缺少内置运行时会阻止插件管理器工作。请用完整的官方安装包修复或重装桌面端，并保留原来的 `DSH_HOME`。将 Doctor 指向桌面端的打包运行时后，可以检查是整套运行时缺失，还是 pnpm 入口缺失。 [DSH 运行时问题](https://github.com/deepseek-ai/deepseek-harness/discussions/13492)
+
+插件在兼容的宿主上加载后才会每日检查更新。如果 DSH 在启动时拦下插件，旧记录到了预定时间也可能不再刷新。插件重新加载后，只有宿主和插件版本都匹配才会复用旧结果。
+
 ## CLI 安装与 bundle 登记
 
 日常使用建议通过桌面端插件管理器安装。通过 CLI 管理 Desktop profile 时，请先退出 DSH：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.5/qwqbig-dsh-archive-delete-0.0.5.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.6/qwqbig-dsh-archive-delete-0.0.6.tgz
 ```
 
 检查 `<DSH_HOME>/profiles/desktop/package.json`，`dsh.profile.bundles` 中应包含一次包名。CLI 仅安装依赖时，补上该条目并保留其他字段：
@@ -88,7 +96,7 @@ dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/re
 安装后，打开管理弹窗，并在插件详情中确认组件处于运行状态。成功启动时，日志还会出现：
 
 ```text
-[archive-delete] v0.0.5 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.0.6 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.3 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
 插件无法加载时，可以用 Doctor 检查 profile 登记、包文件、宿主版本和存储访问。使用 Node 24+，并将路径替换为实际的 home、profile 和 runtime：
@@ -108,7 +116,7 @@ ELECTRON_RUN_AS_NODE=1 \
   --runtime 'C:\path\to\dsh-runtime'
 ```
 
-Doctor 能通过 profile 找到运行时时，可省略 `--runtime`。使用 `--json` 输出结构化结果，`--lang en` 或 `--lang zh` 选择语言。Doctor 读取配置和访问权限；要确认当前实例是否已加载插件，请查看启动日志和管理弹窗。
+Doctor 能通过 profile 找到运行时时，可省略 `--runtime`。检查桌面端安装时，请指向应用目录里的 `resources/app/dsh` 或 `resources/app.asar/dsh`。如果运行时在 ASAR 内，请在环境中设置 `ELECTRON_RUN_AS_NODE=1`，再用桌面端程序执行 Doctor，方式参照上面的 macOS 示例。如果管理器无法安装新版，可以解压最新发行包，用相同参数运行其中的 `package/lib/doctor.js`。使用 `--json` 输出结构化结果，`--lang en` 或 `--lang zh` 选择语言。Doctor 读取配置和访问权限。要确认当前实例是否已加载插件，请查看启动日志和管理弹窗。
 
 ## 卸载
 
@@ -122,15 +130,15 @@ dsh plugin --profile desktop remove @qwqbig/dsh-archive-delete
 
 ## 下载校验
 
-需要校验下载包时，将配套的 [SHA-256 文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.5/qwqbig-dsh-archive-delete-0.0.5.tgz.sha256) 保存在安装包旁边，再执行：
+需要校验下载包时，将配套的 [SHA-256 文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.6/qwqbig-dsh-archive-delete-0.0.6.tgz.sha256) 保存在安装包旁边，再执行：
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.5.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.6.tgz.sha256
 ```
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.0.5.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.0.5.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.0.6.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.0.6.tgz.sha256
 ```
 
 ## 排错
@@ -139,7 +147,8 @@ Get-Content .\qwqbig-dsh-archive-delete-0.0.5.tgz.sha256
 | --- | --- |
 | 已安装包但没有管理按钮 | 检查当前 profile、bundle 条目和启动日志 |
 | `skipping profile bundle … cannot resolve` | 重装依赖，或在卸载后移除残留 bundle 条目 |
-| 宿主不受支持 | 使用 Desktop `0.2.1-rc.3` / `0.2.1-rc.5` 和 JSONL 存储；弹窗显示检测到的版本 |
+| 宿主不受支持 | 使用 Desktop `0.2.1-rc.3` / `0.2.1-rc.5` / `0.2.2-rc.3` 和 JSONL 存储；弹窗显示检测到的版本 |
+| 桌面端内置 `pnpm.mjs` 报 `MODULE_NOT_FOUND` | 用 Doctor 检查桌面端安装并修复缺失的运行时，见 [升级 DSH 桌面端后](#升级-dsh-桌面端后) |
 | `ERR_PNPM_IGNORED_BUILDS` | 核对请求脚本的具体包；本 Release 包已预编译 |
 | `duplicated mapping key` | 修复 profile 的 `pnpm-workspace.yaml` 中重复／无效的 `allowBuilds` 键，含 `:` 的键加引号 |
 | 内部 Node 包装器报 `exec: : not found` | 使用 Desktop 管理器，开发／Doctor 使用真实 Node 24+ 可执行文件 |

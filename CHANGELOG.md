@@ -2,6 +2,12 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
+## 0.0.6
+
+- Support DSH Desktop `0.2.2-rc.3` alongside the supported `0.2.1-rc.3` and `0.2.1-rc.5` builds. Align host peer requirements and publish update metadata for each supported version.
+- Doctor checks for Desktop's bundled plugin-manager runtime and distinguishes a missing runtime, a missing pnpm entry and an unreadable entry.
+- Document how to replace a plugin after a Desktop upgrade and when the plugin reuses an update check.
+
 ## 0.0.5
 
 - Move the tabs and refresh action to the top of the dialog. Keep recent results above the list and put help, diagnostics and deletion history in expandable sections.

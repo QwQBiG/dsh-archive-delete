@@ -23,7 +23,7 @@ if ((await lstat(input)).isDirectory()) {
 }
 await access(packageFile);
 const host = (name) => import(pathToFileURL(nativeRequire.resolve(name)).href);
-const { initProfile } = await host('@deepseek-ai/dsh-app-boot');
+const { initProfile, loadProfileDirectory } = await host('@deepseek-ai/dsh-app-boot');
 const { runPluginCommand } = await host('@deepseek-ai/dsh-plugin-manager/operations');
 const managerRequire = createRequire(nativeRequire.resolve('@deepseek-ai/dsh-plugin-manager/operations'));
 const { execa } = await import(pathToFileURL(managerRequire.resolve('execa')).href);
@@ -45,6 +45,7 @@ let packageManager;
 try { await access(pnpmFile); packageManager = { command: process.execPath, args: [pnpmFile] }; }
 catch (error) { if (error.code !== 'ENOENT') throw error; packageManager = { command: 'pnpm', args: [] }; }
 const context = { profile: 'web', dir: profile, home, installAnchor: join(runtime, 'node_modules/@deepseek-ai/dsh/package.json'), cwd: process.cwd() };
+const { version: hostVersion } = JSON.parse(await readFile(context.installAnchor, 'utf8'));
 const options = { ...packageManager, execution: 'cli', outputBytes: 16384, lockWaitMs: 5000, lookupTimeoutMs: 5000, idleTimeoutMs: 15000,
   env: { DSH_HOME: home, npm_config_offline: 'true', npm_config_registry: 'http://127.0.0.1:9', npm_config_manage_package_manager_versions: 'false', PNPM_OFFLINE: 'true' } };
 const records = [];
@@ -189,8 +190,10 @@ await record('packed Doctor CLI validates the isolated profile without claiming 
 // as versioned Release assets without depending on a public network or git.
 const oldVersion = '0.0.0-installation-fixture';
 const oldSource = join(root, 'synthetic-old-package'); await mkdir(join(oldSource, 'lib'), { recursive: true });
+const upgradedHost = hostVersion === '0.2.2-rc.3';
+const oldEngines = upgradedHost ? { ...source.engines, dsh: '0.2.1-rc.3 || 0.2.1-rc.5' } : source.engines;
 await writeFile(join(oldSource, 'package.json'), JSON.stringify({ name: source.name, version: oldVersion, type: 'module', license: source.license,
-  main: './lib/index.js', files: ['lib', 'cordis.patch.yml'], engines: source.engines,
+  main: './lib/index.js', files: ['lib', 'cordis.patch.yml'], engines: oldEngines,
   dsh: { manifestVersion: 1, bundle: { patch: './cordis.patch.yml' } } }, null, 2));
 await writeFile(join(oldSource, 'lib/index.js'), 'export function apply() {}\n');
 await writeFile(join(oldSource, 'cordis.patch.yml'), await readFile(new URL('../cordis.patch.yml', import.meta.url)));
@@ -232,8 +235,24 @@ try {
     ['install synthetic older fixed-URL package', origin + oldPath, oldVersion],
     ['replace fixed-URL dependency with the new version URL', origin + newPath, source.version],
   ]) {
-    const result = await runPluginCommand(upgradeContext, ['add', spec, '--ignore-scripts', '--registry=http://127.0.0.1:9'], networkOptions);
-    await record(label, { exitCode: result.exitCode, logPath: result.logPath, output: result.output }); assert.equal(result.exitCode, 0);
+    const args = ['add', spec, '--ignore-scripts', '--registry=http://127.0.0.1:9'];
+    if (upgradedHost && expectedVersion === oldVersion) {
+      // Recreate a profile left on disk by the older host. The new host should
+      // skip the old bundle, then replace it through its normal package manager.
+      const result = await execa(packageManager.command, [...packageManager.args, ...args], {
+        cwd: upgradeProfile, env: { ...process.env, ...networkOptions.env }, timeout: 120000, reject: false,
+      });
+      await record('seed profile before the Desktop host upgrade', { exitCode: result.exitCode, output: result.stdout + result.stderr });
+      assert.equal(result.exitCode, 0);
+      await registerBundle(upgradeManifestFile);
+      const loaded = loadProfileDirectory('dsh', upgradeProfile, upgradeContext.installAnchor);
+      assert.ok(loaded.skippedBundles.some(bundle => bundle.packageName === source.name));
+      assert.ok(!loaded.layers.some(layer => layer.packageName === source.name));
+    } else {
+      const result = await runPluginCommand(upgradeContext, args, networkOptions);
+      await record(label, { exitCode: result.exitCode, logPath: result.logPath, output: result.output });
+      assert.equal(result.exitCode, 0);
+    }
     const saved = JSON.parse(await readFile(upgradeManifestFile, 'utf8')); assert.equal(saved.dependencies[source.name], spec);
     assert.deepEqual(saved.dsh.profile.bundles, [...originalCliManifest.dsh.profile.bundles, source.name]);
     assert.deepEqual(saved['x-retained-fixture'], upgradeInitial['x-retained-fixture']);
@@ -241,6 +260,9 @@ try {
     assert.deepEqual(await readFile(retainedLog), retainedBytes);
   }
   for (const path of routes.keys()) assert.ok(hits.includes(path), `Expected the versioned URL to be requested: ${path}`);
+  const resolved = loadProfileDirectory('dsh', upgradeProfile, upgradeContext.installAnchor);
+  assert.ok(resolved.layers.some(layer => layer.packageName === source.name));
+  assert.ok(!resolved.skippedBundles.some(bundle => bundle.packageName === source.name));
   const reopened = await verifyLoaded(join(upgradeProfile, 'node_modules', source.name));
   assert.equal(reopened.trash[0].id, upgradeEntry.id); assert.deepEqual(await readFile(retainedLog), retainedBytes);
   await record('fixed-URL upgrade retains trash and loads the current authenticated API', { exitCode: 0 });

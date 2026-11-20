@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
-import { access, lstat } from 'node:fs/promises';
+import { access, lstat, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { PACKAGE_NAME, SUPPORTED_DSH_VERSIONS, SUPPORTED_DSH_VERSION_LABEL, isSupportedDshVersion } from './contracts.js';
 import { assertCanonicalStoragePath, assertLocalStoragePath, assertPlainDirectory, assertPrivateDirectory, readBoundedJson } from './filesystem.js';
 import { PLUGIN_VERSION } from './version.js';
@@ -51,6 +51,45 @@ async function hostCodeManifest(path: string): Promise<Manifest> {
   return data;
 }
 function version(value: unknown): value is string { return typeof value === 'string' && value.length > 0 && value.length <= 128; }
+
+/** The Desktop plugin manager uses the outer resources directory in both packaging layouts. */
+async function desktopPackageManager(hostManifest: string, language: DoctorLanguage): Promise<DoctorCheck | undefined> {
+  const dshRoot = resolve(hostManifest, '../../../..');
+  const appRoot = dirname(dshRoot);
+  const resources = dirname(appRoot);
+  if (basename(dshRoot).toLowerCase() !== 'dsh' || !/^app(?:\.asar)?$/i.test(basename(appRoot))
+    || basename(resources).toLowerCase() !== 'resources') return;
+  try {
+    if ((await hostCodeManifest(join(appRoot, 'package.json'))).name !== '@deepseek-ai/dsh-desktop') return;
+  } catch { return; }
+
+  const primaryRuntime = join(resources, 'runtime', 'primary-runtime');
+  const launcher = join(primaryRuntime, 'dependencies', 'pnpm', 'bin', 'pnpm.mjs');
+  const result = (status: DoctorStatus, code: string, path: string, en: string, zh: string): DoctorCheck =>
+    ({ id: 'plugin-manager-runtime', status, code, path, message: language === 'zh' ? zh : en });
+  const repair = 'Use the official DSH Desktop installer to repair the application while keeping your DSH home and profiles.';
+  const repairZh = '请使用官方 DSH 桌面端安装包修复应用，并保留 DSH home 和各个 profile。';
+  try {
+    if (!(await stat(primaryRuntime)).isDirectory()) throw new Error('invalid runtime directory');
+  } catch (error) {
+    if (code(error) === 'ENOENT') return result('fail', 'desktop-primary-runtime-missing', primaryRuntime,
+      `The selected Desktop installation is missing its bundled runtime. Installing, updating, and uninstalling plugins require it. ${repair}`,
+      `所选桌面端安装缺少随附运行时，插件的安装、更新和卸载都依赖它。${repairZh}`);
+    return result('fail', 'desktop-pnpm-unreadable', primaryRuntime,
+      `The bundled Desktop runtime directory cannot be accessed. ${repair}`, `无法访问桌面端随附运行时目录。${repairZh}`);
+  }
+  try {
+    if (!(await stat(launcher)).isFile()) throw new Error('invalid pnpm launcher');
+    await access(launcher, constants.R_OK);
+  } catch (error) {
+    if (code(error) === 'ENOENT') return result('fail', 'desktop-pnpm-missing', launcher,
+      `The Desktop plugin manager is missing its bundled pnpm entry point. ${repair}`, `桌面端插件管理器缺少随附的 pnpm 入口。${repairZh}`);
+    return result('fail', 'desktop-pnpm-unreadable', launcher,
+      `The Desktop plugin manager cannot read its bundled pnpm entry point. ${repair}`, `桌面端插件管理器无法读取随附的 pnpm 入口。${repairZh}`);
+  }
+  return result('pass', 'desktop-pnpm-present', launcher, 'The Desktop plugin manager has a readable bundled pnpm entry point. This is a file check.',
+    '桌面端插件管理器随附的 pnpm 入口可读取。本项仅检查文件。');
+}
 
 /** Inspect configuration and permissions only. Never load plugin code or write a probe file. */
 export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
@@ -151,6 +190,10 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
     add('host-version', options.runtimeRoot === undefined ? 'warn' : 'fail', 'host-runtime-unresolved',
       options.runtimeRoot === undefined ? 'The host runtime cannot be identified from this profile. Pass --runtime with the installation directory used by DSH; plugin peer dependencies are not host-version evidence.' : 'The explicit runtime does not contain a readable @deepseek-ai/dsh manifest. Check --runtime; no runtime was installed or changed.',
       options.runtimeRoot === undefined ? '无法从此 profile 确认宿主运行时。请通过 --runtime 指定 DSH 实际使用的安装目录；插件的 peer 依赖不能作为宿主版本证据。' : '指定运行时没有可读取的 @deepseek-ai/dsh 清单。请检查 --runtime；未安装或修改运行时。', options.runtimeRoot);
+  }
+  if (report.host.manifest) {
+    const manager = await desktopPackageManager(report.host.manifest, language);
+    if (manager) checks.push(manager);
   }
 
   const archiveRoot = join(options.home, 'archive-delete');

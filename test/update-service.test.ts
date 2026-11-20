@@ -81,6 +81,28 @@ test('restart reuses persisted check metadata, and network errors never report c
   assert.equal(cache.includes(f.pin.assetUrl), false); assert.equal(cache.includes(f.pin.sha256), false);
 });
 
+test('switching the host version refreshes a still-current discovery cache in the same profile', async t => {
+  const f = await fixture(t);
+  const before = await f.service.info();
+  assert.equal(before.candidate?.id, f.candidate.id);
+  await f.service.close();
+
+  f.host.hostVersion = '0.2.1-rc.5';
+  assert.notEqual(f.host.hostVersion, before.hostVersion);
+  f.state.now += 1_000;
+  assert.ok(before.nextCheckAt && f.state.now < before.nextCheckAt);
+  f.state.check = async () => ({ availability: 'current' });
+  const restarted = f.create();
+  await restarted.initialize();
+
+  const refreshed = await restarted.info();
+  assert.equal(f.calls.checks, 2);
+  assert.equal(refreshed.hostVersion, f.host.hostVersion);
+  assert.equal(refreshed.checkedAt, f.state.now);
+  assert.equal(refreshed.availability, 'current');
+  assert.equal(refreshed.candidate, undefined);
+});
+
 test('only a matching explicit confirmation with a fresh unchanged release reaches the native manager', async t => {
   const f = await fixture(t); await f.service.info();
   await assert.rejects(() => f.service.install('unreviewed', randomUUID()), { code: 'update-changed' });
