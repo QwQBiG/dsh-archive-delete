@@ -73,7 +73,15 @@ ELECTRON_RUN_AS_NODE=1 \
 
 反馈问题时，请提供插件与 DSH 版本、操作系统、操作步骤、结果，以及使用合成数据的复现方式。已完成的检查见[验证记录](docs/acceptance.zh-CN.md)。
 
+## 检查新版桌面端
+
+[DSH 桌面端兼容检查](https://github.com/QwQBiG/dsh-archive-delete/actions/workflows/host-watch.yml) 每天检查两次 Windows x64 和 macOS arm64 的官方正式、预览更新源。运行摘要会列出检测到的版本，以及是否已有对应的官方运行时。也可以点 **Run workflow**，填入具体的 DSH 版本单独验证。
+
+运行时可用后，流程会在 Windows 和 macOS 验证宿主结构、归档和回收站操作，以及插件的安装和原位替换。候选版本只加入临时工作区。两边结果都通过后，再把版本加入 `src/host-versions.json`，并同步 `package.json` 中的精确版本声明。
+
 ## 发布
+
+仓库所有者可在 `main` 上运行[准备发行](https://github.com/QwQBiG/dsh-archive-delete/actions/workflows/release.yml)，输入与 `package.json` 一致的版本标签。受支持的宿主全部验证通过后，从运行摘要下载发行文件，并用摘要中的源码提交发布 GitHub Release。
 
 将版本对应的 `.tgz`、`.tgz.sha256`、默认 `.update.json` 和生成的所有宿主专用 `.dsh-<host>.update.json` 一起发布到 GitHub Releases。所有元数据指向同一个安装包。产物脚本校验包内容，检查脚本核对校验和、元数据与更新流程。安装包包含 `files` 中列出的文件，包括编译后的宿主、客户端和 Doctor 产物。
 

@@ -2,9 +2,11 @@
 
 简体中文 · [English](CHANGELOG.md)
 
-## 未发布
+## 0.0.7
 
 - 支持 macOS 和 Windows 上的 DSH Desktop `0.2.2-rc.5`。
+- 释放闲置会话时，根据宿主实际提供的接口判断会话归属。
+- 定时检查 Windows 和 macOS 的官方桌面更新源，在隔离环境验证新版宿主。受支持的版本全部通过后，可生成 GitHub 发行文件。
 
 ## 0.0.6
 

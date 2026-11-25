@@ -508,12 +508,72 @@ async function idleLifecycleFixture() {
     disposed: () => disposed, flushed: () => flushed };
 }
 
+function attachVerifiedScope(f: Awaited<ReturnType<typeof idleLifecycleFixture>>): void {
+  const root = Object.assign(f.fiber, { parent: { fiber: f.fiber } });
+  const dispose = () => {};
+  const scopeFiber = { parent: { fiber: root }, dispose, _disposables: new Set() };
+  const ctx = { fiber: scopeFiber };
+  const loopCtx = f.loop.runtime.ctx;
+  loopCtx.registry.values = () => [{ fibers: new Set([root, scopeFiber]) }];
+  Object.assign(f.agent, { ctx, loopCtx, scope: { ctx, rawDispose: dispose } });
+}
+
 test('idle release still flushes and settles the verified native owner without diagnostic noise', async t => {
   const f = await idleLifecycleFixture(); t.after(f.cleanup);
   assert.equal(await f.adapter.releaseIdle!(f.group), true);
   assert.equal(f.flushed(), 1); assert.equal(f.disposed(), 1);
   assert.equal(f.liveSessions.size, 0); assert.equal(f.liveAgents.size, 0);
   assert.deepEqual(f.warnings, []);
+});
+
+test('an absent registry ownership method selects verified scopes on a supported host', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup);
+  const { isOwnedBy: _legacyMethod, ...scopeRegistry } = f.agents;
+  f.ctx.agents = scopeRegistry;
+  assert.equal((await f.adapter.probeIdleRelease!()).reasonCode, 'runtime-fibers');
+  assert.equal(await f.adapter.releaseIdle!(f.group), false);
+  assert.equal(f.flushed(), 0);
+
+  attachVerifiedScope(f);
+  assert.equal((await f.adapter.probeIdleRelease!()).status, 'available');
+  assert.equal(await f.adapter.releaseIdle!(f.group), true);
+  assert.equal(f.flushed(), 1); assert.equal(f.disposed(), 1);
+});
+
+test('a present but invalid registry method cannot authorize scope fallback', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup);
+  attachVerifiedScope(f);
+  f.ctx.agents = { ...f.agents, isOwnedBy: undefined };
+  assert.equal((await f.adapter.probeIdleRelease!()).reasonCode, 'agent-registry');
+  assert.equal(await f.adapter.releaseIdle!(f.group), false);
+
+  const lookupError = new Error('registry ownership lookup failed');
+  f.ctx.agents = { ...f.agents, get isOwnedBy() { throw lookupError; } };
+  assert.equal((await f.adapter.probeIdleRelease!()).reasonCode, 'agent-registry');
+  assert.equal(await f.adapter.releaseIdle!(f.group), false);
+  assert.equal(f.flushed(), 0); assert.equal(f.disposed(), 0);
+});
+
+test('release aborts on a failing registry ownership call or an invalid result', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup);
+  const unrelatedId = 'another-live-agent';
+  f.liveAgents.set(unrelatedId, { ...f.agent, id: unrelatedId });
+  const ownershipError = new Error('registry ownership probe failed');
+  f.ctx.agents = { ...f.agents, isOwnedBy() { throw ownershipError; } };
+  await assert.rejects(f.adapter.releaseIdle!(f.group), error => error === ownershipError);
+  f.ctx.agents = { ...f.agents, isOwnedBy: () => undefined };
+  await assert.rejects(f.adapter.releaseIdle!(f.group), { code: 'ambiguous-lineage' });
+  assert.equal(f.flushed(), 0); assert.equal(f.disposed(), 0);
+});
+
+test('release rechecks the ownership mode after flushing the session', async t => {
+  const f = await idleLifecycleFixture(); t.after(f.cleanup);
+  attachVerifiedScope(f);
+  const { isOwnedBy: _legacyMethod, ...scopeRegistry } = f.agents;
+  f.ctx.agents = scopeRegistry;
+  f.sessionService.flush = async () => { Object.assign(scopeRegistry, { isOwnedBy: () => false }); return true; };
+  await assert.rejects(f.adapter.releaseIdle!(f.group), { code: 'source-changed' });
+  assert.equal(f.disposed(), 0); assert.equal(f.liveSessions.size, 1);
 });
 
 test('missing idle-release capabilities have distinct bounded diagnostics and recover without replacing the adapter', async t => {

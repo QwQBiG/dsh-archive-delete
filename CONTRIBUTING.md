@@ -73,7 +73,15 @@ Exit 0 means the version, platform, base capabilities and all global checks pass
 
 When reporting an issue, include the plugin and DSH versions, operating system, action, result and a reproduction using synthetic data. The [verification record](docs/acceptance.md) lists the checks already run.
 
+## Check a new Desktop version
+
+[DSH Desktop compatibility](https://github.com/QwQBiG/dsh-archive-delete/actions/workflows/host-watch.yml) checks the official Windows x64 and macOS arm64 stable and nightly feeds twice a day. Open the run summary to see the detected versions and whether the corresponding official runtime is available. Use **Run workflow** and enter an exact DSH version to test it on demand.
+
+When the runtime is available, the workflow verifies the host structure, archive and trash operations, and package installation and replacement on Windows and macOS. It adds a candidate only to the temporary checkout. Review both platform results before adding a host to `src/host-versions.json` and synchronizing the exact version declarations in `package.json`.
+
 ## Release
+
+On `main`, run [Prepare release](https://github.com/QwQBiG/dsh-archive-delete/actions/workflows/release.yml) as the repository owner. Enter the tag that matches the version in `package.json`. After the supported host matrix passes, download the candidate assets from the run summary. Use the source commit recorded there when publishing the GitHub Release.
 
 Publish the versioned `.tgz`, its `.tgz.sha256`, the default `.update.json` and every generated host-specific `.dsh-<host>.update.json` together on GitHub Releases. The metadata files point to the same package. The artifact generator validates the package contents. The checker verifies the checksum, metadata and update flow. The package contains the files listed in `files`, including the compiled host, client and Doctor bundles.
 

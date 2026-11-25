@@ -190,10 +190,11 @@ await record('packed Doctor CLI validates the isolated profile without claiming 
 // as versioned Release assets without depending on a public network or git.
 const oldVersion = '0.0.0-installation-fixture';
 const oldSource = join(root, 'synthetic-old-package'); await mkdir(join(oldSource, 'lib'), { recursive: true });
+const previousHosts = source.engines.dsh.split(' || ').filter(version => version !== hostVersion);
 const oldDshVersions = {
   '0.2.2-rc.3': '0.2.1-rc.3 || 0.2.1-rc.5',
   '0.2.2-rc.5': '0.2.1-rc.3 || 0.2.1-rc.5 || 0.2.2-rc.3',
-}[hostVersion];
+}[hostVersion] ?? (process.env.DSH_CANDIDATE_VERSION === hostVersion ? previousHosts.join(' || ') : undefined);
 const oldEngines = oldDshVersions ? { ...source.engines, dsh: oldDshVersions } : source.engines;
 await writeFile(join(oldSource, 'package.json'), JSON.stringify({ name: source.name, version: oldVersion, type: 'module', license: source.license,
   main: './lib/index.js', files: ['lib', 'cordis.patch.yml'], engines: oldEngines,

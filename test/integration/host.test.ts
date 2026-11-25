@@ -575,8 +575,9 @@ test(`stock ${runtimeVersion}: idle-release diagnostics identify a missing probe
   try {
     const handle = await managed.create('native-probe-owner', 'Private diagnostic title');
     const agents = f.ctx.agents;
+    const isOwnedBy = agents.isOwnedBy?.bind(agents);
     const incomplete = { get: agents.get.bind(agents), list: () => ({}),
-      isOwnedBy: agents.isOwnedBy?.bind(agents), requireFactory: agents.requireFactory.bind(agents) };
+      ...(isOwnedBy ? { isOwnedBy } : {}), requireFactory: agents.requireFactory.bind(agents) };
     let broken = true;
     const context: HostContext = { get: name => name === 'agents' && broken ? incomplete : f.ctx.get(name),
       fiber: f.ctx.fiber, waterfall: (event, request, next) => f.ctx.waterfall(event, request, next),
