@@ -22,7 +22,7 @@ node scripts/verify-package-lifecycle.mjs artifacts
 
 ## 原生运行时
 
-原生测试覆盖官方 DSH `0.2.1-rc.3`、`0.2.1-rc.5` 与 `0.2.2-rc.3`。macOS 默认使用已安装的 Desktop 运行时。如需指定其他运行时，填写包含 `package.json` 和 `node_modules` 的目录：
+原生测试覆盖官方 DSH `0.2.1-rc.3`、`0.2.1-rc.5`、`0.2.2-rc.3` 和 `0.2.2-rc.5`。macOS 默认使用已安装的 Desktop 运行时。如需指定其他运行时，填写包含 `package.json` 和 `node_modules` 的目录：
 
 ```sh
 DSH_TEST_VERSION=0.2.1-rc.5 DSH_RUNTIME_ROOT=/absolute/path/to/isolated-runtime pnpm test:integration

@@ -589,7 +589,7 @@ class NativeAdapter implements DshAdapter {
     const loop = service<Record<string, unknown>>(this.ctx, 'agentLoop');
     if (!symbols) return unavailable('lifecycle-symbols');
     probeCheck(report, 'lifecycle-symbols', 'pass');
-    const usesScopeOwnership = this.version === '0.2.2-rc.3';
+    const usesScopeOwnership = this.version === '0.2.2-rc.3' || this.version === '0.2.2-rc.5';
     if (!agents || !['get', 'list', 'requireFactory'].every(key => typeof (agents as unknown as Record<string, unknown>)[key] === 'function')
       || (!usesScopeOwnership && typeof agents.isOwnedBy !== 'function')) return unavailable('agent-registry');
     probeCheck(report, 'agent-registry', 'pass');

@@ -2,7 +2,7 @@
 
 简体中文 · [English](architecture.md)
 
-插件支持 macOS 和 Windows 上的 DSH Desktop `0.2.1-rc.3`、`0.2.1-rc.5` 和 `0.2.2-rc.3`，使用 JSONL 持久化。React 实例、原生控件、会话存储、工作区登记及活动／写锁服务均来自宿主。
+插件支持 macOS 和 Windows 上的 DSH Desktop `0.2.1-rc.3`、`0.2.1-rc.5`、`0.2.2-rc.3` 和 `0.2.2-rc.5`，使用 JSONL 持久化。React 实例、原生控件、会话存储、工作区登记及活动／写锁服务均来自宿主。
 
 ## 模块
 

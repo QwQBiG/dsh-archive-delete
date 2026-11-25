@@ -95,7 +95,7 @@ test('adapter and storage admit only explicitly supported host manifests', async
     await f.add('version-gate'); const anchor = join(f.home, 'live-host-package.json');
     const ctx = { ...f.ctx, profileContext: { installAnchor: anchor }, dshHomePath: () => f.home };
     for (const [version, expected] of [
-      ['0.2.1-rc.3', true], ['0.2.1-rc.5', true], ['0.2.2-rc.3', true],
+      ['0.2.1-rc.3', true], ['0.2.1-rc.5', true], ['0.2.2-rc.3', true], ['0.2.2-rc.5', true],
       ['0.2.1-rc.4', false], ['0.2.1-rc.6', false], ['0.2.2-rc.2', false], ['0.2.2-rc.4', false], ['0.2.2', false], ['0.3.0', false],
     ] as const) {
       await writeFile(anchor, JSON.stringify({ name: '@deepseek-ai/dsh', version }));

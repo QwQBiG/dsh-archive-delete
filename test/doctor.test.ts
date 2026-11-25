@@ -231,7 +231,7 @@ test('doctor admits each declared host exactly and reports the actual runtime an
     assert.equal(report.ok, true);
     assert.equal(report.host.version, hostVersion);
     assert.equal(check(report, 'host-version').status, 'pass');
-    assert.deepEqual(report.supportedDshVersions, ['0.2.1-rc.3', '0.2.1-rc.5', '0.2.2-rc.3']);
+    assert.deepEqual(report.supportedDshVersions, SUPPORTED_DSH_VERSIONS);
     assert.equal(report.targetDshVersion, SUPPORTED_DSH_VERSION_LABEL);
     for (const supported of SUPPORTED_DSH_VERSIONS) assert.ok(check(report, 'host-version').message.includes(supported));
     assert.equal(report.runtimeState, 'unverified');

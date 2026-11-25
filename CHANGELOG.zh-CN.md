@@ -2,6 +2,10 @@
 
 简体中文 · [English](CHANGELOG.md)
 
+## 未发布
+
+- 支持 macOS 和 Windows 上的 DSH Desktop `0.2.2-rc.5`。
+
 ## 0.0.6
 
 - 新增 DSH Desktop `0.2.2-rc.3` 支持，继续支持 `0.2.1-rc.3` 和 `0.2.1-rc.5`。同步宿主 peer 依赖声明，为每个受支持的宿主提供更新元数据。

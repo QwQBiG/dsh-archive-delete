@@ -22,7 +22,7 @@ node scripts/verify-package-lifecycle.mjs artifacts
 
 ## Native runtime
 
-Native tests cover official DSH `0.2.1-rc.3`, `0.2.1-rc.5` and `0.2.2-rc.3`. On macOS they use the installed Desktop runtime by default. To choose another runtime, point to its directory containing `package.json` and `node_modules`:
+Native tests cover official DSH `0.2.1-rc.3`, `0.2.1-rc.5`, `0.2.2-rc.3` and `0.2.2-rc.5`. On macOS they use the installed Desktop runtime by default. To choose another runtime, point to its directory containing `package.json` and `node_modules`:
 
 ```sh
 DSH_TEST_VERSION=0.2.1-rc.5 DSH_RUNTIME_ROOT=/absolute/path/to/isolated-runtime pnpm test:integration

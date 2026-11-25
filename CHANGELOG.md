@@ -2,6 +2,10 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
+## Unreleased
+
+- Support DSH Desktop `0.2.2-rc.5` on macOS and Windows.
+
 ## 0.0.6
 
 - Support DSH Desktop `0.2.2-rc.3` alongside the supported `0.2.1-rc.3` and `0.2.1-rc.5` builds. Align host peer requirements and publish update metadata for each supported version.
