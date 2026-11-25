@@ -2,9 +2,11 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
-## Unreleased
+## 0.0.7
 
 - Support DSH Desktop `0.2.2-rc.5` on macOS and Windows.
+- Use the host’s available ownership API when releasing an idle session.
+- Check the official Windows and macOS Desktop feeds and exercise new host versions in isolation. Prepare GitHub release assets only after the supported host matrix passes.
 
 ## 0.0.6
 

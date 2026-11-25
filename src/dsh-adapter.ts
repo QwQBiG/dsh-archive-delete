@@ -82,6 +82,14 @@ function liveAgents(agents: AgentRegistry): LiveAgent[] | undefined {
     return Array.isArray(live) && !live.some(agent => !object(agent) || typeof agent.id !== 'string') ? live : undefined;
   } catch { return undefined; }
 }
+/** Undefined means the host has no registry ownership method. Null means the contract is malformed. */
+function registryOwnershipMethod(agents: AgentRegistry): AgentRegistry['isOwnedBy'] | null {
+  try {
+    const method = agents.isOwnedBy;
+    if (typeof method === 'function' || (method === undefined && !('isOwnedBy' in agents))) return method;
+  } catch { /* A failed lookup cannot establish ownership. */ }
+  return null;
+}
 function ownerEffects(runtime: ReleaseRuntime): OwnerEffects | undefined {
   const byLabel = new Map<string, OwnerEffect[]>();
   const counts: IdleReleaseCounts = { fibers: runtime.fibers.size, effects: 0, labelPrefixes: 0, loadedSessions: 0 };
@@ -589,9 +597,11 @@ class NativeAdapter implements DshAdapter {
     const loop = service<Record<string, unknown>>(this.ctx, 'agentLoop');
     if (!symbols) return unavailable('lifecycle-symbols');
     probeCheck(report, 'lifecycle-symbols', 'pass');
-    const usesScopeOwnership = this.version === '0.2.2-rc.3' || this.version === '0.2.2-rc.5';
-    if (!agents || !['get', 'list', 'requireFactory'].every(key => typeof (agents as unknown as Record<string, unknown>)[key] === 'function')
-      || (!usesScopeOwnership && typeof agents.isOwnedBy !== 'function')) return unavailable('agent-registry');
+    if (!agents || !['get', 'list', 'requireFactory'].every(key => typeof (agents as unknown as Record<string, unknown>)[key] === 'function'))
+      return unavailable('agent-registry');
+    const registryOwns = registryOwnershipMethod(agents);
+    if (registryOwns === null) return unavailable('agent-registry');
+    const usesScopeOwnership = registryOwns === undefined;
     probeCheck(report, 'agent-registry', 'pass');
     if (!loop) return unavailable('agent-loop');
     probeCheck(report, 'agent-loop', 'pass');
@@ -680,9 +690,18 @@ class NativeAdapter implements DshAdapter {
       const plans: ReleasePlan[] = []; const ids = new Set(group.members.map(member => member.id));
       const live = liveAgents(agents);
       if (!live) return { kind: 'unavailable', reason: 'agent-inventory' };
+      const registryOwns = registryOwnershipMethod(agents);
+      if (registryOwns === null || (registryOwns === undefined) !== usesScopeOwnership)
+        return { kind: 'unavailable', reason: 'agent-registry' };
       let effects: OwnerEffects | undefined;
-      let owns = (child: LiveAgent, owner: LiveAgent) => agents.isOwnedBy!(child.id, owner);
-      if (usesScopeOwnership) {
+      let owns: (child: LiveAgent, owner: LiveAgent) => boolean;
+      if (registryOwns) {
+        owns = (child, owner) => {
+          const owned = registryOwns.call(agents, child.id, owner);
+          if (typeof owned !== 'boolean') throw new ArchiveError('ambiguous-lineage', 'The host could not verify runtime ownership.');
+          return owned;
+        };
+      } else {
         effects = ownerEffects(inspected.runtime);
         if (!effects) return { kind: 'unavailable', reason: 'lifecycle-disposables' };
         const ownership = scopeOwnership(inspected.runtime, live, effects);

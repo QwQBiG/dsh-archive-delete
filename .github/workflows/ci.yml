@@ -3,27 +3,56 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+    inputs:
+      candidate-version:
+        description: Exact DSH version to exercise in a disposable checkout
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
+  hosts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      versions: ${{ steps.matrix.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.3
+      - id: matrix
+        env:
+          DSH_CANDIDATE_VERSION: ${{ inputs.candidate-version }}
+        run: node scripts/prepare-host-candidate.mjs matrix
   verify:
+    needs: hosts
     strategy:
       fail-fast: false
       matrix:
         os: [macos-15, windows-latest]
-        dsh: [0.2.1-rc.3, 0.2.1-rc.5, 0.2.2-rc.3, 0.2.2-rc.5]
+        dsh: ${{ fromJSON(needs.hosts.outputs.versions) }}
     runs-on: ${{ matrix.os }}
     env:
       DSH_TEST_VERSION: ${{ matrix.dsh }}
+      DSH_CANDIDATE_VERSION: ${{ inputs.candidate-version }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.21.0
+          node-version: 24.22.3
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Prepare the candidate in this checkout / 在临时工作区准备候选版本
+        if: inputs.candidate-version
+        run: node scripts/prepare-host-candidate.mjs admit
       - name: Install isolated official native runtime / 安装隔离的官方原生运行时
         run: node scripts/prepare-native-runtime.mjs
       - name: Probe installed host structure / 探测已安装宿主结构
@@ -36,7 +65,12 @@ jobs:
           path: host-probe.json
           if-no-files-found: warn
       - run: pnpm verify
+        if: '!inputs.candidate-version'
+      - name: Exercise native candidate behavior / 验证候选宿主的原生功能
+        if: inputs.candidate-version
+        run: pnpm build && pnpm test:integration && pnpm check:package
       - name: Verify committed bundles / 核对已提交的构建产物
+        if: '!inputs.candidate-version'
         run: git diff --exit-code -- lib
       - run: pnpm pack --pack-destination artifacts
       - name: Hash the release package / 生成发行包校验值

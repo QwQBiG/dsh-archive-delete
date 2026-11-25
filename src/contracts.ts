@@ -2,14 +2,15 @@ import type { UsageScanResult } from './storage-usage.js';
 import type { UpdateOverview } from './update-contracts.js';
 import type { IdleReleaseDiagnostics } from './host-diagnostics.js';
 import type { PurgeHistoryEntry } from './purge-history.js';
+import hostVersions from './host-versions.json' with { type: 'json' };
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 export const PACKAGE_NAME = '@qwqbig/dsh-archive-delete';
 export const API_PATH = '/api/dsh-archive-delete';
-export const SUPPORTED_DSH_VERSION = '0.2.1-rc.3';
-export const SUPPORTED_DSH_VERSIONS = [SUPPORTED_DSH_VERSION, '0.2.1-rc.5', '0.2.2-rc.3', '0.2.2-rc.5'] as const;
+export const SUPPORTED_DSH_VERSIONS: readonly string[] = Object.freeze(hostVersions);
+export const SUPPORTED_DSH_VERSION = SUPPORTED_DSH_VERSIONS[0]!;
 export const SUPPORTED_DSH_VERSION_LABEL = SUPPORTED_DSH_VERSIONS.join(' / ');
-export function isSupportedDshVersion(version: string): boolean { return (SUPPORTED_DSH_VERSIONS as readonly string[]).includes(version); }
+export function isSupportedDshVersion(version: string): boolean { return SUPPORTED_DSH_VERSIONS.includes(version); }
 
 export interface SupportStatus {
   supported: boolean; version: string; platform: string; reason?: string; reasonCode?: string;

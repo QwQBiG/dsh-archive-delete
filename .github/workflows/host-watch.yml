@@ -1,0 +1,47 @@
+name: DSH Desktop compatibility / 桌面端兼容检查
+on:
+  schedule:
+    - cron: '23 1,13 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact DSH version (leave blank to check Desktop feeds) / 指定 DSH 版本，留空则检查桌面更新源'
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: dsh-host-watch
+  cancel-in-progress: false
+jobs:
+  discover:
+    name: Check official Desktop feeds / 检查官方桌面更新源
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    outputs:
+      versions: ${{ steps.discover.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.3
+      - name: Find untested versions / 查找待验证宿主版本
+        id: discover
+        env:
+          DSH_CANDIDATE_VERSION: ${{ inputs.version }}
+        run: node scripts/check-host-updates.mjs
+  verify:
+    name: Candidate DSH ${{ matrix.version }}
+    # If one feed is unavailable, still test candidates from the other feeds.
+    if: ${{ !cancelled() && needs.discover.outputs.versions != '' && needs.discover.outputs.versions != '[]' }}
+    needs: discover
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.discover.outputs.versions) }}
+    uses: ./.github/workflows/ci.yml
+    with:
+      candidate-version: ${{ matrix.version }}

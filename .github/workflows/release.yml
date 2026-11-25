@@ -1,0 +1,88 @@
+name: Prepare release / 准备发行
+run-name: Prepare ${{ inputs.version }}
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag matching package.json (vX.Y.Z)
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: prepare-release-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  version:
+    name: Check release version / 核对发行版本
+    if: >-
+      github.repository == 'QwQBiG/dsh-archive-delete' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.3
+      - name: Match the tag to this commit
+        env:
+          RELEASE_TAG: ${{ inputs.version }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          const stable = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+          if (typeof version !== 'string' || !stable.test(version) || process.env.RELEASE_TAG !== 'v' + version) {
+            console.error('Enter the stable package version as vX.Y.Z.');
+            process.exitCode = 1;
+          }
+          JS
+  verify:
+    name: Verify supported hosts / 验证受支持的宿主
+    needs: version
+    uses: ./.github/workflows/ci.yml
+  pack:
+    name: Prepare verified assets / 准备发行文件
+    needs: verify
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.3
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Pack the release / 打包
+        run: |
+          pnpm pack --pack-destination artifacts
+          git diff --exit-code -- lib
+      - run: node scripts/release-artifacts.mjs artifacts
+      - run: node --import tsx scripts/check-update-package.mjs artifacts
+      - uses: actions/upload-artifact@v4
+        id: assets
+        with:
+          name: release-${{ inputs.version }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            artifacts/*.tgz
+            artifacts/*.tgz.sha256
+            artifacts/*.update.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Show the candidate / 显示发行候选包
+        env:
+          RELEASE_TAG: ${{ inputs.version }}
+          ARTIFACT_URL: ${{ steps.assets.outputs.artifact-url }}
+        run: |
+          printf '### %s\n\n[Download verified release assets / 下载已验证的发行文件](%s)\n\nSource commit / 源码提交 `%s`\n' \
+            "$RELEASE_TAG" "$ARTIFACT_URL" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
