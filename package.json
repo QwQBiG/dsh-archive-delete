@@ -11,7 +11,7 @@
   "bin": { "dsh-archive-delete-doctor": "./lib/doctor.js" },
   "exports": { ".": "./lib/index.js", "./client": "./lib/client.js", "./package.json": "./package.json" },
   "files": ["lib", "docs", "assets/icon.svg", "cordis.patch.yml", "README.md", "README.zh-CN.md", "CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md", "CHANGELOG.md", "CHANGELOG.zh-CN.md", "LICENSE"],
-  "engines": { "node": ">=24", "dsh": "0.2.1-rc.3 || 0.2.1-rc.5 || 0.2.2-rc.3" },
+  "engines": { "node": ">=24", "dsh": "0.2.1-rc.3 || 0.2.1-rc.5 || 0.2.2-rc.3 || 0.2.2-rc.5" },
   "packageManager": "pnpm@11.28.5",
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -26,8 +26,8 @@
   "dsh": { "manifestVersion": 1, "bundle": { "patch": "./cordis.patch.yml" }, "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-workspace", "@deepseek-ai/dsh-client-ui-sidebar", "@deepseek-ai/dsh-client-ui-renderer", "@deepseek-ai/dsh-api-workspace-controller"] } },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5 || ~4.1.0",
-    "@deepseek-ai/dsh-app-boot": "0.2.1-rc.3 || 0.2.1-rc.5 || 0.2.2-rc.3",
-    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.3 || 0.2.1-rc.5 || 0.2.2-rc.3",
+    "@deepseek-ai/dsh-app-boot": "0.2.1-rc.3 || 0.2.1-rc.5 || 0.2.2-rc.3 || 0.2.2-rc.5",
+    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.3 || 0.2.1-rc.5 || 0.2.2-rc.3 || 0.2.2-rc.5",
     "@deepseek-ai/node-addon-system": "~0.1.2",
     "react": "^18.3.1"
   },

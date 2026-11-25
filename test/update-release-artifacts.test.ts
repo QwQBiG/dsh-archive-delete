@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { gzipSync } from 'node:zlib';
 import test from 'node:test';
+import { SUPPORTED_DSH_VERSIONS } from '../src/contracts.js';
 
 const exec = promisify(execFile);
 const root = new URL('../', import.meta.url);
@@ -37,28 +38,26 @@ test('release package checker binds the human checksum and updater metadata to t
   const directory = await mkdtemp(join(tmpdir(), 'archive-release-checksum-')); t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(join(directory, name), packed());
   await exec(process.execPath, ['scripts/release-artifacts.mjs', directory], { cwd: root });
-  const defaultName = name.replace(/\.tgz$/, '.update.json');
-  const specificName = name.replace(/\.tgz$/, '.dsh-0.2.1-rc.5.update.json');
-  const rc3Name = name.replace(/\.tgz$/, '.dsh-0.2.2-rc.3.update.json');
-  assert.deepEqual((await readdir(directory)).sort(), [name, `${name}.sha256`, defaultName, specificName, rc3Name].sort());
-  const primary = JSON.parse(await readFile(join(directory, defaultName), 'utf8'));
-  const secondary = JSON.parse(await readFile(join(directory, specificName), 'utf8'));
-  const rc3 = JSON.parse(await readFile(join(directory, rc3Name), 'utf8'));
-  assert.equal(primary.requiredDshVersion, '0.2.1-rc.3'); assert.equal(secondary.requiredDshVersion, '0.2.1-rc.5');
-  assert.equal(rc3.requiredDshVersion, '0.2.2-rc.3');
-  assert.deepEqual(primary.asset, secondary.asset, 'both 0.2.1 hosts install the same packed bytes');
-  assert.deepEqual(primary.asset, rc3.asset, 'the 0.2.2 host installs the same packed bytes');
-  assert.deepEqual(Object.keys(primary).sort(), ['schema', 'packageName', 'version', 'requiredDshVersion', 'platforms', 'asset'].sort(), 'metadata retains an exact host gate');
+  const metadataNames = SUPPORTED_DSH_VERSIONS.map((host, index) =>
+    name.replace(/\.tgz$/, index === 0 ? '.update.json' : `.dsh-${host}.update.json`));
+  assert.deepEqual((await readdir(directory)).sort(), [name, `${name}.sha256`, ...metadataNames].sort());
+  const metadata = await Promise.all(metadataNames.map(async file => JSON.parse(await readFile(join(directory, file), 'utf8'))));
+  const [primary, secondary] = metadata;
+  for (const [index, item] of metadata.entries()) {
+    assert.equal(item.requiredDshVersion, SUPPORTED_DSH_VERSIONS[index]);
+    assert.deepEqual(item.asset, primary.asset, 'every supported host installs the same packed bytes');
+    assert.deepEqual(Object.keys(item).sort(), ['schema', 'packageName', 'version', 'requiredDshVersion', 'platforms', 'asset'].sort(), 'metadata retains an exact host gate');
+  }
   await exec(process.execPath, ['--import', 'tsx', 'scripts/check-update-package.mjs', directory], { cwd: root });
   const checksum = await readFile(join(directory, `${name}.sha256`));
   await writeFile(join(directory, `${name}.sha256`), `${'ab'.repeat(32)}  ${name}\n`);
   await assert.rejects(exec(process.execPath, ['--import', 'tsx', 'scripts/check-update-package.mjs', directory], { cwd: root }));
   await writeFile(join(directory, `${name}.sha256`), checksum);
-  const metaPath = join(directory, name.replace(/\.tgz$/, '.update.json'));
+  const metaPath = join(directory, metadataNames[0]!);
   const meta = JSON.parse(await readFile(metaPath, 'utf8')); meta.asset.sha256 = 'ab'.repeat(32); await writeFile(metaPath, JSON.stringify(meta));
   await assert.rejects(exec(process.execPath, ['--import', 'tsx', 'scripts/check-update-package.mjs', directory], { cwd: root }));
   await writeFile(metaPath, JSON.stringify(primary));
-  secondary.requiredDshVersion = primary.requiredDshVersion; await writeFile(join(directory, specificName), JSON.stringify(secondary));
+  secondary.requiredDshVersion = primary.requiredDshVersion; await writeFile(join(directory, metadataNames[1]!), JSON.stringify(secondary));
   await assert.rejects(exec(process.execPath, ['--import', 'tsx', 'scripts/check-update-package.mjs', directory], { cwd: root }));
 });
 

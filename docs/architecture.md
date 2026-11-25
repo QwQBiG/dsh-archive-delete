@@ -2,7 +2,7 @@
 
 [简体中文](architecture.zh-CN.md) · English
 
-The plugin supports DSH Desktop `0.2.1-rc.3`, `0.2.1-rc.5` and `0.2.2-rc.3` on macOS and Windows with JSONL persistence. It uses the host's React instance, native controls, session storage, workspace registry and activity/lease services.
+The plugin supports DSH Desktop `0.2.1-rc.3`, `0.2.1-rc.5`, `0.2.2-rc.3` and `0.2.2-rc.5` on macOS and Windows with JSONL persistence. It uses the host's React instance, native controls, session storage, workspace registry and activity/lease services.
 
 ## Modules
 

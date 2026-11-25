@@ -190,8 +190,11 @@ await record('packed Doctor CLI validates the isolated profile without claiming 
 // as versioned Release assets without depending on a public network or git.
 const oldVersion = '0.0.0-installation-fixture';
 const oldSource = join(root, 'synthetic-old-package'); await mkdir(join(oldSource, 'lib'), { recursive: true });
-const upgradedHost = hostVersion === '0.2.2-rc.3';
-const oldEngines = upgradedHost ? { ...source.engines, dsh: '0.2.1-rc.3 || 0.2.1-rc.5' } : source.engines;
+const oldDshVersions = {
+  '0.2.2-rc.3': '0.2.1-rc.3 || 0.2.1-rc.5',
+  '0.2.2-rc.5': '0.2.1-rc.3 || 0.2.1-rc.5 || 0.2.2-rc.3',
+}[hostVersion];
+const oldEngines = oldDshVersions ? { ...source.engines, dsh: oldDshVersions } : source.engines;
 await writeFile(join(oldSource, 'package.json'), JSON.stringify({ name: source.name, version: oldVersion, type: 'module', license: source.license,
   main: './lib/index.js', files: ['lib', 'cordis.patch.yml'], engines: oldEngines,
   dsh: { manifestVersion: 1, bundle: { patch: './cordis.patch.yml' } } }, null, 2));
@@ -236,7 +239,7 @@ try {
     ['replace fixed-URL dependency with the new version URL', origin + newPath, source.version],
   ]) {
     const args = ['add', spec, '--ignore-scripts', '--registry=http://127.0.0.1:9'];
-    if (upgradedHost && expectedVersion === oldVersion) {
+    if (oldDshVersions && expectedVersion === oldVersion) {
       // Recreate a profile left on disk by the older host. The new host should
       // skip the old bundle, then replace it through its normal package manager.
       const result = await execa(packageManager.command, [...packageManager.args, ...args], {
