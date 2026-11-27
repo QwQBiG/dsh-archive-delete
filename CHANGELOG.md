@@ -2,6 +2,11 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
+## Unreleased
+
+- Add the native trash icon to the archived-session menu.
+- Improve the layout of archive selection, trash actions, storage scans and update details on desktop and at narrow widths.
+
 ## 0.0.7
 
 - Support DSH Desktop `0.2.2-rc.5` on macOS and Windows.

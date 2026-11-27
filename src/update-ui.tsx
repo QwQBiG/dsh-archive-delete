@@ -106,26 +106,99 @@ export function UpdateCard({ controller, Button, t, archiveBusy = false }: {
   const releaseLink = data?.candidate && <a href={data.candidate.releaseUrl} target="_blank" rel="noreferrer">{t('updateRelease')}</a>;
   return <section ref={container} className="dad-update" aria-label={t('updateTitle')} aria-busy={state.installing || state.checking}>
     <div className="dad-update-summary">
-      <span className="dad-update-version" aria-label={data ? t('updateCurrent', { version: data.currentVersion }) : undefined}>{data ? `v${data.currentVersion}` : t('updateTitle')}</span>
-      {data && data.currentVersion !== data.installedVersion && <><span aria-hidden="true">→</span><span className="dad-update-version" aria-label={t('updateInstalled', { version: data.installedVersion })}>v{data.installedVersion}</span></>}
-      <span aria-hidden="true">·</span><span role="status" title={status} className={`dad-update-status${restart || uncertain ? ' dad-update-attention' : ''}`}>{compactStatus}</span>
+      {data ? <div className="dad-update-versions">
+        <span className="dad-update-version" aria-label={t('updateCurrent', { version: data.currentVersion })}>v{data.currentVersion}</span>
+        {data.currentVersion !== data.installedVersion && <>
+          <span aria-hidden="true">→</span>
+          <span className="dad-update-version" aria-label={t('updateInstalled', { version: data.installedVersion })}>v{data.installedVersion}</span>
+        </>}
+      </div> : <span className="dad-update-label">{t('updateTitle')}</span>}
+      <span role="status" title={status} className={`dad-update-status${restart || uncertain ? ' dad-update-attention' : ''}`}>{compactStatus}</span>
     </div>
     <div className="dad-update-controls">
       <Button size="sm" variant="outline" aria-label={t(state.uncertain ? 'updateReconcile' : 'updateCheck')} title={t(state.uncertain ? 'updateReconcile' : 'updateCheck')} disabled={state.installing || state.checking} onClick={() => { void controller.check(true); }}>{t(state.checking ? 'updateCheckingCompact' : state.uncertain ? 'updateReconcile' : 'updateCheckCompact')}</Button>
       {canReview && !state.reviewId && <Button size="sm" variant="outline" disabled={busy} data-update-review="" onClick={controller.review}>{t('updateReview')}</Button>}
       {state.uncertain && <Button size="sm" variant="outline" disabled={state.installing || state.checking} onClick={() => { void controller.retry(); }}>{t('updateRetry')}</Button>}
     </div>
-    <details className="dad-update-info"><summary>{t('updateMore')}</summary><div className="dad-update-info-content">
-      {data && <p>{t('updateCurrent', { version: data.currentVersion })}{data.currentVersion !== data.installedVersion && <> · {t('updateInstalled', { version: data.installedVersion })}</>}</p>}
-      <p>{status}</p>{!state.reviewId && releaseLink}
-      <p className="dad-hint">{t('updateAutomatic')}{data?.checkedAt !== undefined && <> {t('updateChecked', { time: formatTimestamp(data.checkedAt, t) })}</>}</p>
-      {code && !installError && <p><span>{t('updateDetails')}: </span><code>{code}</code></p>}
-    </div></details>
+    <details className="dad-update-info">
+      <summary>{t('updateMore')}</summary>
+      <div className="dad-update-info-content">
+        {data && <p>{t('updateCurrent', { version: data.currentVersion })}{data.currentVersion !== data.installedVersion && <> · {t('updateInstalled', { version: data.installedVersion })}</>}</p>}
+        <p>{status}</p>{!state.reviewId && releaseLink}
+        <p>{t('updateAutomatic')}{data?.checkedAt !== undefined && <> {t('updateChecked', { time: formatTimestamp(data.checkedAt, t) })}</>}</p>
+        {code && !installError && <p><span>{t('updateDetails')}: </span><code>{code}</code></p>}
+      </div>
+    </details>
     {installError && <div className="dad-update-error" role="alert"><p>{reason(code!, t)}</p><details><summary>{t('updateDetails')}</summary><code>{code}</code></details></div>}
-    {state.reviewId && data?.candidate && <div className="dad-update-review" role="group" aria-labelledby={reviewTitle}><strong id={reviewTitle}>{t('updateConfirmTitle', { version: data.candidate.version })}</strong>{releaseLink}<details open><summary>{t('updateNotes')}</summary><pre>{data.candidate.notes || t('updateNoNotes')}</pre></details><p>{t('updateScope')}</p><div className="dad-update-actions"><Button size="sm" variant="outline" disabled={state.installing} data-update-cancel="" onClick={controller.cancelReview}>{t('updateCancel')}</Button><Button size="sm" variant="primary" disabled={busy || !canReview} onClick={() => { void controller.confirm(); }}>{t('updateConfirm')}</Button></div></div>}
+    {state.reviewId && data?.candidate && <div className="dad-update-review" role="group" aria-labelledby={reviewTitle}>
+      <div className="dad-update-review-heading">
+        <strong id={reviewTitle}>{t('updateConfirmTitle', { version: data.candidate.version })}</strong>{releaseLink}
+      </div>
+      <details open><summary>{t('updateNotes')}</summary><pre>{data.candidate.notes || t('updateNoNotes')}</pre></details>
+      <p className="dad-update-scope">{t('updateScope')}</p>
+      <div className="dad-update-actions">
+        <Button size="sm" variant="outline" disabled={state.installing} data-update-cancel="" onClick={controller.cancelReview}>{t('updateCancel')}</Button>
+        <Button size="sm" variant="primary" disabled={busy || !canReview} onClick={() => { void controller.confirm(); }}>{t('updateConfirm')}</Button>
+      </div>
+    </div>}
   </section>;
 }
 export const UPDATE_CSS = `
-.dad-update{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:6px 0;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary,GrayText);min-width:0}
-.dad-update p{margin:0}.dad-update-summary{display:flex;align-items:center;gap:6px;flex:1;min-width:100px;overflow:hidden}.dad-update-version{flex-shrink:0;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary,CanvasText)}.dad-update-status{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dad-update-controls,.dad-update-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}.dad-update-actions{justify-content:flex-end;flex-wrap:wrap}.dad-update-controls button{min-height:24px;padding:2px 7px;font-size:11px;white-space:nowrap}.dad-update a{color:var(--dsw-alias-button-primary-bg,#2878e0)}.dad-update a:focus-visible,.dad-update summary:focus-visible{outline:2px solid currentColor;outline-offset:2px}.dad-update-info{flex-shrink:0}.dad-update-info[open]{flex-basis:100%}.dad-update-info-content{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:8px 0}.dad-update-info-content>.dad-hint{padding:0}.dad-update-review{display:flex;flex-direction:column;gap:8px;flex-basis:100%;min-width:0;padding:10px;border:1px solid var(--dsw-alias-border-l1,#8883);border-radius:8px;font-size:12px;color:var(--dsw-alias-label-primary,CanvasText)}.dad-update pre{max-height:200px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;margin:6px 0}.dad-update details{min-width:0}.dad-update summary{cursor:pointer}.dad-update code{overflow-wrap:anywhere}.dad-update-error{flex-basis:100%;min-width:0;color:var(--dsw-alias-label-primary,CanvasText)}.dad-update-attention{color:var(--dsw-alias-status-warning,#a57420)}
+.dad-config>button{align-self:flex-start;max-width:100%;white-space:normal}
+.dad-update{
+  --dad-update-fg:var(--dsw-alias-label-primary,CanvasText);
+  --dad-update-muted:var(--dsw-alias-label-secondary,GrayText);
+  --dad-update-border:var(--dsw-alias-border-l1,#8883);
+  --dad-update-surface:var(--dsw-alias-bg-layer-1,#8881);
+  display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;
+  padding:4px 0;min-width:0;font-size:12px;line-height:1.5;color:var(--dad-update-muted);
+}
+.dad-update p{margin:0}
+.dad-update-summary,.dad-update-versions,.dad-update-controls,.dad-update-actions{
+  display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0;
+}
+.dad-update-summary{flex:1 1 150px;column-gap:10px}
+.dad-update-versions{font-variant-numeric:tabular-nums}
+.dad-update-version{
+  padding:1px 6px;border:1px solid var(--dad-update-border);border-radius:6px;
+  background:var(--dad-update-surface);color:var(--dad-update-fg);font-weight:500;
+}
+.dad-update-label{color:var(--dad-update-fg);font-weight:500}
+.dad-update-status{overflow-wrap:anywhere}
+.dad-update-attention{color:var(--dsw-alias-status-warning,#a57420)}
+.dad-update-controls button,.dad-update-actions button{min-height:28px;font-size:12px;white-space:normal}
+.dad-update-actions{justify-content:flex-end}
+.dad-update a{color:var(--dsw-alias-button-primary-bg,#2878e0);text-underline-offset:3px}
+.dad-update a:focus-visible,.dad-update summary:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.dad-update details{min-width:0}
+.dad-update summary{cursor:pointer}
+.dad-update-info[open]{flex-basis:100%}
+.dad-update-info>summary{
+  display:inline-flex;align-items:center;gap:7px;min-height:28px;padding:0 6px;
+  border-radius:6px;list-style:none;
+}
+.dad-update-info>summary::-webkit-details-marker{display:none}
+.dad-update-info>summary::before{
+  content:'';width:5px;height:5px;border:solid currentColor;border-width:1px 1px 0 0;
+  transform:rotate(45deg);
+}
+.dad-update-info[open]>summary::before{transform:rotate(135deg)}
+.dad-update-info>summary:hover{background:var(--dad-update-surface);color:var(--dad-update-fg)}
+.dad-update-info-content,.dad-update-review,.dad-update-error{
+  padding:10px 12px;border:1px solid var(--dad-update-border);border-radius:8px;
+  background:var(--dad-update-surface);overflow-wrap:anywhere;
+}
+.dad-update-info-content,.dad-update-review{
+  display:flex;flex-direction:column;gap:8px;min-width:0;
+}
+.dad-update-info-content{align-items:flex-start;margin-top:4px}
+.dad-update-review,.dad-update-error{flex-basis:100%;min-width:0;color:var(--dad-update-fg)}
+.dad-update-review-heading{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 12px}
+.dad-update-review-heading strong{font-size:13px;font-weight:600}
+.dad-update-review pre{
+  max-height:180px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;
+  border-inline-start:2px solid var(--dad-update-border);padding-inline-start:9px;
+  font:inherit;margin:6px 0;
+}
+.dad-update-scope{color:var(--dad-update-muted)}
 `;

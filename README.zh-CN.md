@@ -14,12 +14,12 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archives.png?view=desktop">
-    <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-zh.gif?view=desktop" alt="在 DSH 桌面端将会话移入回收站、恢复会话，并扫描工作区存储" width="900">
+    <source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archives.png?view=desktop-ui">
+    <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-zh.gif?view=desktop-ui" alt="在 DSH 桌面端将会话移入回收站、恢复会话，并扫描工作区存储" width="900">
   </picture>
 </p>
 
-<p align="center">在 DSH 桌面端用示例数据录制。</p>
+<p align="center">使用开发版插件和示例数据，在 DSH 桌面端录制。</p>
 
 ## 安装
 
@@ -48,17 +48,21 @@ https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.7/qwqbig-dsh
 <details>
 <summary>展开查看截图</summary>
 
+**归档会话菜单**
+
+![归档会话菜单中「移入回收站」旁的垃圾桶图标](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archive-menu.png?view=desktop-ui)
+
 **已归档**
 
-![DSH 桌面端归档列表里的三条示例会话](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archives.png?view=desktop)
+![DSH 桌面端归档列表里的三条示例会话](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-archives.png?view=desktop-ui)
 
 **回收站**
 
-![回收站中已选中的会话和恢复按钮](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-trash.png?view=desktop)
+![回收站中已选中的会话和恢复按钮](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-trash.png?view=desktop-ui)
 
 **工作区存储**
 
-![工作区扫描完成后显示总大小，并展开文件类型](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-storage.png?view=desktop)
+![工作区扫描完成后显示总大小，并展开文件类型](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/zh-storage.png?view=desktop-ui)
 
 </details>
 

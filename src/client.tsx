@@ -209,7 +209,8 @@ export function createArchiveApi(transport: typeof fetch = globalThis.fetch.bind
 /** Entry point called by the DSH Module Loader wrapper generated at build time. */
 export function startClient(require: HostRequire, apiFactory: () => ArchiveApi = () => createArchiveApi()) {
   const primitives = require('@deepseek-ai/dsh-client-ui-primitives') as NativePrimitives & {
-    MenuItemButton: React.ComponentType<{ children?: React.ReactNode; onSelect(): void; disabled?: boolean; danger?: boolean; separatorBefore?: boolean }>;
+    MenuItemButton: React.ComponentType<{ children?: React.ReactNode; icon?: React.ReactNode; onSelect(): void; separatorBefore?: boolean }>;
+    IconTrashOutlineRegular: React.ComponentType<{ size?: number }>;
   };
   return {
     name: 'archive-delete-client',
@@ -236,14 +237,18 @@ export function startClient(require: HostRequire, apiFactory: () => ArchiveApi =
         const snapshot = useCallback(() => ctx.workspaces.list.getSnapshot().archivedSessionIds.includes(sessionId), [sessionId]);
         const archived = useSyncExternalStore(subscribe, snapshot, snapshot);
         if (!archived) return null;
-        return <primitives.MenuItemButton separatorBefore onSelect={() => { setMenuOpen(false); void controller.open(sessionId); }}>{t('menuTrash')}</primitives.MenuItemButton>;
+        return <primitives.MenuItemButton separatorBefore icon={<primitives.IconTrashOutlineRegular />}
+          onSelect={() => { setMenuOpen(false); void controller.open(sessionId); }}>{t('menuTrash')}</primitives.MenuItemButton>;
       }
       function Overlay({ t }: { t: Translate }) {
         return <ArchiveDialog controller={controller} primitives={primitives} t={t} updates={updates} />;
       }
       function ConfigCard({ view, t }: { view?: string; t: Translate }) {
         if (view === 'summary') return null;
-        return <div className="dad-shell"><primitives.Button variant="outline" onClick={() => { void controller.open(); }}>{t('manage')}</primitives.Button><UpdateCard controller={updates} Button={primitives.Button} t={t} /></div>;
+        return <div className="dad-shell dad-config">
+          <primitives.Button variant="primary" onClick={() => { void controller.open(); }}>{t('manage')}</primitives.Button>
+          <UpdateCard controller={updates} Button={primitives.Button} t={t} />
+        </div>;
       }
 
       disposers.push(ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register({
