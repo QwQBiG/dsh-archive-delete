@@ -14,12 +14,12 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archives.png?view=desktop">
-    <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-en.gif?view=desktop" alt="DSH Desktop demo of moving a conversation to trash, restoring it, and scanning workspace storage" width="900">
+    <source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archives.png?view=desktop-ui">
+    <img src="https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/demo-en.gif?view=desktop-ui" alt="DSH Desktop demo of moving a conversation to trash, restoring it, and scanning workspace storage" width="900">
   </picture>
 </p>
 
-<p align="center">Recorded in DSH Desktop with sample data.</p>
+<p align="center">Recorded in DSH Desktop with the development build and sample data.</p>
 
 ## Install
 
@@ -48,17 +48,21 @@ Trash stays until you restore or delete it, including after uninstalling the plu
 <details>
 <summary>View screenshots</summary>
 
+**Archived session menu**
+
+![Archived session menu with a trash icon beside Move to trash](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archive-menu.png?view=desktop-ui)
+
 **Archived conversations**
 
-![DSH Desktop archive list with three sample conversations](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archives.png?view=desktop)
+![DSH Desktop archive list with three sample conversations](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-archives.png?view=desktop-ui)
 
 **Trash**
 
-![A selected conversation in the trash with the restore action visible](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-trash.png?view=desktop)
+![A selected conversation in the trash with the restore action visible](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-trash.png?view=desktop-ui)
 
 **Workspace storage**
 
-![A completed workspace scan with the size total and file types expanded](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-storage.png?view=desktop)
+![A completed workspace scan with the size total and file types expanded](https://raw.githubusercontent.com/QwQBiG/dsh-archive-delete/main/assets/screenshots/en-storage.png?view=desktop-ui)
 
 </details>
 
