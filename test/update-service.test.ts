@@ -205,6 +205,116 @@ test('startup reconciles interrupted, pending-restart and installed receipts aga
   }
 });
 
+test('a newer loaded package clears an old interrupted status and preserves its request after restart', async t => {
+  const f = await fixture(t);
+  await f.service.close();
+  f.state.installed = f.host.loadedVersion = '0.0.7';
+  f.host.hostVersion = '0.2.2-rc.5';
+  f.state.check = async () => ({ availability: 'current' });
+  const old = {
+    requestId: randomUUID(),
+    candidateId: 'archived-release-0.0.3',
+    version: '0.0.3',
+    status: 'interrupted',
+    startedAt: f.state.now - DAY,
+  };
+  const prefix = join(f.root, 'updates', createHash('sha256').update(f.host.profileId).digest('hex'));
+  const latestPath = `${prefix}.installation.json`;
+  const receiptPath = `${prefix}.${old.requestId}.request.json`;
+  await writeFile(latestPath, JSON.stringify(old));
+
+  const restarted = f.create();
+  await restarted.initialize();
+  const checked = await restarted.info(true);
+  assert.equal(checked.installedVersion, '0.0.7');
+  assert.equal(checked.currentVersion, '0.0.7');
+  assert.equal(checked.availability, 'current');
+  assert.equal(checked.installation, undefined);
+  await assert.rejects(() => readFile(latestPath), { code: 'ENOENT' });
+  assert.deepEqual(JSON.parse(await readFile(receiptPath, 'utf8')), old);
+
+  await restarted.close();
+  const next = f.create();
+  await next.initialize();
+  assert.equal((await next.info()).installation, undefined);
+  const replayed = await next.install(old.candidateId, old.requestId);
+  assert.equal(replayed.installation?.status, 'interrupted');
+  assert.equal(replayed.installation?.version, '0.0.3');
+  await assert.rejects(() => next.install('different-candidate', old.requestId), { code: 'update-request-conflict' });
+  assert.equal((await next.info()).installation, undefined);
+  assert.equal(f.calls.installs.length, 0);
+  assert.equal(f.calls.downloads, 0);
+  await assert.rejects(() => readFile(latestPath), { code: 'ENOENT' });
+
+  const candidate = { ...f.candidate, version: '0.0.8', releaseUrl: 'https://github.com/QwQBiG/dsh-archive-delete/releases/tag/v0.0.8' };
+  f.state.check = async () => ({ availability: 'available', candidate, pinned: { ...f.pin, candidate } });
+  f.state.now += 60_000;
+  assert.equal((await next.info(true)).candidate?.version, '0.0.8');
+  const installed = await next.install(candidate.id, randomUUID());
+  assert.equal(installed.installation?.status, 'restart-required');
+  assert.equal(installed.installedVersion, '0.0.8');
+  assert.equal(f.calls.installs.length, 1);
+  await next.close();
+  f.host.loadedVersion = '0.0.8';
+  const upgraded = f.create();
+  await upgraded.initialize();
+  assert.equal((await upgraded.info()).installation?.status, 'installed');
+  assert.deepEqual(JSON.parse(await readFile(receiptPath, 'utf8')), old);
+});
+
+test('a superseded native failure preserves the canonical receipt and other profiles', async t => {
+  const f = await fixture(t);
+  await f.service.close();
+  f.state.installed = f.host.loadedVersion = '0.0.10';
+  const old = { requestId: randomUUID(), candidateId: f.candidate.id, version: '0.0.9', status: 'failed',
+    code: 'update-install-failed', startedAt: f.state.now };
+  const area = join(f.root, 'updates');
+  const prefix = join(area, createHash('sha256').update(f.host.profileId).digest('hex'));
+  const otherProfile = join(area, `${createHash('sha256').update('synthetic-web').digest('hex')}.installation.json`);
+  const latestPath = `${prefix}.installation.json`;
+  const receiptPath = `${prefix}.${old.requestId}.request.json`;
+  const originalReceipt = JSON.stringify(old, undefined, 2);
+  await writeFile(latestPath, JSON.stringify({ ...old, status: 'installing' }));
+  await writeFile(receiptPath, originalReceipt);
+  await writeFile(otherProfile, JSON.stringify(old));
+
+  const restarted = f.create();
+  await restarted.initialize();
+  assert.equal((await restarted.info()).installation, undefined);
+  assert.equal(await readFile(receiptPath, 'utf8'), originalReceipt);
+  assert.equal(await readFile(otherProfile, 'utf8'), JSON.stringify(old));
+  await assert.rejects(() => readFile(latestPath), { code: 'ENOENT' });
+  assert.equal((await restarted.install(old.candidateId, old.requestId)).installation?.code, old.code);
+  assert.equal(f.calls.installs.length, 0);
+});
+
+test('terminal attempts stay visible when the target has not been superseded on disk and in the running plugin', async t => {
+  for (const [installed, loaded, status] of [
+    ['0.0.9', '0.0.9', 'interrupted'],
+    ['0.0.9', '0.0.9', 'failed'],
+    ['0.0.8', '0.0.8', 'interrupted'],
+    ['0.0.10', '0.0.9', 'interrupted'],
+  ] as const) {
+    const f = await fixture(t);
+    await f.service.close();
+    f.state.installed = installed;
+    f.host.loadedVersion = loaded;
+    f.state.check = async () => ({ availability: 'current' });
+    const latestPath = join(f.root, 'updates', `${createHash('sha256').update(f.host.profileId).digest('hex')}.installation.json`);
+    await writeFile(latestPath, JSON.stringify({ requestId: randomUUID(), candidateId: f.candidate.id,
+      version: '0.0.9', status, startedAt: f.state.now }));
+
+    const restarted = f.create();
+    await restarted.initialize();
+    const checked = await restarted.info(true);
+    assert.equal(checked.installation?.status, status);
+    assert.equal(JSON.parse(await readFile(latestPath, 'utf8')).status, status);
+    assert.deepEqual(f.calls.releases, installed === loaded ? [] : [true]);
+    assert.equal(checked.availability, installed === loaded ? 'current' : 'unknown');
+    assert.equal(f.calls.installs.length, 0);
+  }
+});
+
 test('checksum mismatch, pre-existing inconsistent bytes and linked package paths fail before archive admission', async t => {
   for (const scenario of ['download', 'existing', 'symlink'] as const) {
     const f = await fixture(t); await f.service.info();

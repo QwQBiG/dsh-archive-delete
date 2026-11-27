@@ -16,6 +16,18 @@ const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const bounded = (value: unknown, maximum: number): value is string => typeof value === 'string' && value.length > 0 && value.length <= maximum && !value.includes('\0');
 const errorCode = (error: unknown): string => error instanceof ArchiveError && /^update-[a-z-]+$/.test(error.code) ? error.code : 'update-failed';
+function isNewerVersion(version: string, previous: string): boolean {
+  const current = VERSION.exec(version);
+  const saved = VERSION.exec(previous);
+  if (!current || !saved) return false;
+  for (let part = 1; part <= 3; part++) {
+    const left = current[part]!;
+    const right = saved[part]!;
+    if (left.length !== right.length) return left.length > right.length;
+    if (left !== right) return left > right;
+  }
+  return false;
+}
 function candidate(value: unknown): value is UpdateCandidate {
   return record(value) && bounded(value.id, 512) && typeof value.version === 'string' && VERSION.test(value.version)
     && bounded(value.requiredDshVersion, 100) && bounded(value.publishedAt, 100)
@@ -92,6 +104,19 @@ class UpdateStore {
     savedInstallation(value);
     await this.write(`${value.requestId}.request.json`, value);
   }
+  async clearLatestInstallation(): Promise<void> {
+    await assertPrivateDirectory(this.root);
+    await assertPrivateDirectory(this.area());
+    const target = join(this.area(), `${this.profileKey}.installation.json`);
+    try {
+      const current = await lstat(target);
+      if (!current.isFile() || current.isSymbolicLink()) throw new ArchiveError('update-state-unsafe', 'Update metadata is unsafe.');
+      await unlink(target);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    await syncDirectory(this.area());
+  }
   async package(version: string, digest: string, bytes: Uint8Array): Promise<string> {
     if (!VERSION.test(version) || !/^[a-f\d]{64}$/.test(digest) || bytes.length > 16 * 1024 * 1024
       || createHash('sha256').update(bytes).digest('hex') !== digest) throw new ArchiveError('update-integrity', 'The release package failed its checksum.');
@@ -157,16 +182,26 @@ export class UpdateService {
       const receipt = await this.store.request(latest.requestId);
       if (receipt && (receipt.candidateId !== latest.candidateId || receipt.version !== latest.version))
         throw new ArchiveError('update-state-unsafe', 'The saved update request binding changed.');
-      this.installation = receipt ?? latest;
-      if (['installing', 'installed', 'restart-required', 'unknown'].includes(this.installation.status)) {
-        this.installation = { ...this.installation, status: this.installedVersion === this.installation.version
-          ? this.options.host.loadedVersion === this.installedVersion ? 'installed' : 'restart-required'
-          : this.options.host.loadedVersion === this.installedVersion ? 'interrupted' : 'unknown' };
-        if (this.installation.status === 'installed') delete this.installation.code;
+      const installation = receipt ?? latest;
+      const loaded = this.options.host.loadedVersion;
+      if (['interrupted', 'failed', 'installed'].includes(installation.status)
+        && this.installedVersion === loaded && isNewerVersion(loaded, installation.version)) {
+        // Preserve the result for request replay, even if only the legacy
+        // latest record exists. Publish that receipt before removing the pointer.
+        if (!receipt) await this.store.writeRequest(installation);
+        await this.store.clearLatestInstallation();
+      } else {
+        this.installation = installation;
+        if (['installing', 'installed', 'restart-required', 'unknown'].includes(installation.status)) {
+          this.installation = { ...installation, status: this.installedVersion === installation.version
+            ? loaded === this.installedVersion ? 'installed' : 'restart-required'
+            : loaded === this.installedVersion ? 'interrupted' : 'unknown' };
+          if (this.installation.status === 'installed') delete this.installation.code;
+        }
+        // The request receipt is authoritative if publication of the latest
+        // state was interrupted. Legacy latest-only records migrate here.
+        await this.saveInstallation(this.installation);
       }
-      // The request receipt is authoritative if publication of the latest
-      // state was interrupted. Legacy latest-only records migrate here.
-      await this.saveInstallation(this.installation);
     }
     if (this.installedVersion !== this.options.host.loadedVersion || ['restart-required', 'unknown'].includes(this.installation?.status ?? '')) {
       const release = await this.options.beginUpdate(); release(true);

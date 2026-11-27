@@ -12,7 +12,7 @@ export const updateEn = {
   updateConfirmTitle: 'Install version {version}?', updateConfirm: 'Confirm upgrade', updateCancel: 'Cancel',
   updateScope: 'Updates this plugin in the current profile. Reopen DSH if prompted after installation.',
   updateInstalling: 'Verifying and installing the confirmed update…', updateRestart: 'The new version is installed. Fully quit DSH and reopen it to finish loading it.',
-  updateDone: 'The new version is installed and active.', updateFailed: 'The update did not complete.', updateInterrupted: 'The previous update was interrupted. Check again before retrying.',
+  updateDone: 'The new version is installed and active.', updateFailed: 'The last attempt to install {version} failed.', updateInterrupted: 'The last attempt to install {version} was interrupted.',
   updateUnknownOutcome: 'Check the installation status to continue. Fully quit and reopen DSH if the result remains unresolved.', updateReconcile: 'Check installation status', updateRetry: 'Recheck confirmed request',
   updateUnavailable: 'The native update manager is unavailable in this profile.', updateBusy: 'Finish the current operation before upgrading.',
   updateErrorNetwork: 'GitHub could not be reached. Try again later.',
@@ -22,10 +22,10 @@ export const updateEn = {
   updateErrorState: 'Update records or the cached package need attention. Check host diagnostics before retrying.',
   updateErrorHost: 'The native manager could not complete this upgrade. Check host diagnostics and the installed version.',
   updateErrorGeneric: 'The update could not be completed. Check again or inspect the host diagnostics.',
-  updateDetails: 'Diagnostic code', updateNoNotes: 'This release has no notes.', updateWaiting: 'Archive changes are paused for this plugin update.',
+  updateDetails: 'Diagnostic code', updateAttemptDetails: 'Last upgrade diagnostic code', updateNoNotes: 'This release has no notes.', updateWaiting: 'Archive changes are paused for this plugin update.',
   updateCheckCompact: 'Check', updateCheckingCompact: 'Checking…', updateCurrentCompact: 'Up to date', updateUnknownCompact: 'Not checked',
   updateIncompatibleCompact: 'No compatible update', updateInstallingCompact: 'Installing…', updateRestartCompact: 'Restart required',
-  updateUncertainCompact: 'Outcome uncertain', updateFailedCompact: 'Update failed', updateInterruptedCompact: 'Update interrupted',
+  updateUncertainCompact: 'Outcome uncertain',
   updateDoneCompact: 'Installed', updateErrorCompact: 'Check failed', updateMore: 'Details',
 } as const;
 export const updateZh: Record<keyof typeof updateEn, string> = {
@@ -37,7 +37,7 @@ export const updateZh: Record<keyof typeof updateEn, string> = {
   updateConfirmTitle: '安装版本 {version}？', updateConfirm: '确认升级', updateCancel: '取消',
   updateScope: '升级当前 profile 中的插件。安装后如有提示，请重新打开 DSH。',
   updateInstalling: '正在校验并安装已确认的更新…', updateRestart: '新版本已安装，请完整退出 DSH 并重新打开，完成新版加载。',
-  updateDone: '新版本已安装并生效。', updateFailed: '升级未完成。', updateInterrupted: '上次升级中断，请重新检查后再试。',
+  updateDone: '新版本已安装并生效。', updateFailed: '上次安装 {version} 失败。', updateInterrupted: '上次安装 {version} 时中断。',
   updateUnknownOutcome: '请核对安装状态后继续；结果仍待确认时，完整退出并重新打开 DSH。', updateReconcile: '核对安装状态', updateRetry: '重新核对此次请求',
   updateUnavailable: '当前 profile 的原生更新管理器不可用。', updateBusy: '请先完成当前操作，再升级插件。',
   updateErrorNetwork: '连接 GitHub 失败，请稍后重试。',
@@ -47,10 +47,10 @@ export const updateZh: Record<keyof typeof updateEn, string> = {
   updateErrorState: '更新记录或缓存安装包需要处理，请查看宿主诊断后再试。',
   updateErrorHost: '原生管理器未完成此次升级，请核对宿主诊断与已安装版本。',
   updateErrorGeneric: '更新未能完成，请重新检查或查看宿主诊断。',
-  updateDetails: '诊断代码', updateNoNotes: '此版本未提供更新说明。', updateWaiting: '插件升级期间暂停归档变更。',
+  updateDetails: '诊断代码', updateAttemptDetails: '上次升级诊断代码', updateNoNotes: '此版本未提供更新说明。', updateWaiting: '插件升级期间暂停归档变更。',
   updateCheckCompact: '检查更新', updateCheckingCompact: '检查中…', updateCurrentCompact: '已是最新', updateUnknownCompact: '尚未检查',
   updateIncompatibleCompact: '暂无兼容更新', updateInstallingCompact: '安装中…', updateRestartCompact: '需要重启',
-  updateUncertainCompact: '结果待核对', updateFailedCompact: '升级失败', updateInterruptedCompact: '升级中断',
+  updateUncertainCompact: '结果待核对',
   updateDoneCompact: '已安装', updateErrorCompact: '检查失败', updateMore: '详情',
 };
 type Key = keyof typeof updateEn;
@@ -87,19 +87,18 @@ export function UpdateCard({ controller, Button, t, archiveBusy = false }: {
   const installing = state.installing || installation?.status === 'installing';
   const uncertain = state.uncertain || installation?.status === 'unknown';
   const busy = archiveBusy || state.checking || state.installing || state.uncertain;
-  const canReview = data?.availability === 'available' && data.canInstall && !state.error && !restart && installation?.status !== 'unknown' && installation?.status !== 'installing';
-  const code = state.error ?? (data?.availability === 'error' ? data.code : installation?.code);
-  const installError = Boolean(code && (uncertain || installation?.status === 'failed' || installation?.status === 'interrupted'));
+  const canReview = data?.availability === 'available' && data.canInstall && !state.error && !restart && !uncertain && !installing;
+  const terminalAttempt = installation?.status === 'failed' || installation?.status === 'interrupted' ? installation : undefined;
+  const lastAttempt = !installing && !restart && !uncertain ? terminalAttempt : undefined;
+  const code = state.error ?? (data?.availability === 'error' ? data.code : terminalAttempt ? undefined : installation?.code);
+  const installError = Boolean(code && uncertain);
   const status = installing ? t('updateInstalling') : restart ? t('updateRestart')
-    : uncertain ? t('updateUnknownOutcome') : installation?.status === 'failed' ? t('updateFailed')
-    : installation?.status === 'interrupted' ? t('updateInterrupted')
-    : code ? reason(code, t)
+    : uncertain ? t('updateUnknownOutcome') : code ? reason(code, t)
     : data?.availability === 'available' ? t('updateAvailable', { version: data.candidate!.version })
     : data?.availability === 'current' ? t('updateCurrentStatus') : data?.availability === 'incompatible' ? t('updateIncompatible')
     : installation?.status === 'installed' ? t('updateDone') : t('updateUnknownStatus');
   const compactStatus = state.checking ? t('updateCheckingCompact') : installing ? t('updateInstallingCompact') : restart ? t('updateRestartCompact')
-    : uncertain ? t('updateUncertainCompact') : installation?.status === 'failed' ? t('updateFailedCompact')
-    : installation?.status === 'interrupted' ? t('updateInterruptedCompact')
+    : uncertain ? t('updateUncertainCompact')
     : code ? t('updateErrorCompact') : data?.availability === 'available' ? t('updateAvailable', { version: data.candidate!.version })
     : data?.availability === 'current' ? t('updateCurrentCompact') : data?.availability === 'incompatible' ? t('updateIncompatibleCompact')
     : installation?.status === 'installed' ? t('updateDoneCompact') : t('updateUnknownCompact');
@@ -127,8 +126,10 @@ export function UpdateCard({ controller, Button, t, archiveBusy = false }: {
         <p>{status}</p>{!state.reviewId && releaseLink}
         <p>{t('updateAutomatic')}{data?.checkedAt !== undefined && <> {t('updateChecked', { time: formatTimestamp(data.checkedAt, t) })}</>}</p>
         {code && !installError && <p><span>{t('updateDetails')}: </span><code>{code}</code></p>}
+        {lastAttempt?.code && <p><span>{t('updateAttemptDetails')}: </span><code>{lastAttempt.code}</code></p>}
       </div>
     </details>
+    {lastAttempt && <p className="dad-update-attempt">{t(lastAttempt.status === 'interrupted' ? 'updateInterrupted' : 'updateFailed', { version: lastAttempt.version })}</p>}
     {installError && <div className="dad-update-error" role="alert"><p>{reason(code!, t)}</p><details><summary>{t('updateDetails')}</summary><code>{code}</code></details></div>}
     {state.reviewId && data?.candidate && <div className="dad-update-review" role="group" aria-labelledby={reviewTitle}>
       <div className="dad-update-review-heading">
@@ -165,7 +166,8 @@ export const UPDATE_CSS = `
 }
 .dad-update-label{color:var(--dad-update-fg);font-weight:500}
 .dad-update-status{overflow-wrap:anywhere}
-.dad-update-attention{color:var(--dsw-alias-status-warning,#a57420)}
+.dad-update-attention,.dad-update-attempt{color:var(--dsw-alias-status-warning,#a57420)}
+.dad-update-attempt{flex-basis:100%;overflow-wrap:anywhere}
 .dad-update-controls button,.dad-update-actions button{min-height:28px;font-size:12px;white-space:normal}
 .dad-update-actions{justify-content:flex-end}
 .dad-update a{color:var(--dsw-alias-button-primary-bg,#2878e0);text-underline-offset:3px}
