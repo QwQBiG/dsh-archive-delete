@@ -9,7 +9,7 @@ Use official DSH Desktop **0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.3 / 0.2.2-rc.5** o
 Open **Plugins → Add plugin**, enter this URL, and enable the plugin:
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.7/qwqbig-dsh-archive-delete-0.0.7.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.8/qwqbig-dsh-archive-delete-0.0.8.tgz
 ```
 
 The Release package is ready to use. If DSH asks for a restart, fully quit and reopen it: use **⌘Q / Quit** on macOS or **Exit/Quit** on Windows. If DSH stays in the Windows tray, quit from its tray menu too.
@@ -49,11 +49,13 @@ Sizes use the logical length of each file. The overall total counts verified dup
 
 ## Updates
 
-If you use **v0.0.1**, enter the v0.0.7 URL above in **Plugins → Add plugin**. The manager replaces the existing installation. After that, you can upgrade through the version row.
+If you use **v0.0.1**, enter the v0.0.8 URL above in **Plugins → Add plugin**. The manager replaces the existing installation. After that, you can upgrade through the version row.
 
 The version row at the bottom of the management dialog is also available in plugin details. It has **Check**, **Review update** and **Details**. The plugin checks GitHub daily. Manual checks must be at least one minute apart. After a failure, it waits at least one hour before retrying, or longer if GitHub requires it.
 
 Choose **Review update**, read the release notes, then **Confirm upgrade**. The plugin verifies the package and asks DSH's manager to replace it in the current profile. If the installed version differs from the running version, fully quit and reopen DSH to load it.
+
+An interrupted or failed attempt can appear below the current check result. The notice clears once a newer plugin version is installed and running. When a new release is available, use **Review update**.
 
 If the result is unclear, choose **Check installation status** or **Recheck confirmed request**. These read the current state of the request without repeating a recorded installation. If the result is still unclear, fully quit and reopen DSH before trying again.
 
@@ -74,7 +76,7 @@ Daily checks run while a compatible plugin is loaded. If DSH blocks the plugin a
 For everyday use, install through the Desktop plugin manager. If you manage the Desktop profile through the CLI, quit DSH first:
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.7/qwqbig-dsh-archive-delete-0.0.7.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.8/qwqbig-dsh-archive-delete-0.0.8.tgz
 ```
 
 Check `<DSH_HOME>/profiles/desktop/package.json`. `dsh.profile.bundles` must contain the package name once. Add the entry if the CLI only installed the dependency, preserving the other fields:
@@ -96,7 +98,7 @@ Start DSH and open the management dialog. If a standalone CLI rejects the reserv
 To check that the plugin has loaded, open its management dialog and look for a running component in the plugin details. A successful startup also writes this log line:
 
 ```text
-[archive-delete] v0.0.7 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.3 / 0.2.2-rc.5 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.0.8 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.3 / 0.2.2-rc.5 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
 If the plugin does not load, Doctor can check profile registration, package files, the host version and storage access. Use Node 24+ and substitute your actual home, profile and runtime paths:
@@ -130,15 +132,15 @@ Remove this package's entry from the same profile's `dsh.profile.bundles` if it 
 
 ## Download checksum
 
-To verify a downloaded package, save the matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.7/qwqbig-dsh-archive-delete-0.0.7.tgz.sha256) beside a downloaded package:
+To verify a downloaded package, save the matching [SHA-256 file](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.8/qwqbig-dsh-archive-delete-0.0.8.tgz.sha256) beside a downloaded package:
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.7.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.8.tgz.sha256
 ```
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.0.7.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.0.7.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.0.8.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.0.8.tgz.sha256
 ```
 
 ## Troubleshooting

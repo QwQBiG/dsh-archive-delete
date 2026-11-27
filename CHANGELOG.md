@@ -2,10 +2,11 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · English
 
-## Unreleased
+## 0.0.8
 
 - Add the native trash icon to the archived-session menu.
 - Improve the layout of archive selection, trash actions, storage scans and update details on desktop and at narrow widths.
+- Clear stale upgrade warnings once a newer plugin version is installed and running. The update check shows its result even when an earlier attempt still needs attention.
 
 ## 0.0.7
 

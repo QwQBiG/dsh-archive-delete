@@ -60,3 +60,43 @@ for (const status of ['installing', 'unknown', 'restart-required'] as const) tes
   }
   assert.equal(archive.getSnapshot().maintenance, true);
 });
+
+for (const status of ['interrupted', 'failed'] as const) test(`a same-version ${status} attempt stays visible alongside a fresh check`, async t => {
+  const installation = { requestId: randomUUID(), version: completed.installedVersion, status, code: 'update-host-failed' };
+  let data: UpdateOverview = { ...completed, availability: 'unknown', installation };
+  const unexpected = async (): Promise<never> => { throw Error('Unexpected request'); };
+  const api: ArchiveApi = { list: unexpected, preview: unexpected, execute: unexpected, cancelPending: unexpected,
+    updates: async () => data, installUpdate: unexpected };
+  const archive = new ArchiveClientController(api); const updates = new UpdateClientController(api, archive);
+  t.after(() => { updates.dispose(); archive.dispose(); });
+  await updates.check();
+
+  for (const availability of ['current', 'available', 'error'] as const) {
+    data = { ...completed, availability, installation, ...(availability === 'available' ? { candidate } : {}),
+      ...(availability === 'error' ? { code: 'update-network' } : {}) };
+    await updates.check(true);
+    assert.equal(archive.getSnapshot().maintenance, false);
+    for (const language of ['en', 'zh'] as const) {
+      const translate = translator(language);
+      const html = renderToStaticMarkup(<UpdateCard controller={updates} Button={Button} t={translate} />);
+      const compact = html.replace(/<details class="dad-update-info">[\s\S]*?<\/details>/, '').replace(/<[^>]+>/g, ' ');
+      const attempt = translate(status === 'interrupted' ? 'updateInterrupted' : 'updateFailed', { version: installation.version });
+      assert.ok(compact.includes(attempt));
+      assert.ok(!compact.includes(installation.code));
+      assert.ok(html.includes(`${translate('updateAttemptDetails')}: </span><code>${installation.code}</code>`));
+      if (availability === 'available') {
+        assert.ok(compact.includes(translate('updateAvailable', { version: candidate.version })));
+        assert.ok(compact.includes(translate('updateReview')));
+      } else {
+        assert.ok(compact.includes(translate(availability === 'current' ? 'updateCurrentCompact' : 'updateErrorCompact')));
+        assert.ok(!compact.includes(translate('updateReview')));
+        if (availability === 'error') assert.ok(html.includes(translate('updateErrorNetwork')));
+      }
+    }
+    if (availability === 'available') {
+      updates.review();
+      assert.equal(updates.getSnapshot().reviewId, candidate.id);
+      updates.cancelReview();
+    }
+  }
+});

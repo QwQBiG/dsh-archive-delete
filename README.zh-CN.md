@@ -19,14 +19,14 @@
   </picture>
 </p>
 
-<p align="center">使用开发版插件和示例数据，在 DSH 桌面端录制。</p>
+<p align="center">在 DSH 桌面端用示例数据录制。</p>
 
 ## 安装
 
-**v0.0.7** 支持 macOS 和 Windows 上使用 JSONL 存储的 **DSH Desktop 0.2.1-rc.3、0.2.1-rc.5、0.2.2-rc.3 和 0.2.2-rc.5**。打开 DSH 桌面端的 **插件 → 添加插件**，粘贴下方的预编译安装包地址。
+**v0.0.8** 支持 macOS 和 Windows 上使用 JSONL 存储的 **DSH Desktop 0.2.1-rc.3、0.2.1-rc.5、0.2.2-rc.3 和 0.2.2-rc.5**。打开 DSH 桌面端的 **插件 → 添加插件**，粘贴下方的预编译安装包地址。
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.7/qwqbig-dsh-archive-delete-0.0.7.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.8/qwqbig-dsh-archive-delete-0.0.8.tgz
 ```
 
 已安装的用户可以在插件详情里选择 **查看并升级 → 确认升级**。如果提示重启，请完全退出 DSH 再打开。如果已安装的插件被标为不兼容，或没有更新按钮，请在 **插件 → 添加插件** 粘贴上方地址。 [安装和排错](docs/installation.zh-CN.md)

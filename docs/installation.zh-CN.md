@@ -9,7 +9,7 @@
 打开 **插件 → 添加插件**，输入以下 URL 并启用：
 
 ```text
-https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.7/qwqbig-dsh-archive-delete-0.0.7.tgz
+https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.8/qwqbig-dsh-archive-delete-0.0.8.tgz
 ```
 
 Release 安装包可直接使用。提示重启时，请完全退出 DSH 再重新打开：macOS 使用 **⌘Q／退出**，Windows 使用 **退出**。如果 DSH 仍驻留在 Windows 托盘，也要从托盘菜单退出。
@@ -49,11 +49,13 @@ DSH 扫描覆盖宿主配置的存储位置，并排除已登记的项目目录�
 
 ## 更新
 
-如果你还在使用 **v0.0.1**，请在 **插件 → 添加插件** 中输入上方 v0.0.7 URL，管理器会替换现有安装。之后即可通过版本栏升级。
+如果你还在使用 **v0.0.1**，请在 **插件 → 添加插件** 中输入上方 v0.0.8 URL，管理器会替换现有安装。之后即可通过版本栏升级。
 
 在管理弹窗底部或插件详情中，都可以通过版本栏 **检查更新**、**查看并升级** 或查看 **详情**。插件每天检查一次 GitHub，手动检查需至少间隔一分钟。检查失败后至少等一小时再试。如果 GitHub 要求等得更久，就按它给出的时间执行。
 
 选择 **查看并升级**，阅读更新说明后点击 **确认升级**。插件会校验安装包，再交给当前 profile 的 DSH 管理器替换。已安装版本与正在运行的版本不同时，完全退出并重新打开 DSH，即可加载。
+
+上次升级中断或失败时，版本栏会同时显示本次检查结果和上次的状态。更新的插件版本安装并运行后，旧提示会消失。发现新版本时可点击 **查看并升级**。
 
 结果不明确时，选择 **核对安装状态** 或 **重新核对此次请求**，读取当前状态，不会重复执行已记录的安装。如果仍无法确认，请完全退出并重新打开 DSH 后再试。
 
@@ -74,7 +76,7 @@ DSH 扫描覆盖宿主配置的存储位置，并排除已登记的项目目录�
 日常使用建议通过桌面端插件管理器安装。通过 CLI 管理 Desktop profile 时，请先退出 DSH：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.7/qwqbig-dsh-archive-delete-0.0.7.tgz
+dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.8/qwqbig-dsh-archive-delete-0.0.8.tgz
 ```
 
 检查 `<DSH_HOME>/profiles/desktop/package.json`，`dsh.profile.bundles` 中应包含一次包名。CLI 仅安装依赖时，补上该条目并保留其他字段：
@@ -96,7 +98,7 @@ dsh plugin --profile desktop add https://github.com/QwQBiG/dsh-archive-delete/re
 安装后，打开管理弹窗，并在插件详情中确认组件处于运行状态。成功启动时，日志还会出现：
 
 ```text
-[archive-delete] v0.0.7 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.3 / 0.2.2-rc.5 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
+[archive-delete] v0.0.8 loaded · target DSH 0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.3 / 0.2.2-rc.5 (host 0.2.1-rc.5) · trash "/absolute/path/to/dsh-home/archive-delete/trash"
 ```
 
 插件无法加载时，可以用 Doctor 检查 profile 登记、包文件、宿主版本和存储访问。使用 Node 24+，并将路径替换为实际的 home、profile 和 runtime：
@@ -130,15 +132,15 @@ dsh plugin --profile desktop remove @qwqbig/dsh-archive-delete
 
 ## 下载校验
 
-需要校验下载包时，将配套的 [SHA-256 文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.7/qwqbig-dsh-archive-delete-0.0.7.tgz.sha256) 保存在安装包旁边，再执行：
+需要校验下载包时，将配套的 [SHA-256 文件](https://github.com/QwQBiG/dsh-archive-delete/releases/download/v0.0.8/qwqbig-dsh-archive-delete-0.0.8.tgz.sha256) 保存在安装包旁边，再执行：
 
 ```sh
-shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.7.tgz.sha256
+shasum -a 256 -c qwqbig-dsh-archive-delete-0.0.8.tgz.sha256
 ```
 
 ```powershell
-Get-FileHash .\qwqbig-dsh-archive-delete-0.0.7.tgz -Algorithm SHA256
-Get-Content .\qwqbig-dsh-archive-delete-0.0.7.tgz.sha256
+Get-FileHash .\qwqbig-dsh-archive-delete-0.0.8.tgz -Algorithm SHA256
+Get-Content .\qwqbig-dsh-archive-delete-0.0.8.tgz.sha256
 ```
 
 ## 排错
