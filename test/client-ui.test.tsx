@@ -66,7 +66,8 @@ test('storage tab has three keyboard-addressable tabs, explicit scan controls an
     const t = translator(language);
     assert.equal((html.match(/role="tab"/g) ?? []).length, 3);
     assert.ok(html.includes(t('storage')));
-    assert.ok(html.includes(t('storageHostScan')));
+    assert.ok(html.includes(`aria-label="${t('storageHostScan')}"`));
+    assert.ok(html.includes(`aria-label="${t('storageWorkspaceScan')}"`));
     assert.ok(html.includes(t('storageRefreshWorkspaces')));
     assert.ok(html.includes('A sample project'));
     assert.ok(html.includes(t('storageEmptyHint')));
@@ -255,7 +256,10 @@ test('unsupported hosts retain a readable interface while mutation controls are 
   };
   const html = renderToStaticMarkup(<ArchiveDialogView state={state} controller={new ArchiveClientController(api)} primitives={primitives} t={translator('en')} />);
   assert.ok(html.includes('Data operations are unavailable'));
-  assert.match(html, /disabled=""[^>]*>Move selected to trash/);
+  const moveButton = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)?.find(button => button.endsWith(`${en.moveSelected}</button>`));
+  assert.ok(moveButton);
+  assert.match(moveButton, /<button[^>]*disabled=""/);
+  assert.match(moveButton, /<svg[^>]*aria-hidden="true"/);
   assert.ok(html.includes('role="tablist"'));
   assert.ok(html.includes('role="tabpanel"'));
 });
@@ -284,10 +288,14 @@ test('client registers native slots and disposes every contribution without a ne
   const effects: Array<() => void> = [];
   let disposedSlots = 0;
   let reads = 0;
-  const plugin = startClient(() => ({ ...primitives, MenuItemButton: ({ children }: { children: React.ReactNode }) => <button role="menuitem">{children}</button> }), () => ({ ...api, list: async () => { reads++; return overview; } }));
+  const plugin = startClient(() => ({
+    ...primitives,
+    MenuItemButton: ({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) => <button role="menuitem">{icon}{children}</button>,
+    IconTrashOutlineRegular: () => <svg aria-hidden="true" data-host-icon="trash" />,
+  }), () => ({ ...api, list: async () => { reads++; return overview; } }));
   const context = {
     locale: { register: () => () => {} },
-    workspaces: { list: { getSnapshot: () => ({ archivedSessionIds: [] }), subscribe: () => () => {} } },
+    workspaces: { list: { getSnapshot: () => ({ archivedSessionIds: ['session-1'] }), subscribe: () => () => {} } },
     slots: {
       inject: (_name: string, run: () => (() => void) | void) => { const stop = run(); return () => { stop?.(); }; },
       register: <P,>(options: { name: string; key?: string; id?: string }, component: React.ComponentType<P>) => { registrations.push({ options, component: component as React.ComponentType<unknown> }); return () => { disposedSlots++; }; },
@@ -297,6 +305,14 @@ test('client registers native slots and disposes every contribution without a ne
   plugin.apply(context);
   assert.deepEqual(registrations.map((item) => item.options.name), ['sidebar.workspaces.session.menu.item', 'shell.overlay', 'plugins.bundle.config']);
   assert.equal(registrations[2]?.options.key, PACKAGE_NAME);
+  const menuProps = { sessionId: 'session-1', displayTitle: 'Archived session', useMenuOpenState: () => [true, () => {}] as const, t: translator('en') };
+  const MenuItem = registrations[0]!.component as React.ComponentType<typeof menuProps>;
+  for (const language of ['en', 'zh'] as const) {
+    const t = translator(language);
+    const markup = renderToStaticMarkup(<MenuItem {...menuProps} t={t} />);
+    assert.ok(markup.includes(`<svg aria-hidden="true" data-host-icon="trash"></svg>${t('menuTrash')}`));
+  }
+  assert.equal(renderToStaticMarkup(<MenuItem {...menuProps} sessionId="active-session" />), '');
   assert.equal(reads, 0);
   for (const dispose of effects.reverse()) dispose();
   assert.equal(disposedSlots, 3);
